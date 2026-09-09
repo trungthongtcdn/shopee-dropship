@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id            Int       @id @default(autoincrement())
+  shopeeOrderId String    @unique @map("shopee_order_id")
+  sku           String
+  productName   String    @map("product_name")
+  quantity      Int
+  unitPrice     Float     @map("unit_price")
+  totalAmount   Float     @map("total_amount")
+  status        String
+  rawRowHash    String    @map("raw_row_hash")
+  sheetRowIndex Int       @map("sheet_row_index")
+  isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
+  firstSyncedAt DateTime  @default(now()) @map("first_synced_at")
+  lastSyncedAt  DateTime  @updatedAt @map("last_synced_at")
+
+  @@map("orders")
+}
+
+model Cancellation {
+  id            Int       @id @default(autoincrement())
+  shopeeOrderId String    @map("shopee_order_id")
+  reason        String
+  cancelledAt   DateTime  @map("cancelled_at")
+  rawRowHash    String    @map("raw_row_hash")
+  sheetRowIndex Int       @map("sheet_row_index")
+  isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
+  firstSyncedAt DateTime  @default(now()) @map("first_synced_at")
+  lastSyncedAt  DateTime  @updatedAt @map("last_synced_at")
+
+  @@map("cancellations")
+}
+
+model Product {
+  id            Int       @id @default(autoincrement())
+  sku           String    @unique
+  productName   String    @map("product_name")
+  price         Float
+  rawRowHash    String    @map("raw_row_hash")
+  sheetRowIndex Int       @map("sheet_row_index")
+  isActive      Boolean   @default(true) @map("is_active")
+  deletedAt     DateTime? @map("deleted_at")
+  firstSyncedAt DateTime  @default(now()) @map("first_synced_at")
+  lastSyncedAt  DateTime  @updatedAt @map("last_synced_at")
+
+  @@map("products")
+}
+
+enum SourceTab {
+  orders
+  cancellations
+  products
+}
+
+enum ChangeType {
+  insert
+  update
+  delete
+}
+
+model SyncLog {
+  id            Int        @id @default(autoincrement())
+  sourceTab     SourceTab  @map("source_tab")
+  sheetRowIndex Int        @map("sheet_row_index")
+  changeType    ChangeType @map("change_type")
+  oldValue      Json?      @map("old_value")
+  newValue      Json?      @map("new_value")
+  syncedAt      DateTime   @default(now()) @map("synced_at")
+
+  @@map("sync_log")
+}
+
+enum BatchStatus {
+  processing
+  done
+  error
+}
+
+model ReconciliationBatch {
+  id          Int                    @id @default(autoincrement())
+  fileName    String                 @map("file_name")
+  uploadedAt  DateTime               @default(now()) @map("uploaded_at")
+  periodLabel String?                @map("period_label")
+  status      BatchStatus            @default(processing)
+  results     ReconciliationResult[]
+
+  @@map("reconciliation_batches")
+}
+
+enum MatchStatus {
+  matched
+  missing_in_sheet
+  missing_in_excel
+  amount_mismatch
+  status_mismatch
+  parse_error
+}
+
+model ReconciliationResult {
+  id            Int                  @id @default(autoincrement())
+  batchId       Int                  @map("batch_id")
+  batch         ReconciliationBatch  @relation(fields: [batchId], references: [id])
+  shopeeOrderId String?              @map("shopee_order_id")
+  matchStatus   MatchStatus          @map("match_status")
+  sheetAmount   Float?               @map("sheet_amount")
+  excelAmount   Float?               @map("excel_amount")
+  diffDetail    Json?                @map("diff_detail")
+
+  @@map("reconciliation_results")
+}
