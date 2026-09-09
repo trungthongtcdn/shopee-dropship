@@ -1,0 +1,27 @@
+{
+  "name": "shopee-reconciliation",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "@prisma/client": "^5.18.0",
+    "zod": "^3.23.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "prisma": "^5.18.0",
+    "vitest": "^2.0.0",
+    "tsx": "^4.16.0"
+  }
+}
