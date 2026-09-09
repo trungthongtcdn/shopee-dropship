@@ -77,6 +77,44 @@ describe("applyOrdersPayload", () => {
     expect(softDeleted?.deletedAt).not.toBeNull();
   });
 
+  it("records a row error instead of throwing when a reappearing order collides with a unique key", async () => {
+    await applyOrdersPayload([
+      {
+        rowIndex: 2,
+        hash: "hash-1",
+        data: {
+          shopee_order_id: "SP001",
+          sku: "SKU1",
+          product_name: "Product 1",
+          quantity: 1,
+          unit_price: 1000,
+          total_amount: 1000,
+          status: "pending",
+        },
+      },
+    ]);
+    await applyOrdersPayload([]);
+
+    const result = await applyOrdersPayload([
+      {
+        rowIndex: 5,
+        hash: "hash-2",
+        data: {
+          shopee_order_id: "SP001",
+          sku: "SKU1",
+          product_name: "Product 1",
+          quantity: 1,
+          unit_price: 1000,
+          total_amount: 1000,
+          status: "pending",
+        },
+      },
+    ]);
+
+    expect(result.rowErrors).toHaveLength(1);
+    expect(result.rowErrors[0].rowIndex).toBe(5);
+  });
+
   afterAll(async () => {
     await prisma.syncLog.deleteMany();
     await prisma.order.deleteMany();

@@ -11,6 +11,11 @@ interface TabDelegate {
   update: (args: unknown) => Promise<Record<string, unknown>>;
 }
 
+interface RowError {
+  rowIndex: number;
+  error: string;
+}
+
 function toJsonSafe(value: Record<string, unknown>): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value));
 }
@@ -31,37 +36,51 @@ async function applyTabPayload(
     rows
   );
 
+  const rowErrors: RowError[] = [];
+
   for (const row of diff.inserts) {
-    const created = await delegate.create({ data: mapRow(row) });
-    await prisma.syncLog.create({
-      data: { sourceTab: tab, sheetRowIndex: row.rowIndex, changeType: "insert", newValue: toJsonSafe(created) },
-    });
+    try {
+      const created = await delegate.create({ data: mapRow(row) });
+      await prisma.syncLog.create({
+        data: { sourceTab: tab, sheetRowIndex: row.rowIndex, changeType: "insert", newValue: toJsonSafe(created) },
+      });
+    } catch (error) {
+      rowErrors.push({ rowIndex: row.rowIndex, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   for (const row of diff.updates) {
-    const before = await delegate.findFirst({ where: { sheetRowIndex: row.rowIndex, isActive: true } });
-    const updated = await delegate.update({ where: { id: before.id }, data: mapRow(row) });
-    await prisma.syncLog.create({
-      data: {
-        sourceTab: tab,
-        sheetRowIndex: row.rowIndex,
-        changeType: "update",
-        oldValue: toJsonSafe(before),
-        newValue: toJsonSafe(updated),
-      },
-    });
+    try {
+      const before = await delegate.findFirst({ where: { sheetRowIndex: row.rowIndex, isActive: true } });
+      const updated = await delegate.update({ where: { id: before.id }, data: mapRow(row) });
+      await prisma.syncLog.create({
+        data: {
+          sourceTab: tab,
+          sheetRowIndex: row.rowIndex,
+          changeType: "update",
+          oldValue: toJsonSafe(before),
+          newValue: toJsonSafe(updated),
+        },
+      });
+    } catch (error) {
+      rowErrors.push({ rowIndex: row.rowIndex, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   for (const rowIndex of diff.softDeletes) {
-    const before = await delegate.findFirst({ where: { sheetRowIndex: rowIndex, isActive: true } });
-    if (!before) continue;
-    await delegate.update({ where: { id: before.id }, data: { isActive: false, deletedAt: new Date() } });
-    await prisma.syncLog.create({
-      data: { sourceTab: tab, sheetRowIndex: rowIndex, changeType: "delete", oldValue: toJsonSafe(before) },
-    });
+    try {
+      const before = await delegate.findFirst({ where: { sheetRowIndex: rowIndex, isActive: true } });
+      if (!before) continue;
+      await delegate.update({ where: { id: before.id }, data: { isActive: false, deletedAt: new Date() } });
+      await prisma.syncLog.create({
+        data: { sourceTab: tab, sheetRowIndex: rowIndex, changeType: "delete", oldValue: toJsonSafe(before) },
+      });
+    } catch (error) {
+      rowErrors.push({ rowIndex, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
-  return diff;
+  return { ...diff, rowErrors };
 }
 
 function mapOrderRow(row: IncomingRow) {
