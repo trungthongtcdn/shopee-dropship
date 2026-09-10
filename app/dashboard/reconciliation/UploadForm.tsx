@@ -9,8 +9,28 @@ export function UploadForm() {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const response = await fetch("/api/reconcile/upload", { method: "POST", body: formData });
-    const json = await response.json();
-    setStatus(response.ok ? `Batch ${json.batchId} done, ${json.resultCount} results` : json.error);
+
+    // The route always answers with JSON, but an infrastructure-level failure
+    // (proxy error page, request body size limit) can return HTML or nothing at
+    // all. Do not let that surface as an unhandled parse rejection.
+    let json: { batchId?: number; resultCount?: number; error?: string } | null = null;
+    try {
+      json = await response.json();
+    } catch {
+      json = null;
+    }
+
+    if (!response.ok) {
+      setStatus(json?.error ?? `Upload failed (${response.status})`);
+      return;
+    }
+
+    if (!json) {
+      setStatus("Upload finished but the response could not be read");
+      return;
+    }
+
+    setStatus(`Batch ${json.batchId} done, ${json.resultCount} results`);
   }
 
   return (

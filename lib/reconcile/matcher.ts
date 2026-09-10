@@ -1,17 +1,17 @@
+import type { MatchStatus } from "@prisma/client";
 import type { ParsedExcelRow } from "@/lib/reconcile/parseExcel";
+
+// The Prisma enum is the single source of truth for match statuses; re-exported
+// here so callers of the matcher do not have to reach into @prisma/client and
+// cannot drift out of sync with the database enum.
+export type { MatchStatus };
 
 export interface OrderRecord {
   shopeeOrderId: string;
   totalAmount: number;
   status: string;
+  isActive: boolean;
 }
-
-export type MatchStatus =
-  | "matched"
-  | "missing_in_sheet"
-  | "missing_in_excel"
-  | "amount_mismatch"
-  | "status_mismatch";
 
 export interface MatchResult {
   shopeeOrderId: string;
@@ -72,8 +72,11 @@ export function matchReconciliation(excelRows: ParsedExcelRow[], orders: OrderRe
     });
   }
 
+  // Only ACTIVE orders can be "missing from the excel file". An inactive order
+  // was already removed from the Shopee sheet, so Shopee legitimately omitting
+  // it from the reconciliation file is not a discrepancy.
   for (const order of orders) {
-    if (!matchedOrderIds.has(order.shopeeOrderId)) {
+    if (order.isActive && !matchedOrderIds.has(order.shopeeOrderId)) {
       results.push({
         shopeeOrderId: order.shopeeOrderId,
         matchStatus: "missing_in_excel",

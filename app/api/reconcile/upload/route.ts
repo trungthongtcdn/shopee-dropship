@@ -13,7 +13,16 @@ export async function POST(request: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const parsed = parseReconciliationExcel(buffer);
+
+  // A corrupt or non-Excel upload makes the parser throw. That is a client
+  // error, not a server error, and it must be rejected before any batch row
+  // exists so a failed upload leaves no half-created batch behind.
+  let parsed;
+  try {
+    parsed = parseReconciliationExcel(buffer);
+  } catch {
+    return NextResponse.json({ error: "could not parse file" }, { status: 400 });
+  }
 
   if (parsed.missingColumns.length > 0) {
     return NextResponse.json(
@@ -27,7 +36,9 @@ export async function POST(request: NextRequest) {
   });
 
   const orders = await prisma.order.findMany({
-    select: { shopeeOrderId: true, totalAmount: true, status: true },
+    // isActive is required by the matcher: only active orders can be reported
+    // as missing_in_excel.
+    select: { shopeeOrderId: true, totalAmount: true, status: true, isActive: true },
   });
 
   const results = matchReconciliation(parsed.rows, orders);

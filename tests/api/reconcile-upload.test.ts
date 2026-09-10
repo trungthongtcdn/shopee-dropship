@@ -62,6 +62,24 @@ describe("POST /api/reconcile/upload", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects a non-excel buffer without creating a batch", async () => {
+    const response = await POST(makeUploadRequest(Buffer.from("not an excel file")));
+    expect(response.status).toBe(400);
+    expect(await prisma.reconciliationBatch.count()).toBe(0);
+  });
+
+  it("rejects a corrupt spreadsheet the parser throws on, without creating a batch", async () => {
+    // Legacy .xls (OLE/CFB) magic bytes followed by nothing: the parser throws
+    // rather than returning a result, which used to escape as a 500 the client
+    // could not read.
+    const corrupt = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0x00, 0x00]);
+
+    const response = await POST(makeUploadRequest(corrupt));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "could not parse file" });
+    expect(await prisma.reconciliationBatch.count()).toBe(0);
+  });
+
   afterAll(async () => {
     // Leave the database as this file found it: tests/schema.test.ts asserts
     // empty tables, so an order row surviving this file makes the suite
