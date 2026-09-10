@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "test": "vitest run"
   },
@@ -13,7 +13,7 @@
     "react-dom": "^18.3.0",
     "@prisma/client": "^5.18.0",
     "zod": "^3.23.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
