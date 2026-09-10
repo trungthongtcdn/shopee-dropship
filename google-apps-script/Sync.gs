@@ -4,8 +4,6 @@ var TABS = [
   { name: "products", sheetName: "Products" },
 ];
 
-var BATCH_SIZE = 200;
-
 function computeRowHash(values) {
   var raw = values.join("|");
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, raw);
@@ -17,8 +15,23 @@ function computeRowHash(values) {
     .join("");
 }
 
+function recordSyncError(message) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty("last_error", String(message).slice(0, 500));
+  props.setProperty("last_error_at", new Date().toISOString());
+}
+
+function getTabSheet(sheetName) {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+}
+
 function readTabRows(sheetName) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var sheet = getTabSheet(sheetName);
+  if (!sheet) {
+    Logger.log("WARNING: sheet not found, returning no rows for: " + sheetName);
+    return [];
+  }
+
   var lastRow = sheet.getLastRow();
   var lastColumn = sheet.getLastColumn();
   if (lastRow < 2) return [];
@@ -50,21 +63,43 @@ function pushPayload(tab, rows) {
 
   for (var attempt = 1; attempt <= 3; attempt++) {
     var response = UrlFetchApp.fetch(url, options);
-    if (response.getResponseCode() < 500) return response;
+    var code = response.getResponseCode();
+
+    // Any non-2xx is a real failure worth surfacing, not just an exhausted 5xx
+    // retry: a 401 (wrong secret) or 400 (bad payload) would otherwise be
+    // silently discarded and the sync would look healthy while doing nothing.
+    if (code < 200 || code >= 300) {
+      var detail =
+        "tab " + tab + " -> HTTP " + code + " (attempt " + attempt + "/3): " + response.getContentText().slice(0, 300);
+      Logger.log("ERROR: sync push failed, " + detail);
+      recordSyncError(detail);
+    }
+
+    // 4xx will not fix itself on retry; only 5xx is retried.
+    if (code < 500) return response;
     Utilities.sleep(2000 * attempt);
   }
 
-  props.setProperty("last_error", "push failed for tab " + tab);
-  props.setProperty("last_error_at", new Date().toISOString());
+  var exhausted = "tab " + tab + " -> push failed after 3 attempts (5xx)";
+  Logger.log("ERROR: " + exhausted);
+  recordSyncError(exhausted);
   return null;
 }
 
 function syncAllTabs() {
   TABS.forEach(function (tab) {
-    var rows = readTabRows(tab.sheetName);
-    for (var i = 0; i < rows.length; i += BATCH_SIZE) {
-      pushPayload(tab.name, rows.slice(i, i + BATCH_SIZE));
+    // The webhook treats "active row absent from the payload" as deleted, so
+    // every payload must be the COMPLETE current state of its tab. Never split
+    // a tab across requests, and never push an empty payload for a sheet that
+    // is merely missing - either would soft-delete the whole tab.
+    if (!getTabSheet(tab.sheetName)) {
+      Logger.log("WARNING: sheet not found, skipping tab: " + tab.sheetName);
+      recordSyncError("sheet not found, skipped tab: " + tab.sheetName);
+      return;
     }
+
+    var rows = readTabRows(tab.sheetName);
+    pushPayload(tab.name, rows);
   });
 }
 

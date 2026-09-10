@@ -23,13 +23,15 @@ export async function POST(request: NextRequest) {
   const { tab, rows } = parsedBody.data;
   const { validRows, errors } = parseIncomingRows(rows);
 
-  const diff = await APPLY_BY_TAB[tab](validRows);
+  // Counts come from applyTabPayload's per-phase success counters, so they
+  // report work that actually landed in the DB rather than work attempted.
+  const applied = await APPLY_BY_TAB[tab](validRows);
 
   return NextResponse.json({
-    inserted: diff.inserts.length,
-    updated: diff.updates.length,
-    softDeleted: diff.softDeletes.length,
+    inserted: applied.inserted,
+    updated: applied.updated,
+    softDeleted: applied.softDeleted,
     invalidRows: errors,
-    dbErrors: diff.rowErrors,
+    dbErrors: applied.rowErrors,
   });
 }

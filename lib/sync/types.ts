@@ -7,12 +7,12 @@ export interface IncomingRow {
 }
 
 export interface ExistingRow {
-  rowIndex: number;
+  key: string;
   hash: string;
 }
 
 export interface SyncDiff {
   inserts: IncomingRow[];
   updates: IncomingRow[];
-  softDeletes: number[];
+  softDeletes: string[];
 }

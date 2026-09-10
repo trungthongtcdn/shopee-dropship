@@ -4,16 +4,26 @@ import { prisma } from "@/lib/db";
 import { computeSyncDiff } from "@/lib/sync/diff";
 import type { IncomingRow, SyncTab } from "@/lib/sync/types";
 
-interface TabDelegate {
-  findMany: (args: unknown) => Promise<{ sheetRowIndex: number; rawRowHash: string }[]>;
-  findFirst: (args: unknown) => Promise<{ id: number } & Record<string, unknown>>;
-  create: (args: unknown) => Promise<Record<string, unknown>>;
-  update: (args: unknown) => Promise<Record<string, unknown>>;
+interface RowError {
+  identifier: string;
+  error: string;
 }
 
-interface RowError {
-  rowIndex: number;
-  error: string;
+// Counts reflect rows that actually completed their write (and their sync_log
+// entry) without throwing — not the pre-write diff sizes. A row whose write
+// fails lands in `rowErrors` and is excluded from these counts.
+export interface ApplyResult {
+  inserted: number;
+  updated: number;
+  softDeleted: number;
+  rowErrors: RowError[];
+}
+
+interface TabDelegate {
+  findMany: (args: unknown) => Promise<Record<string, unknown>[]>;
+  findFirst: (args: unknown) => Promise<({ id: number } & Record<string, unknown>) | null>;
+  create: (args: unknown) => Promise<Record<string, unknown>>;
+  update: (args: unknown) => Promise<Record<string, unknown>>;
 }
 
 function toJsonSafe(value: Record<string, unknown>): Prisma.InputJsonValue {
@@ -23,20 +33,26 @@ function toJsonSafe(value: Record<string, unknown>): Prisma.InputJsonValue {
 async function applyTabPayload(
   tab: SyncTab,
   delegate: TabDelegate,
+  keyField: string,
+  keyOf: (row: IncomingRow) => string,
   mapRow: (row: IncomingRow) => Record<string, unknown>,
   rows: IncomingRow[]
-) {
-  const existing = await delegate.findMany({
+): Promise<ApplyResult> {
+  const existingRows = await delegate.findMany({
     where: { isActive: true },
-    select: { sheetRowIndex: true, rawRowHash: true },
+    select: { [keyField]: true, rawRowHash: true },
   });
 
-  const diff = computeSyncDiff(
-    existing.map((row) => ({ rowIndex: row.sheetRowIndex, hash: row.rawRowHash })),
-    rows
-  );
+  const existing = existingRows.map((row) => ({
+    key: String(row[keyField]),
+    hash: String(row.rawRowHash),
+  }));
 
+  const diff = computeSyncDiff(existing, rows, keyOf);
   const rowErrors: RowError[] = [];
+  let inserted = 0;
+  let updated = 0;
+  let softDeleted = 0;
 
   for (const row of diff.inserts) {
     try {
@@ -44,43 +60,47 @@ async function applyTabPayload(
       await prisma.syncLog.create({
         data: { sourceTab: tab, sheetRowIndex: row.rowIndex, changeType: "insert", newValue: toJsonSafe(created) },
       });
+      inserted += 1;
     } catch (error) {
-      rowErrors.push({ rowIndex: row.rowIndex, error: error instanceof Error ? error.message : String(error) });
+      rowErrors.push({ identifier: String(row.rowIndex), error: error instanceof Error ? error.message : String(error) });
     }
   }
 
   for (const row of diff.updates) {
     try {
-      const before = await delegate.findFirst({ where: { sheetRowIndex: row.rowIndex, isActive: true } });
-      const updated = await delegate.update({ where: { id: before.id }, data: mapRow(row) });
+      const before = await delegate.findFirst({ where: { [keyField]: keyOf(row), isActive: true } });
+      if (!before) continue;
+      const updatedRow = await delegate.update({ where: { id: before.id }, data: mapRow(row) });
       await prisma.syncLog.create({
         data: {
           sourceTab: tab,
           sheetRowIndex: row.rowIndex,
           changeType: "update",
           oldValue: toJsonSafe(before),
-          newValue: toJsonSafe(updated),
+          newValue: toJsonSafe(updatedRow),
         },
       });
+      updated += 1;
     } catch (error) {
-      rowErrors.push({ rowIndex: row.rowIndex, error: error instanceof Error ? error.message : String(error) });
+      rowErrors.push({ identifier: String(row.rowIndex), error: error instanceof Error ? error.message : String(error) });
     }
   }
 
-  for (const rowIndex of diff.softDeletes) {
+  for (const key of diff.softDeletes) {
     try {
-      const before = await delegate.findFirst({ where: { sheetRowIndex: rowIndex, isActive: true } });
+      const before = await delegate.findFirst({ where: { [keyField]: key, isActive: true } });
       if (!before) continue;
       await delegate.update({ where: { id: before.id }, data: { isActive: false, deletedAt: new Date() } });
       await prisma.syncLog.create({
-        data: { sourceTab: tab, sheetRowIndex: rowIndex, changeType: "delete", oldValue: toJsonSafe(before) },
+        data: { sourceTab: tab, sheetRowIndex: Number(before.sheetRowIndex), changeType: "delete", oldValue: toJsonSafe(before) },
       });
+      softDeleted += 1;
     } catch (error) {
-      rowErrors.push({ rowIndex, error: error instanceof Error ? error.message : String(error) });
+      rowErrors.push({ identifier: key, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
-  return { ...diff, rowErrors };
+  return { inserted, updated, softDeleted, rowErrors };
 }
 
 function mapOrderRow(row: IncomingRow) {
@@ -117,14 +137,25 @@ function mapProductRow(row: IncomingRow) {
   };
 }
 
+const keyOfOrderRow = (row: IncomingRow) => String(row.data.shopee_order_id);
+const keyOfCancellationRow = (row: IncomingRow) => String(row.data.shopee_order_id);
+const keyOfProductRow = (row: IncomingRow) => String(row.data.sku);
+
 export function applyOrdersPayload(rows: IncomingRow[]) {
-  return applyTabPayload("orders", prisma.order as unknown as TabDelegate, mapOrderRow, rows);
+  return applyTabPayload("orders", prisma.order as unknown as TabDelegate, "shopeeOrderId", keyOfOrderRow, mapOrderRow, rows);
 }
 
 export function applyCancellationsPayload(rows: IncomingRow[]) {
-  return applyTabPayload("cancellations", prisma.cancellation as unknown as TabDelegate, mapCancellationRow, rows);
+  return applyTabPayload(
+    "cancellations",
+    prisma.cancellation as unknown as TabDelegate,
+    "shopeeOrderId",
+    keyOfCancellationRow,
+    mapCancellationRow,
+    rows
+  );
 }
 
 export function applyProductsPayload(rows: IncomingRow[]) {
-  return applyTabPayload("products", prisma.product as unknown as TabDelegate, mapProductRow, rows);
+  return applyTabPayload("products", prisma.product as unknown as TabDelegate, "sku", keyOfProductRow, mapProductRow, rows);
 }
