@@ -1,6 +1,19 @@
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
 
+const VALID_MATCH_STATUSES = [
+  "matched",
+  "missing_in_sheet",
+  "missing_in_excel",
+  "amount_mismatch",
+  "status_mismatch",
+  "parse_error",
+] as const;
+
+function isValidMatchStatus(value: string | undefined): value is (typeof VALID_MATCH_STATUSES)[number] {
+  return VALID_MATCH_STATUSES.includes(value as never);
+}
+
 export default async function ReconciliationPage({
   searchParams,
 }: {
@@ -12,11 +25,13 @@ export default async function ReconciliationPage({
   });
 
   const latestBatch = batches[0];
+  const statusFilter = isValidMatchStatus(searchParams.status) ? searchParams.status : undefined;
+
   const results = latestBatch
     ? await prisma.reconciliationResult.findMany({
         where: {
           batchId: latestBatch.id,
-          ...(searchParams.status ? { matchStatus: searchParams.status as never } : {}),
+          ...(statusFilter ? { matchStatus: statusFilter } : {}),
         },
       })
     : [];
