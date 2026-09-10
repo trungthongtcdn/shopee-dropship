@@ -63,6 +63,12 @@ describe("POST /api/reconcile/upload", () => {
   });
 
   afterAll(async () => {
+    // Leave the database as this file found it: tests/schema.test.ts asserts
+    // empty tables, so an order row surviving this file makes the suite
+    // order-dependent. Same cleanup pattern as tests/sync/apply.test.ts.
+    await prisma.reconciliationResult.deleteMany();
+    await prisma.reconciliationBatch.deleteMany();
+    await prisma.order.deleteMany();
     await prisma.$disconnect();
   });
 });
