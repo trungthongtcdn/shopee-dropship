@@ -14,7 +14,7 @@ function bufferFromRows(rows: Record<string, unknown>[]) {
 
 function makeUploadRequest(buffer: Buffer) {
   const formData = new FormData();
-  formData.append("file", new File([buffer], "reconcile.xlsx"));
+  formData.append("file", new File([new Uint8Array(buffer)], "reconcile.xlsx"));
   return new NextRequest("http://localhost/api/reconcile/upload", {
     method: "POST",
     body: formData,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseReconciliationExcel } from "@/lib/reconcile/parseExcel";
 import { matchReconciliation } from "@/lib/reconcile/matcher";
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
       matchStatus: result.matchStatus,
       sheetAmount: result.sheetAmount,
       excelAmount: result.excelAmount,
-      diffDetail: result.diffDetail ?? undefined,
+      diffDetail: (result.diffDetail ?? undefined) as Prisma.InputJsonValue | undefined,
     })),
   });
 
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
         batchId: batch.id,
         shopeeOrderId: null,
         matchStatus: "parse_error",
-        diffDetail: { rowNumber: rowError.rowNumber, issue: rowError.issue },
+        diffDetail: { rowNumber: rowError.rowNumber, issue: rowError.issue } as Prisma.InputJsonValue,
       })),
     });
   }
