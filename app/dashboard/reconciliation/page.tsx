@@ -2,6 +2,8 @@ import { MatchStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
 
+export const dynamic = "force-dynamic";
+
 // Derived from the Prisma enum so the UI cannot drift out of sync with the
 // database's match_status values.
 const VALID_MATCH_STATUSES = Object.values(MatchStatus);
