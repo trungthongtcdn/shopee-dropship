@@ -16,10 +16,12 @@ export default async function OrdersPage() {
         <thead>
           <tr>
             <th>Order ID</th>
-            <th>SKU</th>
+            <th>Package Code</th>
             <th>Quantity</th>
-            <th>Total</th>
             <th>Status</th>
+            <th>Tracking Code</th>
+            <th>Carrier</th>
+            <th>Expected Delivery</th>
             <th>Last synced</th>
           </tr>
         </thead>
@@ -27,10 +29,12 @@ export default async function OrdersPage() {
           {orders.map((order) => (
             <tr key={order.id}>
               <td>{order.shopeeOrderId}</td>
-              <td>{order.sku}</td>
-              <td>{order.quantity}</td>
-              <td>{order.totalAmount}</td>
+              <td>{order.packageCode ?? "-"}</td>
+              <td>{order.quantity ?? "-"}</td>
               <td>{order.status}</td>
+              <td>{order.trackingCode ?? "-"}</td>
+              <td>{order.carrier ?? "-"}</td>
+              <td>{order.expectedDeliveryDate?.toISOString().slice(0, 10) ?? "-"}</td>
               <td>{order.lastSyncedAt.toISOString()}</td>
             </tr>
           ))}

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   const orders = await prisma.order.findMany({
     // isActive is required by the matcher: only active orders can be reported
     // as missing_in_excel.
-    select: { shopeeOrderId: true, totalAmount: true, status: true, isActive: true },
+    select: { shopeeOrderId: true, status: true, isActive: true },
   });
 
   const results = matchReconciliation(parsed.rows, orders);

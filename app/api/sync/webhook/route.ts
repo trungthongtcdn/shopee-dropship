@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncPayloadSchema, parseIncomingRows } from "@/lib/sync/validatePayload";
-import { applyOrdersPayload, applyCancellationsPayload, applyProductsPayload } from "@/lib/sync/apply";
+import {
+  applyOrdersPayload,
+  applyDeliveredOrdersPayload,
+  applyCancelledPayload,
+  applyDeliveryFailedPayload,
+  applyReturnedRefundedPayload,
+  applyProductsPayload,
+} from "@/lib/sync/apply";
 
 const APPLY_BY_TAB = {
   orders: applyOrdersPayload,
-  cancellations: applyCancellationsPayload,
+  delivered_orders: applyDeliveredOrdersPayload,
+  cancelled: applyCancelledPayload,
+  delivery_failed: applyDeliveryFailedPayload,
+  returned_refunded: applyReturnedRefundedPayload,
   products: applyProductsPayload,
 } as const;
 

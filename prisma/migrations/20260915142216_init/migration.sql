@@ -1,5 +1,8 @@
 -- CreateEnum
-CREATE TYPE "SourceTab" AS ENUM ('orders', 'cancellations', 'products');
+CREATE TYPE "CancellationType" AS ENUM ('cancelled', 'delivery_failed', 'returned_refunded');
+
+-- CreateEnum
+CREATE TYPE "SourceTab" AS ENUM ('orders', 'delivered_orders', 'cancelled', 'delivery_failed', 'returned_refunded', 'products');
 
 -- CreateEnum
 CREATE TYPE "ChangeType" AS ENUM ('insert', 'update', 'delete');
@@ -8,18 +11,20 @@ CREATE TYPE "ChangeType" AS ENUM ('insert', 'update', 'delete');
 CREATE TYPE "BatchStatus" AS ENUM ('processing', 'done', 'error');
 
 -- CreateEnum
-CREATE TYPE "MatchStatus" AS ENUM ('matched', 'missing_in_sheet', 'missing_in_excel', 'amount_mismatch', 'status_mismatch', 'parse_error');
+CREATE TYPE "MatchStatus" AS ENUM ('matched', 'missing_in_sheet', 'missing_in_excel', 'status_mismatch', 'parse_error');
 
 -- CreateTable
 CREATE TABLE "orders" (
     "id" SERIAL NOT NULL,
     "shopee_order_id" TEXT NOT NULL,
-    "sku" TEXT NOT NULL,
-    "product_name" TEXT NOT NULL,
-    "quantity" INTEGER NOT NULL,
-    "unit_price" DOUBLE PRECISION NOT NULL,
-    "total_amount" DOUBLE PRECISION NOT NULL,
+    "package_code" TEXT,
+    "order_date" TIMESTAMP(3),
     "status" TEXT NOT NULL,
+    "tracking_code" TEXT,
+    "carrier" TEXT,
+    "delivery_method" TEXT,
+    "expected_delivery_date" TIMESTAMP(3),
+    "quantity" INTEGER,
     "raw_row_hash" TEXT NOT NULL,
     "sheet_row_index" INTEGER NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -31,11 +36,47 @@ CREATE TABLE "orders" (
 );
 
 -- CreateTable
+CREATE TABLE "delivered_orders" (
+    "id" SERIAL NOT NULL,
+    "shopee_order_id" TEXT NOT NULL,
+    "package_code" TEXT,
+    "order_date" TIMESTAMP(3),
+    "status" TEXT NOT NULL,
+    "tracking_code" TEXT,
+    "carrier" TEXT,
+    "delivered_at" TIMESTAMP(3),
+    "completed_at" TIMESTAMP(3),
+    "return_refund_status" TEXT,
+    "product_name" TEXT,
+    "warehouse_name" TEXT,
+    "category_name" TEXT,
+    "raw_row_hash" TEXT NOT NULL,
+    "sheet_row_index" INTEGER NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "deleted_at" TIMESTAMP(3),
+    "first_synced_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "last_synced_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "delivered_orders_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "cancellations" (
     "id" SERIAL NOT NULL,
     "shopee_order_id" TEXT NOT NULL,
-    "reason" TEXT NOT NULL,
-    "cancelled_at" TIMESTAMP(3) NOT NULL,
+    "type" "CancellationType" NOT NULL,
+    "package_code" TEXT,
+    "order_date" TIMESTAMP(3),
+    "status" TEXT,
+    "buyer_note" TEXT,
+    "tracking_code" TEXT,
+    "carrier" TEXT,
+    "expected_delivery_date" TIMESTAMP(3),
+    "delivered_at" TIMESTAMP(3),
+    "cancelled_at" TIMESTAMP(3),
+    "product_name" TEXT,
+    "warehouse_name" TEXT,
+    "category_name" TEXT,
     "raw_row_hash" TEXT NOT NULL,
     "sheet_row_index" INTEGER NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -51,7 +92,9 @@ CREATE TABLE "products" (
     "id" SERIAL NOT NULL,
     "sku" TEXT NOT NULL,
     "product_name" TEXT NOT NULL,
-    "price" DOUBLE PRECISION NOT NULL,
+    "category_name" TEXT,
+    "parent_sku" TEXT,
+    "import_price" DOUBLE PRECISION NOT NULL,
     "raw_row_hash" TEXT NOT NULL,
     "sheet_row_index" INTEGER NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -103,7 +146,14 @@ CREATE TABLE "reconciliation_results" (
 CREATE UNIQUE INDEX "orders_shopee_order_id_key" ON "orders"("shopee_order_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "delivered_orders_shopee_order_id_key" ON "delivered_orders"("shopee_order_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "cancellations_shopee_order_id_type_key" ON "cancellations"("shopee_order_id", "type");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "products_sku_key" ON "products"("sku");
 
 -- AddForeignKey
 ALTER TABLE "reconciliation_results" ADD CONSTRAINT "reconciliation_results_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "reconciliation_batches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+

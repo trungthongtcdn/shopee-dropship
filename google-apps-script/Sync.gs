@@ -1,8 +1,16 @@
 var TABS = [
-  { name: "orders", sheetName: "Orders" },
-  { name: "cancellations", sheetName: "Cancellations" },
-  { name: "products", sheetName: "Products" },
+  { name: "orders", sheetName: "2. Danh sách đơn hàng" },
+  { name: "delivered_orders", sheetName: "3. Đơn hàng đã giao" },
+  { name: "cancelled", sheetName: "4.1 Đơn hủy" },
+  { name: "delivery_failed", sheetName: "4.2 Giao thất bại" },
+  { name: "returned_refunded", sheetName: "5. Trả hàng/hoàn tiền" },
+  { name: "products", sheetName: "6. Check tồn kho dự kiến" },
 ];
+
+// Every tab in this workbook carries a row-1 banner (who fills in which
+// column — "MII điền" / "NCC điền" / "KAM điền") above the real header row.
+var HEADER_ROW = 2;
+var DATA_START_ROW = HEADER_ROW + 1;
 
 function computeRowHash(values) {
   var raw = values.join("|");
@@ -34,17 +42,17 @@ function readTabRows(sheetName) {
 
   var lastRow = sheet.getLastRow();
   var lastColumn = sheet.getLastColumn();
-  if (lastRow < 2) return [];
+  if (lastRow < DATA_START_ROW) return [];
 
-  var headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-  var values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+  var headers = sheet.getRange(HEADER_ROW, 1, 1, lastColumn).getValues()[0];
+  var values = sheet.getRange(DATA_START_ROW, 1, lastRow - HEADER_ROW, lastColumn).getValues();
 
   return values.map(function (rowValues, i) {
     var data = {};
     headers.forEach(function (header, colIndex) {
       data[header] = rowValues[colIndex];
     });
-    return { rowIndex: i + 2, hash: computeRowHash(rowValues), data: data };
+    return { rowIndex: i + DATA_START_ROW, hash: computeRowHash(rowValues), data: data };
   });
 }
 
@@ -104,7 +112,7 @@ function syncAllTabs() {
 }
 
 function manualTestSync() {
-  var rows = readTabRows("Orders");
+  var rows = readTabRows("2. Danh sách đơn hàng");
   Logger.log(JSON.stringify(rows.slice(0, 3), null, 2));
 }
 

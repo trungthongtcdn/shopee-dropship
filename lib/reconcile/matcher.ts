@@ -8,7 +8,6 @@ export type { MatchStatus };
 
 export interface OrderRecord {
   shopeeOrderId: string;
-  totalAmount: number;
   status: string;
   isActive: boolean;
 }
@@ -41,22 +40,14 @@ export function matchReconciliation(excelRows: ParsedExcelRow[], orders: OrderRe
 
     matchedOrderIds.add(order.shopeeOrderId);
 
-    if (order.totalAmount !== excelRow.amount) {
-      results.push({
-        shopeeOrderId: excelRow.shopeeOrderId,
-        matchStatus: "amount_mismatch",
-        sheetAmount: order.totalAmount,
-        excelAmount: excelRow.amount,
-        diffDetail: { sheetAmount: order.totalAmount, excelAmount: excelRow.amount },
-      });
-      continue;
-    }
-
+    // The order sheet carries no per-order amount (it only tracks shipping
+    // status), so the only comparable field against the settlement file is
+    // status — sheetAmount stays null, excelAmount is informational only.
     if (order.status !== excelRow.status) {
       results.push({
         shopeeOrderId: excelRow.shopeeOrderId,
         matchStatus: "status_mismatch",
-        sheetAmount: order.totalAmount,
+        sheetAmount: null,
         excelAmount: excelRow.amount,
         diffDetail: { sheetStatus: order.status, excelStatus: excelRow.status },
       });
@@ -66,7 +57,7 @@ export function matchReconciliation(excelRows: ParsedExcelRow[], orders: OrderRe
     results.push({
       shopeeOrderId: excelRow.shopeeOrderId,
       matchStatus: "matched",
-      sheetAmount: order.totalAmount,
+      sheetAmount: null,
       excelAmount: excelRow.amount,
       diffDetail: null,
     });
@@ -80,7 +71,7 @@ export function matchReconciliation(excelRows: ParsedExcelRow[], orders: OrderRe
       results.push({
         shopeeOrderId: order.shopeeOrderId,
         matchStatus: "missing_in_excel",
-        sheetAmount: order.totalAmount,
+        sheetAmount: null,
         excelAmount: null,
         diffDetail: null,
       });

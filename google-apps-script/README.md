@@ -9,6 +9,27 @@
 5. Run `syncAllTabs` once manually, confirm rows appear in the app's database.
 6. Run `createTimeTrigger` once to install the 10-minute polling trigger.
 
+## Real sheet layout
+
+`TABS` in `Sync.gs` points at the real tab names in the live workbook
+(`[MII_Furniture]_WH049_TTRANG`): `2. Danh sách đơn hàng`, `3. Đơn hàng đã
+giao`, `4.1 Đơn hủy`, `4.2 Giao thất bại`, `5. Trả hàng/hoàn tiền`, `6. Check
+tồn kho dự kiến`. Every one of these tabs carries a row-1 banner ("MII điền" /
+"NCC điền" / "KAM điền" — who is responsible for filling in each column)
+above the real header row, so `HEADER_ROW` in `Sync.gs` is `2`, not `1`, and
+data starts at row 3.
+
+Column headers for `4.1 Đơn hủy` and `5. Trả hàng/hoàn tiền` were not
+inspected directly — the field mapping in `lib/sync/apply.ts` assumes they
+share `4.2 Giao thất bại`'s column layout (same workbook, same template).
+Verify this once real data syncs from those two tabs, and adjust the header
+aliases in `apply.ts` if they differ.
+
+The order sheet itself carries no per-order price or SKU (it only tracks
+shipping status) — `orders`/`delivered_orders` have no amount field, and
+reconciliation against the uploaded Excel settlement file compares order
+existence and status only, not amounts.
+
 ## Payload size and scale limits
 
 Each sync cycle sends **one request per tab containing that tab's complete

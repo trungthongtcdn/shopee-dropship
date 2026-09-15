@@ -1,7 +1,7 @@
-// lib/sync/apply.ts
-import { Prisma } from "@prisma/client";
+import { Prisma, CancellationType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { computeSyncDiff } from "@/lib/sync/diff";
+import { getByHeader, getString, getDate, getInt } from "@/lib/sync/headerLookup";
 import type { IncomingRow, SyncTab } from "@/lib/sync/types";
 
 interface RowError {
@@ -33,20 +33,34 @@ function toJsonSafe(value: Record<string, unknown>): Prisma.InputJsonValue {
 async function applyTabPayload(
   tab: SyncTab,
   delegate: TabDelegate,
-  keyField: string,
+  selectFields: string[],
+  keyOfExisting: (row: Record<string, unknown>) => string,
   keyOf: (row: IncomingRow) => string,
+  whereOf: (row: IncomingRow) => Record<string, unknown>,
   mapRow: (row: IncomingRow) => Record<string, unknown>,
-  rows: IncomingRow[]
+  rows: IncomingRow[],
+  // Scopes which existing rows this sync is even allowed to see. Required for
+  // the cancellation family, where three sheet tabs share one table: without
+  // this, syncing "delivery_failed" would see "cancelled" rows for the same
+  // order as stale leftovers and soft-delete them.
+  scopeWhere: Record<string, unknown> = {}
 ): Promise<ApplyResult> {
   const existingRows = await delegate.findMany({
-    where: { isActive: true },
-    select: { [keyField]: true, rawRowHash: true },
+    where: { isActive: true, ...scopeWhere },
+    select: Object.fromEntries([...selectFields, "rawRowHash"].map((field) => [field, true])),
   });
 
   const existing = existingRows.map((row) => ({
-    key: String(row[keyField]),
+    key: keyOfExisting(row),
     hash: String(row.rawRowHash),
   }));
+
+  // Soft-deletes only carry the diff key (built from existing rows), not the
+  // original field values, so keep a lookup back to a where-clause fragment
+  // for rows whose key isn't a single unique DB column (e.g. composite keys).
+  const whereByExistingKey = new Map<string, Record<string, unknown>>(
+    existingRows.map((row) => [keyOfExisting(row), Object.fromEntries(selectFields.map((field) => [field, row[field]]))])
+  );
 
   const diff = computeSyncDiff(existing, rows, keyOf);
   const rowErrors: RowError[] = [];
@@ -68,7 +82,7 @@ async function applyTabPayload(
 
   for (const row of diff.updates) {
     try {
-      const before = await delegate.findFirst({ where: { [keyField]: keyOf(row), isActive: true } });
+      const before = await delegate.findFirst({ where: { ...whereOf(row), isActive: true } });
       if (!before) continue;
       const updatedRow = await delegate.update({ where: { id: before.id }, data: mapRow(row) });
       await prisma.syncLog.create({
@@ -88,7 +102,9 @@ async function applyTabPayload(
 
   for (const key of diff.softDeletes) {
     try {
-      const before = await delegate.findFirst({ where: { [keyField]: key, isActive: true } });
+      const where = whereByExistingKey.get(key);
+      if (!where) continue;
+      const before = await delegate.findFirst({ where: { ...where, isActive: true } });
       if (!before) continue;
       await delegate.update({ where: { id: before.id }, data: { isActive: false, deletedAt: new Date() } });
       await prisma.syncLog.create({
@@ -103,59 +119,174 @@ async function applyTabPayload(
   return { inserted, updated, softDeleted, rowErrors };
 }
 
+// Header aliases below are exact strings read from the live Shopee sheet
+// (tabs "2. Danh sách đơn hàng", "3. Đơn hàng đã giao", "4.2 Giao thất bại",
+// "6. Check tồn kho dự kiến"). Capitalization is inconsistent between tabs in
+// the source sheet itself (e.g. "Mã Kiện Hàng" vs "Mã kiện hàng"), which is
+// why lookups go through getByHeader's case-insensitive matching rather than
+// exact keys. "4.1 Đơn hủy" and "5. Trả hàng/hoàn tiền" were not inspected
+// directly — they're assumed to share 4.2's column layout (same workbook,
+// same template) and reuse the same alias list.
+
 function mapOrderRow(row: IncomingRow) {
   return {
     sheetRowIndex: row.rowIndex,
     rawRowHash: row.hash,
-    shopeeOrderId: String(row.data.shopee_order_id),
-    sku: String(row.data.sku),
-    productName: String(row.data.product_name),
-    quantity: Number(row.data.quantity),
-    unitPrice: Number(row.data.unit_price),
-    totalAmount: Number(row.data.total_amount),
-    status: String(row.data.status),
+    shopeeOrderId: String(getByHeader(row.data, "Mã đơn hàng") ?? ""),
+    packageCode: getString(row.data, "Mã Kiện Hàng"),
+    orderDate: getDate(row.data, "Ngày đặt hàng"),
+    status: getString(row.data, "Trạng Thái Đơn Hàng") ?? "",
+    trackingCode: getString(row.data, "Mã vận đơn"),
+    carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
+    deliveryMethod: getString(row.data, "Phương thức giao hàng"),
+    expectedDeliveryDate: getDate(row.data, "Ngày giao hàng dự kiến"),
+    quantity: getInt(row.data, "Số lượng sản phẩm 1 đơn"),
   };
 }
 
-function mapCancellationRow(row: IncomingRow) {
+function mapDeliveredOrderRow(row: IncomingRow) {
   return {
     sheetRowIndex: row.rowIndex,
     rawRowHash: row.hash,
-    shopeeOrderId: String(row.data.shopee_order_id),
-    reason: String(row.data.reason),
-    cancelledAt: new Date(String(row.data.cancelled_at)),
+    shopeeOrderId: String(getByHeader(row.data, "Mã đơn hàng") ?? ""),
+    packageCode: getString(row.data, "Mã Kiện Hàng"),
+    orderDate: getDate(row.data, "Ngày đặt hàng"),
+    status: getString(row.data, "Trạng Thái Đơn Hàng") ?? "",
+    trackingCode: getString(row.data, "Mã vận đơn"),
+    carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
+    deliveredAt: getDate(row.data, "Thời gian giao hàng"),
+    completedAt: getDate(row.data, "Thời gian hoàn thành đơn hàng"),
+    returnRefundStatus: getString(row.data, "Trạng thái Trả hàng/Hoàn tiền"),
+    productName: getString(row.data, "Tên sản phẩm"),
+    warehouseName: getString(row.data, "Tên kho hàng"),
+    categoryName: getString(row.data, "Tên phân loại hàng"),
   };
+}
+
+function mapCancellationRow(type: CancellationType) {
+  return (row: IncomingRow) => ({
+    sheetRowIndex: row.rowIndex,
+    rawRowHash: row.hash,
+    shopeeOrderId: String(getByHeader(row.data, "Mã đơn hàng") ?? ""),
+    type,
+    packageCode: getString(row.data, "Mã Kiện Hàng"),
+    orderDate: getDate(row.data, "Ngày đặt hàng"),
+    status: getString(row.data, "Trạng Thái Đơn Hàng"),
+    buyerNote: getString(row.data, "Nhận xét từ Người mua"),
+    trackingCode: getString(row.data, "Mã vận đơn"),
+    carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
+    expectedDeliveryDate: getDate(row.data, "Ngày giao hàng dự kiến"),
+    deliveredAt: getDate(row.data, "Thời gian giao hàng"),
+    cancelledAt: getDate(row.data, "Ngày huỷ thành công"),
+    productName: getString(row.data, "Tên sản phẩm"),
+    warehouseName: getString(row.data, "Tên kho hàng"),
+    categoryName: getString(row.data, "Tên phân loại hàng"),
+  });
 }
 
 function mapProductRow(row: IncomingRow) {
   return {
     sheetRowIndex: row.rowIndex,
     rawRowHash: row.hash,
-    sku: String(row.data.sku),
-    productName: String(row.data.product_name),
-    price: Number(row.data.price),
+    sku: String(getByHeader(row.data, "MII - Mã phân loại") ?? ""),
+    parentSku: getString(row.data, "MII - Mã sản phẩm"),
+    productName: getString(row.data, "Tên sản phẩm") ?? "",
+    categoryName: getString(row.data, "Tên phân loại"),
+    importPrice: getInt(row.data, "Giá nhập chưa VAT") ?? 0,
   };
 }
 
-const keyOfOrderRow = (row: IncomingRow) => String(row.data.shopee_order_id);
-const keyOfCancellationRow = (row: IncomingRow) => String(row.data.shopee_order_id);
-const keyOfProductRow = (row: IncomingRow) => String(row.data.sku);
+const keyOfOrderRow = (row: IncomingRow) => String(getByHeader(row.data, "Mã đơn hàng") ?? "");
+const keyOfExistingOrderRow = (row: Record<string, unknown>) => String(row.shopeeOrderId);
+const whereOfOrderRow = (row: IncomingRow) => ({ shopeeOrderId: keyOfOrderRow(row) });
 
-export function applyOrdersPayload(rows: IncomingRow[]) {
-  return applyTabPayload("orders", prisma.order as unknown as TabDelegate, "shopeeOrderId", keyOfOrderRow, mapOrderRow, rows);
+const keyOfProductRow = (row: IncomingRow) => String(getByHeader(row.data, "MII - Mã phân loại") ?? "");
+const keyOfExistingProductRow = (row: Record<string, unknown>) => String(row.sku);
+const whereOfProductRow = (row: IncomingRow) => ({ sku: keyOfProductRow(row) });
+
+// Each of the three "cancellation family" sheet tabs mirrors into the same
+// table, distinguished by `type` — the diff key and DB uniqueness are scoped
+// per type, so the same order id can appear once per type without colliding.
+function cancellationKey(shopeeOrderId: string, type: CancellationType) {
+  return JSON.stringify([shopeeOrderId, type]);
 }
 
-export function applyCancellationsPayload(rows: IncomingRow[]) {
+function keyOfCancellationRow(type: CancellationType) {
+  return (row: IncomingRow) => cancellationKey(String(getByHeader(row.data, "Mã đơn hàng") ?? ""), type);
+}
+
+function keyOfExistingCancellationRow(row: Record<string, unknown>) {
+  return cancellationKey(String(row.shopeeOrderId), row.type as CancellationType);
+}
+
+function whereOfCancellationRow(type: CancellationType) {
+  return (row: IncomingRow) => ({
+    shopeeOrderId: String(getByHeader(row.data, "Mã đơn hàng") ?? ""),
+    type,
+  });
+}
+
+export function applyOrdersPayload(rows: IncomingRow[]) {
   return applyTabPayload(
-    "cancellations",
-    prisma.cancellation as unknown as TabDelegate,
-    "shopeeOrderId",
-    keyOfCancellationRow,
-    mapCancellationRow,
+    "orders",
+    prisma.order as unknown as TabDelegate,
+    ["shopeeOrderId"],
+    keyOfExistingOrderRow,
+    keyOfOrderRow,
+    whereOfOrderRow,
+    mapOrderRow,
     rows
   );
 }
 
+export function applyDeliveredOrdersPayload(rows: IncomingRow[]) {
+  return applyTabPayload(
+    "delivered_orders",
+    prisma.deliveredOrder as unknown as TabDelegate,
+    ["shopeeOrderId"],
+    keyOfExistingOrderRow,
+    keyOfOrderRow,
+    whereOfOrderRow,
+    mapDeliveredOrderRow,
+    rows
+  );
+}
+
+function applyCancellationTabPayload(tab: SyncTab, type: CancellationType, rows: IncomingRow[]) {
+  return applyTabPayload(
+    tab,
+    prisma.cancellation as unknown as TabDelegate,
+    ["shopeeOrderId", "type"],
+    keyOfExistingCancellationRow,
+    keyOfCancellationRow(type),
+    whereOfCancellationRow(type),
+    mapCancellationRow(type),
+    rows,
+    { type }
+  );
+}
+
+export function applyCancelledPayload(rows: IncomingRow[]) {
+  return applyCancellationTabPayload("cancelled", CancellationType.cancelled, rows);
+}
+
+export function applyDeliveryFailedPayload(rows: IncomingRow[]) {
+  return applyCancellationTabPayload("delivery_failed", CancellationType.delivery_failed, rows);
+}
+
+export function applyReturnedRefundedPayload(rows: IncomingRow[]) {
+  return applyCancellationTabPayload("returned_refunded", CancellationType.returned_refunded, rows);
+}
+
 export function applyProductsPayload(rows: IncomingRow[]) {
-  return applyTabPayload("products", prisma.product as unknown as TabDelegate, "sku", keyOfProductRow, mapProductRow, rows);
+  return applyTabPayload(
+    "products",
+    prisma.product as unknown as TabDelegate,
+    ["sku"],
+    keyOfExistingProductRow,
+    keyOfProductRow,
+    whereOfProductRow,
+    mapProductRow,
+    rows
+  );
 }

@@ -8,36 +8,80 @@ datasource db {
 }
 
 model Order {
-  id            Int       @id @default(autoincrement())
-  shopeeOrderId String    @unique @map("shopee_order_id")
-  sku           String
-  productName   String    @map("product_name")
-  quantity      Int
-  unitPrice     Float     @map("unit_price")
-  totalAmount   Float     @map("total_amount")
-  status        String
-  rawRowHash    String    @map("raw_row_hash")
-  sheetRowIndex Int       @map("sheet_row_index")
-  isActive      Boolean   @default(true) @map("is_active")
-  deletedAt     DateTime? @map("deleted_at")
-  firstSyncedAt DateTime  @default(now()) @map("first_synced_at")
-  lastSyncedAt  DateTime  @updatedAt @map("last_synced_at")
+  id                   Int       @id @default(autoincrement())
+  shopeeOrderId        String    @unique @map("shopee_order_id")
+  packageCode          String?   @map("package_code")
+  orderDate            DateTime? @map("order_date")
+  status               String
+  trackingCode         String?   @map("tracking_code")
+  carrier              String?
+  deliveryMethod       String?   @map("delivery_method")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  quantity             Int?
+  rawRowHash           String    @map("raw_row_hash")
+  sheetRowIndex        Int       @map("sheet_row_index")
+  isActive             Boolean   @default(true) @map("is_active")
+  deletedAt            DateTime? @map("deleted_at")
+  firstSyncedAt        DateTime  @default(now()) @map("first_synced_at")
+  lastSyncedAt         DateTime  @updatedAt @map("last_synced_at")
 
   @@map("orders")
 }
 
-model Cancellation {
-  id            Int       @id @default(autoincrement())
-  shopeeOrderId String    @map("shopee_order_id")
-  reason        String
-  cancelledAt   DateTime  @map("cancelled_at")
-  rawRowHash    String    @map("raw_row_hash")
-  sheetRowIndex Int       @map("sheet_row_index")
-  isActive      Boolean   @default(true) @map("is_active")
-  deletedAt     DateTime? @map("deleted_at")
-  firstSyncedAt DateTime  @default(now()) @map("first_synced_at")
-  lastSyncedAt  DateTime  @updatedAt @map("last_synced_at")
+model DeliveredOrder {
+  id                 Int       @id @default(autoincrement())
+  shopeeOrderId      String    @unique @map("shopee_order_id")
+  packageCode        String?   @map("package_code")
+  orderDate          DateTime? @map("order_date")
+  status             String
+  trackingCode       String?   @map("tracking_code")
+  carrier            String?
+  deliveredAt        DateTime? @map("delivered_at")
+  completedAt        DateTime? @map("completed_at")
+  returnRefundStatus String?   @map("return_refund_status")
+  productName        String?   @map("product_name")
+  warehouseName      String?   @map("warehouse_name")
+  categoryName       String?   @map("category_name")
+  rawRowHash         String    @map("raw_row_hash")
+  sheetRowIndex      Int       @map("sheet_row_index")
+  isActive           Boolean   @default(true) @map("is_active")
+  deletedAt          DateTime? @map("deleted_at")
+  firstSyncedAt      DateTime  @default(now()) @map("first_synced_at")
+  lastSyncedAt       DateTime  @updatedAt @map("last_synced_at")
 
+  @@map("delivered_orders")
+}
+
+enum CancellationType {
+  cancelled
+  delivery_failed
+  returned_refunded
+}
+
+model Cancellation {
+  id                   Int              @id @default(autoincrement())
+  shopeeOrderId        String           @map("shopee_order_id")
+  type                 CancellationType
+  packageCode          String?          @map("package_code")
+  orderDate            DateTime?        @map("order_date")
+  status               String?
+  buyerNote            String?          @map("buyer_note")
+  trackingCode         String?          @map("tracking_code")
+  carrier              String?
+  expectedDeliveryDate DateTime?        @map("expected_delivery_date")
+  deliveredAt          DateTime?        @map("delivered_at")
+  cancelledAt          DateTime?        @map("cancelled_at")
+  productName          String?          @map("product_name")
+  warehouseName        String?          @map("warehouse_name")
+  categoryName         String?          @map("category_name")
+  rawRowHash           String           @map("raw_row_hash")
+  sheetRowIndex        Int              @map("sheet_row_index")
+  isActive             Boolean          @default(true) @map("is_active")
+  deletedAt            DateTime?        @map("deleted_at")
+  firstSyncedAt        DateTime         @default(now()) @map("first_synced_at")
+  lastSyncedAt         DateTime         @updatedAt @map("last_synced_at")
+
+  @@unique([shopeeOrderId, type])
   @@map("cancellations")
 }
 
@@ -45,7 +89,9 @@ model Product {
   id            Int       @id @default(autoincrement())
   sku           String    @unique
   productName   String    @map("product_name")
-  price         Float
+  categoryName  String?   @map("category_name")
+  parentSku     String?   @map("parent_sku")
+  importPrice   Float     @map("import_price")
   rawRowHash    String    @map("raw_row_hash")
   sheetRowIndex Int       @map("sheet_row_index")
   isActive      Boolean   @default(true) @map("is_active")
@@ -58,7 +104,10 @@ model Product {
 
 enum SourceTab {
   orders
-  cancellations
+  delivered_orders
+  cancelled
+  delivery_failed
+  returned_refunded
   products
 }
 
@@ -101,20 +150,19 @@ enum MatchStatus {
   matched
   missing_in_sheet
   missing_in_excel
-  amount_mismatch
   status_mismatch
   parse_error
 }
 
 model ReconciliationResult {
-  id            Int                  @id @default(autoincrement())
-  batchId       Int                  @map("batch_id")
-  batch         ReconciliationBatch  @relation(fields: [batchId], references: [id])
-  shopeeOrderId String?              @map("shopee_order_id")
-  matchStatus   MatchStatus          @map("match_status")
-  sheetAmount   Float?               @map("sheet_amount")
-  excelAmount   Float?               @map("excel_amount")
-  diffDetail    Json?                @map("diff_detail")
+  id            Int                 @id @default(autoincrement())
+  batchId       Int                 @map("batch_id")
+  batch         ReconciliationBatch @relation(fields: [batchId], references: [id])
+  shopeeOrderId String?             @map("shopee_order_id")
+  matchStatus   MatchStatus         @map("match_status")
+  sheetAmount   Float?              @map("sheet_amount")
+  excelAmount   Float?              @map("excel_amount")
+  diffDetail    Json?               @map("diff_detail")
 
   @@map("reconciliation_results")
 }

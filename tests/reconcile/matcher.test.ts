@@ -3,9 +3,9 @@ import { matchReconciliation } from "@/lib/reconcile/matcher";
 
 describe("matchReconciliation", () => {
   const orders = [
-    { shopeeOrderId: "SP001", totalAmount: 20000, status: "completed", isActive: true },
-    { shopeeOrderId: "SP002", totalAmount: 15000, status: "completed", isActive: true },
-    { shopeeOrderId: "SP003", totalAmount: 30000, status: "shipped", isActive: true },
+    { shopeeOrderId: "SP001", status: "completed", isActive: true },
+    { shopeeOrderId: "SP002", status: "completed", isActive: true },
+    { shopeeOrderId: "SP003", status: "shipped", isActive: true },
   ];
 
   it("marks an exact match as matched", () => {
@@ -22,14 +22,6 @@ describe("matchReconciliation", () => {
       orders
     );
     expect(results[0].matchStatus).toBe("missing_in_sheet");
-  });
-
-  it("marks amount mismatch", () => {
-    const results = matchReconciliation(
-      [{ rowNumber: 2, shopeeOrderId: "SP002", amount: 99999, status: "completed" }],
-      orders
-    );
-    expect(results.find((r) => r.shopeeOrderId === "SP002")?.matchStatus).toBe("amount_mismatch");
   });
 
   it("marks status mismatch", () => {
@@ -49,9 +41,7 @@ describe("matchReconciliation", () => {
   it("omits an inactive order with no excel row entirely", () => {
     // SP900 was removed from the Shopee sheet, so Shopee leaving it out of the
     // reconciliation file is expected, not a discrepancy.
-    const results = matchReconciliation([], [
-      { shopeeOrderId: "SP900", totalAmount: 50000, status: "completed", isActive: false },
-    ]);
+    const results = matchReconciliation([], [{ shopeeOrderId: "SP900", status: "completed", isActive: false }]);
     expect(results).toHaveLength(0);
   });
 
@@ -60,9 +50,9 @@ describe("matchReconciliation", () => {
     // must be compared rather than ignored when the excel file mentions it.
     const results = matchReconciliation(
       [{ rowNumber: 2, shopeeOrderId: "SP900", amount: 40000, status: "completed" }],
-      [{ shopeeOrderId: "SP900", totalAmount: 50000, status: "completed", isActive: false }]
+      [{ shopeeOrderId: "SP900", status: "shipped", isActive: false }]
     );
     expect(results).toHaveLength(1);
-    expect(results[0].matchStatus).toBe("amount_mismatch");
+    expect(results[0].matchStatus).toBe("status_mismatch");
   });
 });

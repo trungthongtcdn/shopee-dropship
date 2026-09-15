@@ -1,7 +1,7 @@
 // tests/sync/apply.test.ts
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
-import { applyOrdersPayload } from "@/lib/sync/apply";
+import { applyOrdersPayload, applyCancelledPayload, applyDeliveryFailedPayload } from "@/lib/sync/apply";
 import type { IncomingRow } from "@/lib/sync/types";
 
 function orderRow(rowIndex: number, hash: string, orderId: string): IncomingRow {
@@ -9,13 +9,9 @@ function orderRow(rowIndex: number, hash: string, orderId: string): IncomingRow 
     rowIndex,
     hash,
     data: {
-      shopee_order_id: orderId,
-      sku: `SKU-${orderId}`,
-      product_name: `Product ${orderId}`,
-      quantity: 1,
-      unit_price: 1000,
-      total_amount: 1000,
-      status: "pending",
+      "Mã đơn hàng": orderId,
+      "Số lượng sản phẩm 1 đơn": 1,
+      "Trạng Thái Đơn Hàng": "pending",
     },
   };
 }
@@ -32,13 +28,9 @@ describe("applyOrdersPayload", () => {
         rowIndex: 2,
         hash: "hash-1",
         data: {
-          shopee_order_id: "SP001",
-          sku: "SKU1",
-          product_name: "Product 1",
-          quantity: 2,
-          unit_price: 10000,
-          total_amount: 20000,
-          status: "pending",
+          "Mã đơn hàng": "SP001",
+          "Số lượng sản phẩm 1 đơn": 2,
+          "Trạng Thái Đơn Hàng": "pending",
         },
       },
     ]);
@@ -47,6 +39,7 @@ describe("applyOrdersPayload", () => {
     expect(result.rowErrors).toHaveLength(0);
     const order = await prisma.order.findUnique({ where: { shopeeOrderId: "SP001" } });
     expect(order?.rawRowHash).toBe("hash-1");
+    expect(order?.quantity).toBe(2);
     const log = await prisma.syncLog.findFirst({ where: { changeType: "insert" } });
     expect(log?.sheetRowIndex).toBe(2);
   });
@@ -57,13 +50,9 @@ describe("applyOrdersPayload", () => {
         rowIndex: 2,
         hash: "hash-1",
         data: {
-          shopee_order_id: "SP001",
-          sku: "SKU1",
-          product_name: "Product 1",
-          quantity: 2,
-          unit_price: 10000,
-          total_amount: 20000,
-          status: "pending",
+          "Mã đơn hàng": "SP001",
+          "Số lượng sản phẩm 1 đơn": 2,
+          "Trạng Thái Đơn Hàng": "pending",
         },
       },
     ]);
@@ -73,13 +62,9 @@ describe("applyOrdersPayload", () => {
         rowIndex: 2,
         hash: "hash-2",
         data: {
-          shopee_order_id: "SP001",
-          sku: "SKU1",
-          product_name: "Product 1",
-          quantity: 3,
-          unit_price: 10000,
-          total_amount: 30000,
-          status: "shipped",
+          "Mã đơn hàng": "SP001",
+          "Số lượng sản phẩm 1 đơn": 3,
+          "Trạng Thái Đơn Hàng": "shipped",
         },
       },
     ]);
@@ -139,13 +124,9 @@ describe("applyOrdersPayload", () => {
         rowIndex: 2,
         hash: "hash-1",
         data: {
-          shopee_order_id: "SP001",
-          sku: "SKU1",
-          product_name: "Product 1",
-          quantity: 1,
-          unit_price: 1000,
-          total_amount: 1000,
-          status: "pending",
+          "Mã đơn hàng": "SP001",
+          "Số lượng sản phẩm 1 đơn": 1,
+          "Trạng Thái Đơn Hàng": "pending",
         },
       },
     ]);
@@ -156,13 +137,9 @@ describe("applyOrdersPayload", () => {
         rowIndex: 5,
         hash: "hash-2",
         data: {
-          shopee_order_id: "SP001",
-          sku: "SKU1",
-          product_name: "Product 1",
-          quantity: 1,
-          unit_price: 1000,
-          total_amount: 1000,
-          status: "pending",
+          "Mã đơn hàng": "SP001",
+          "Số lượng sản phẩm 1 đơn": 1,
+          "Trạng Thái Đơn Hàng": "pending",
         },
       },
     ]);
@@ -175,6 +152,66 @@ describe("applyOrdersPayload", () => {
   afterAll(async () => {
     await prisma.syncLog.deleteMany();
     await prisma.order.deleteMany();
+    await prisma.$disconnect();
+  });
+});
+
+function cancellationRow(rowIndex: number, hash: string, orderId: string, buyerNote: string): IncomingRow {
+  return {
+    rowIndex,
+    hash,
+    data: {
+      "Mã đơn hàng": orderId,
+      "Nhận xét từ Người mua": buyerNote,
+      "Trạng Thái Đơn Hàng": "Đã hủy",
+    },
+  };
+}
+
+describe("applyCancelledPayload / applyDeliveryFailedPayload", () => {
+  beforeEach(async () => {
+    await prisma.syncLog.deleteMany();
+    await prisma.cancellation.deleteMany();
+  });
+
+  it("inserts and updates a cancellation row scoped to its type", async () => {
+    const inserted = await applyCancelledPayload([cancellationRow(2, "hash-1", "SP001", "buyer changed mind")]);
+    expect(inserted.inserted).toBe(1);
+
+    const updated = await applyCancelledPayload([cancellationRow(2, "hash-2", "SP001", "buyer changed mind, confirmed")]);
+    expect(updated.updated).toBe(1);
+
+    const rows = await prisma.cancellation.findMany({ where: { shopeeOrderId: "SP001", isActive: true } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe("cancelled");
+    expect(rows[0].buyerNote).toBe("buyer changed mind, confirmed");
+  });
+
+  it("keeps the same order id independent across different cancellation types", async () => {
+    // The same order can legitimately appear on both the "cancelled" and
+    // "delivery_failed" sheet tabs (e.g. re-shipped after a failed attempt,
+    // then separately cancelled) — the two sync paths must not collide.
+    await applyCancelledPayload([cancellationRow(2, "hash-1", "SP001", "cancelled by buyer")]);
+    await applyDeliveryFailedPayload([cancellationRow(2, "hash-1", "SP001", "recipient unreachable")]);
+
+    const rows = await prisma.cancellation.findMany({ where: { shopeeOrderId: "SP001", isActive: true } });
+    expect(rows).toHaveLength(2);
+    const types = rows.map((row) => row.type).sort();
+    expect(types).toEqual(["cancelled", "delivery_failed"]);
+  });
+
+  it("soft-deletes a cancellation row that disappears from its tab", async () => {
+    await applyCancelledPayload([cancellationRow(2, "hash-1", "SP001", "cancelled by buyer")]);
+    const result = await applyCancelledPayload([]);
+    expect(result.softDeleted).toBe(1);
+
+    const row = await prisma.cancellation.findFirst({ where: { shopeeOrderId: "SP001", type: "cancelled" } });
+    expect(row?.isActive).toBe(false);
+  });
+
+  afterAll(async () => {
+    await prisma.syncLog.deleteMany();
+    await prisma.cancellation.deleteMany();
     await prisma.$disconnect();
   });
 });

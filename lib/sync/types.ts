@@ -1,4 +1,10 @@
-export type SyncTab = "orders" | "cancellations" | "products";
+export type SyncTab =
+  | "orders"
+  | "delivered_orders"
+  | "cancelled"
+  | "delivery_failed"
+  | "returned_refunded"
+  | "products";
 
 export interface IncomingRow {
   rowIndex: number;

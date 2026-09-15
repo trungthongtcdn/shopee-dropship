@@ -155,3 +155,15 @@ File Excel đối soát: upload tay qua UI, backend parse, so khớp theo `shope
 
 - Các yêu cầu tracking khác user sẽ bổ sung sau — chưa thiết kế, chờ task riêng.
 - Cấu trúc cột chính xác của file Excel đối soát Shopee gửi — chưa có mẫu thật, parser thiết kế linh hoạt (map theo header) để dễ chỉnh khi có mẫu.
+
+## Addendum (2026-09-15): calibration against real sheet
+
+Đọc trực tiếp file Shopee thật (`[MII_Furniture]_WH049_TTRANG`), một số giả định ban đầu sai, đã chỉnh lại:
+
+- **6 tab thật** thay 3 tab giả định: `2. Danh sách đơn hàng` (orders), `3. Đơn hàng đã giao` (delivered_orders — bảng mới), `4.1 Đơn hủy` + `4.2 Giao thất bại` + `5. Trả hàng/hoàn tiền` (gộp chung bảng `cancellations`, phân biệt bằng cột `type`), `6. Check tồn kho dự kiến` (products).
+- **Header nằm dòng 2**, không phải dòng 1 (dòng 1 là banner "MII điền"/"NCC điền"/"KAM điền").
+- **Tab đơn hàng không có giá/SKU** — chỉ theo dõi giao vận. Đối soát vì vậy chỉ so theo tồn tại đơn + trạng thái (bỏ `amount_mismatch` khỏi `MatchStatus`), không so số tiền Sheet vs Excel.
+- **Khoá đối soát** = cột "Mã đơn hàng" (không phải "Mã vận đơn" hay "Mã Kiện Hàng" — 3 mã khác nhau trong sheet thật).
+- **Products** lấy từ tab tồn kho: SKU = "MII - Mã phân loại", tên = "Tên sản phẩm", giá = "Giá nhập chưa VAT" (giá nhập, không phải giá bán).
+- Mapping dùng alias/case-insensitive lookup (`lib/sync/headerLookup.ts`) thay vì key cứng, vì header viết hoa/thường không nhất quán giữa các tab trong cùng file.
+- **Chưa xác nhận trực tiếp** cột của tab `4.1 Đơn hủy` và `5. Trả hàng/hoàn tiền` — giả định giống `4.2 Giao thất bại` (cùng file, cùng template). Cần verify khi có dữ liệu thật từ 2 tab này.
