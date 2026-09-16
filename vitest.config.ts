@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     environment: "node",
     testTimeout: 15000,
+    // Exclude nested git worktrees (e.g. .worktrees/<branch>/tests/...) —
+    // otherwise the same test files get picked up twice from one repo root.
+    exclude: ["**/node_modules/**", "**/.worktrees/**"],
     // Multiple test files share one real Postgres DB and mutate the same
     // tables (order, syncLog, ...) via beforeEach deleteMany. Running files
     // in parallel (Vitest's default) races those mutations against each
