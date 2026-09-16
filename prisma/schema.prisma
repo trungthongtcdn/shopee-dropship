@@ -7,9 +7,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// One shopee_order_id can span multiple rows on the real sheet — one row per
+// product/variant line within the order (confirmed against live data: two
+// rows, same order id, different category — "cao su trắng (cặp)" vs "cao su
+// đen (cặp)"). categoryName is therefore part of the row's identity, not just
+// descriptive data: uniqueness (and the sync diff key) is scoped to the pair.
 model Order {
   id                   Int       @id @default(autoincrement())
-  shopeeOrderId        String    @unique @map("shopee_order_id")
+  shopeeOrderId        String    @map("shopee_order_id")
   packageCode          String?   @map("package_code")
   orderDate            DateTime? @map("order_date")
   status               String
@@ -17,7 +22,10 @@ model Order {
   carrier              String?
   deliveryMethod       String?   @map("delivery_method")
   expectedDeliveryDate DateTime? @map("expected_delivery_date")
-  quantity             Int?
+  orderQuantity        Int?      @map("order_quantity")
+  productName          String?   @map("product_name")
+  categoryName         String?   @map("category_name")
+  lineQuantity         Int?      @map("line_quantity")
   rawRowHash           String    @map("raw_row_hash")
   sheetRowIndex        Int       @map("sheet_row_index")
   isActive             Boolean   @default(true) @map("is_active")
@@ -25,12 +33,14 @@ model Order {
   firstSyncedAt        DateTime  @default(now()) @map("first_synced_at")
   lastSyncedAt         DateTime  @updatedAt @map("last_synced_at")
 
+  @@unique([shopeeOrderId, categoryName])
   @@map("orders")
 }
 
+// Same one-row-per-product-line shape as Order — see the comment there.
 model DeliveredOrder {
   id                 Int       @id @default(autoincrement())
-  shopeeOrderId      String    @unique @map("shopee_order_id")
+  shopeeOrderId      String    @map("shopee_order_id")
   packageCode        String?   @map("package_code")
   orderDate          DateTime? @map("order_date")
   status             String
@@ -49,6 +59,7 @@ model DeliveredOrder {
   firstSyncedAt      DateTime  @default(now()) @map("first_synced_at")
   lastSyncedAt       DateTime  @updatedAt @map("last_synced_at")
 
+  @@unique([shopeeOrderId, categoryName])
   @@map("delivered_orders")
 }
 

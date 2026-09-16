@@ -29,7 +29,7 @@ describe("POST /api/reconcile/upload", () => {
     await prisma.order.create({
       data: {
         shopeeOrderId: "SP001",
-        quantity: 1,
+        orderQuantity: 1,
         status: "completed",
         rawRowHash: "h1",
         sheetRowIndex: 2,

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { applyOrdersPayload, applyCancelledPayload, applyDeliveryFailedPayload } from "@/lib/sync/apply";
 import type { IncomingRow } from "@/lib/sync/types";
 
-function orderRow(rowIndex: number, hash: string, orderId: string): IncomingRow {
+function orderRow(rowIndex: number, hash: string, orderId: string, categoryName?: string): IncomingRow {
   return {
     rowIndex,
     hash,
@@ -12,6 +12,7 @@ function orderRow(rowIndex: number, hash: string, orderId: string): IncomingRow 
       "Mã đơn hàng": orderId,
       "Số lượng sản phẩm 1 đơn": 1,
       "Trạng Thái Đơn Hàng": "pending",
+      ...(categoryName ? { "Tên phân loại hàng": categoryName } : {}),
     },
   };
 }
@@ -37,9 +38,9 @@ describe("applyOrdersPayload", () => {
 
     expect(result.inserted).toBe(1);
     expect(result.rowErrors).toHaveLength(0);
-    const order = await prisma.order.findUnique({ where: { shopeeOrderId: "SP001" } });
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001" } });
     expect(order?.rawRowHash).toBe("hash-1");
-    expect(order?.quantity).toBe(2);
+    expect(order?.orderQuantity).toBe(2);
     const log = await prisma.syncLog.findFirst({ where: { changeType: "insert" } });
     expect(log?.sheetRowIndex).toBe(2);
   });
@@ -70,14 +71,14 @@ describe("applyOrdersPayload", () => {
     ]);
 
     expect(updateResult.updated).toBe(1);
-    const updated = await prisma.order.findUnique({ where: { shopeeOrderId: "SP001" } });
+    const updated = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001" } });
     expect(updated?.status).toBe("shipped");
     expect(updated?.isActive).toBe(true);
 
     const deleteResult = await applyOrdersPayload([]);
     expect(deleteResult.softDeleted).toBe(1);
 
-    const softDeleted = await prisma.order.findUnique({ where: { shopeeOrderId: "SP001" } });
+    const softDeleted = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001" } });
     expect(softDeleted?.isActive).toBe(false);
     expect(softDeleted?.deletedAt).not.toBeNull();
   });
@@ -100,9 +101,9 @@ describe("applyOrdersPayload", () => {
     expect(second.softDeleted).toBe(0);
     expect(second.rowErrors).toEqual([]);
 
-    const sp001 = await prisma.order.findUnique({ where: { shopeeOrderId: "SP001" } });
-    const sp002 = await prisma.order.findUnique({ where: { shopeeOrderId: "SP002" } });
-    const sp003 = await prisma.order.findUnique({ where: { shopeeOrderId: "SP003" } });
+    const sp001 = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001" } });
+    const sp002 = await prisma.order.findFirst({ where: { shopeeOrderId: "SP002" } });
+    const sp003 = await prisma.order.findFirst({ where: { shopeeOrderId: "SP003" } });
 
     // Untouched rows keep their original hash and stored row index, and stay active.
     expect(sp001?.isActive).toBe(true);
@@ -116,6 +117,22 @@ describe("applyOrdersPayload", () => {
     expect(await prisma.order.count({ where: { isActive: true } })).toBe(3);
     expect(await prisma.syncLog.count({ where: { changeType: "update" } })).toBe(0);
     expect(await prisma.syncLog.count({ where: { changeType: "delete" } })).toBe(0);
+  });
+
+  it("keeps two product lines of the same order as separate rows", async () => {
+    // Confirmed against live data: one shopee_order_id can span multiple sheet
+    // rows, one per product variant — same order, different "Tên phân loại hàng".
+    const result = await applyOrdersPayload([
+      orderRow(2, "hash-white", "SP001", "cao su trắng (cặp)"),
+      orderRow(3, "hash-black", "SP001", "cao su đen (cặp)"),
+    ]);
+
+    expect(result.inserted).toBe(2);
+    expect(result.rowErrors).toEqual([]);
+
+    const lines = await prisma.order.findMany({ where: { shopeeOrderId: "SP001" } });
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => line.categoryName).sort()).toEqual(["cao su trắng (cặp)", "cao su đen (cặp)"].sort());
   });
 
   it("records a row error instead of throwing when a reappearing order collides with a unique key", async () => {

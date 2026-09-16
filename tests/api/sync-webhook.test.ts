@@ -57,7 +57,8 @@ describe("POST /api/sync/webhook", () => {
     await prisma.order.create({
       data: {
         shopeeOrderId: "SP001",
-        quantity: 1,
+        categoryName: "",
+        orderQuantity: 1,
         status: "pending",
         rawRowHash: "old-hash",
         sheetRowIndex: 2,
@@ -100,7 +101,7 @@ describe("POST /api/sync/webhook", () => {
     expect(json.dbErrors).toHaveLength(1);
     expect(json.dbErrors[0].identifier).toBe("2");
     expect(await prisma.order.count({ where: { isActive: true } })).toBe(1);
-    const sp002 = await prisma.order.findUnique({ where: { shopeeOrderId: "SP002" } });
+    const sp002 = await prisma.order.findFirst({ where: { shopeeOrderId: "SP002" } });
     expect(sp002?.isActive).toBe(true);
   });
 

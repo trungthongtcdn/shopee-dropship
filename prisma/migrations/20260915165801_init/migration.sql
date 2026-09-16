@@ -24,7 +24,10 @@ CREATE TABLE "orders" (
     "carrier" TEXT,
     "delivery_method" TEXT,
     "expected_delivery_date" TIMESTAMP(3),
-    "quantity" INTEGER,
+    "order_quantity" INTEGER,
+    "product_name" TEXT,
+    "category_name" TEXT,
+    "line_quantity" INTEGER,
     "raw_row_hash" TEXT NOT NULL,
     "sheet_row_index" INTEGER NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
@@ -143,10 +146,10 @@ CREATE TABLE "reconciliation_results" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "orders_shopee_order_id_key" ON "orders"("shopee_order_id");
+CREATE UNIQUE INDEX "orders_shopee_order_id_category_name_key" ON "orders"("shopee_order_id", "category_name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "delivered_orders_shopee_order_id_key" ON "delivered_orders"("shopee_order_id");
+CREATE UNIQUE INDEX "delivered_orders_shopee_order_id_category_name_key" ON "delivered_orders"("shopee_order_id", "category_name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "cancellations_shopee_order_id_type_key" ON "cancellations"("shopee_order_id", "type");

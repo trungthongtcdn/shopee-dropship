@@ -36,8 +36,12 @@ export async function POST(request: NextRequest) {
   });
 
   const orders = await prisma.order.findMany({
+    // An order can span multiple sheet rows (one per product line), so this
+    // must be deduplicated to one record per order id for reconciliation —
+    // otherwise the same order would be matched/reported multiple times.
     // isActive is required by the matcher: only active orders can be reported
     // as missing_in_excel.
+    distinct: ["shopeeOrderId"],
     select: { shopeeOrderId: true, status: true, isActive: true },
   });
 

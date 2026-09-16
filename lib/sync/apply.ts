@@ -140,7 +140,13 @@ function mapOrderRow(row: IncomingRow) {
     carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
     deliveryMethod: getString(row.data, "Phương thức giao hàng"),
     expectedDeliveryDate: getDate(row.data, "Ngày giao hàng dự kiến"),
-    quantity: getInt(row.data, "Số lượng sản phẩm 1 đơn"),
+    orderQuantity: getInt(row.data, "Số lượng sản phẩm 1 đơn"),
+    productName: getString(row.data, "Tên sản phẩm"),
+    // Part of this table's unique constraint — normalized to "" rather than
+    // left null, since Postgres treats every NULL as distinct in a unique
+    // index (two "no variant" lines of the same order would not collide).
+    categoryName: getString(row.data, "Tên phân loại hàng") ?? "",
+    lineQuantity: getInt(row.data, "Số lượng"),
   };
 }
 
@@ -159,7 +165,10 @@ function mapDeliveredOrderRow(row: IncomingRow) {
     returnRefundStatus: getString(row.data, "Trạng thái Trả hàng/Hoàn tiền"),
     productName: getString(row.data, "Tên sản phẩm"),
     warehouseName: getString(row.data, "Tên kho hàng"),
-    categoryName: getString(row.data, "Tên phân loại hàng"),
+    // Same normalization as Order.categoryName — part of this table's unique
+    // constraint, so "" rather than null to avoid Postgres's NULL-is-distinct
+    // behavior in unique indexes.
+    categoryName: getString(row.data, "Tên phân loại hàng") ?? "",
   };
 }
 
@@ -196,9 +205,22 @@ function mapProductRow(row: IncomingRow) {
   };
 }
 
-const keyOfOrderRow = (row: IncomingRow) => String(getByHeader(row.data, "Mã đơn hàng") ?? "");
-const keyOfExistingOrderRow = (row: Record<string, unknown>) => String(row.shopeeOrderId);
-const whereOfOrderRow = (row: IncomingRow) => ({ shopeeOrderId: keyOfOrderRow(row) });
+// One order id can span multiple sheet rows — one per product/variant line —
+// so the diff key (and the DB unique constraint) is the pair, not the order
+// id alone. Two lines of the same order with the same category name would
+// still collide; there is no more granular stable identifier on this tab.
+function orderKey(shopeeOrderId: string, categoryName: string) {
+  return JSON.stringify([shopeeOrderId, categoryName]);
+}
+
+const keyOfOrderRow = (row: IncomingRow) =>
+  orderKey(String(getByHeader(row.data, "Mã đơn hàng") ?? ""), getString(row.data, "Tên phân loại hàng") ?? "");
+const keyOfExistingOrderRow = (row: Record<string, unknown>) =>
+  orderKey(String(row.shopeeOrderId), String(row.categoryName ?? ""));
+const whereOfOrderRow = (row: IncomingRow) => ({
+  shopeeOrderId: String(getByHeader(row.data, "Mã đơn hàng") ?? ""),
+  categoryName: getString(row.data, "Tên phân loại hàng") ?? "",
+});
 
 const keyOfProductRow = (row: IncomingRow) => String(getByHeader(row.data, "MII - Mã phân loại") ?? "");
 const keyOfExistingProductRow = (row: Record<string, unknown>) => String(row.sku);
@@ -230,7 +252,7 @@ export function applyOrdersPayload(rows: IncomingRow[]) {
   return applyTabPayload(
     "orders",
     prisma.order as unknown as TabDelegate,
-    ["shopeeOrderId"],
+    ["shopeeOrderId", "categoryName"],
     keyOfExistingOrderRow,
     keyOfOrderRow,
     whereOfOrderRow,
@@ -243,7 +265,7 @@ export function applyDeliveredOrdersPayload(rows: IncomingRow[]) {
   return applyTabPayload(
     "delivered_orders",
     prisma.deliveredOrder as unknown as TabDelegate,
-    ["shopeeOrderId"],
+    ["shopeeOrderId", "categoryName"],
     keyOfExistingOrderRow,
     keyOfOrderRow,
     whereOfOrderRow,

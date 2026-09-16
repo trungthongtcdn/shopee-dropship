@@ -12,12 +12,14 @@ export default async function OrdersPage() {
   return (
     <main>
       <h1>Orders</h1>
+      <p>Each row is one product line — an order id can appear more than once.</p>
       <table>
         <thead>
           <tr>
             <th>Order ID</th>
-            <th>Package Code</th>
-            <th>Quantity</th>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Line Qty</th>
             <th>Status</th>
             <th>Tracking Code</th>
             <th>Carrier</th>
@@ -29,8 +31,9 @@ export default async function OrdersPage() {
           {orders.map((order) => (
             <tr key={order.id}>
               <td>{order.shopeeOrderId}</td>
-              <td>{order.packageCode ?? "-"}</td>
-              <td>{order.quantity ?? "-"}</td>
+              <td>{order.productName ?? "-"}</td>
+              <td>{order.categoryName ?? "-"}</td>
+              <td>{order.lineQuantity ?? "-"}</td>
               <td>{order.status}</td>
               <td>{order.trackingCode ?? "-"}</td>
               <td>{order.carrier ?? "-"}</td>
