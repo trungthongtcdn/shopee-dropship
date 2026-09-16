@@ -181,12 +181,16 @@ function mapCancellationRow(type: CancellationType) {
     packageCode: getString(row.data, "Mã Kiện Hàng"),
     orderDate: getDate(row.data, "Ngày đặt hàng"),
     status: getString(row.data, "Trạng Thái Đơn Hàng"),
-    buyerNote: getString(row.data, "Nhận xét từ Người mua"),
+    // "Lý do hủy" (4.1) and "Nhận xét từ Người mua" (4.2) are different real
+    // headers for the same kind of free-text note — merged into one field.
+    buyerNote: getString(row.data, "Nhận xét từ Người mua", "Lý do hủy"),
     trackingCode: getString(row.data, "Mã vận đơn"),
     carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
     expectedDeliveryDate: getDate(row.data, "Ngày giao hàng dự kiến"),
     deliveredAt: getDate(row.data, "Thời gian giao hàng"),
-    cancelledAt: getDate(row.data, "Ngày huỷ thành công"),
+    // Real header spells "hủy" (mark on u), not "huỷ" (mark on y) — the two
+    // look identical but are different Unicode sequences and do not match.
+    cancelledAt: getDate(row.data, "Ngày hủy thành công"),
     productName: getString(row.data, "Tên sản phẩm"),
     warehouseName: getString(row.data, "Tên kho hàng"),
     categoryName: getString(row.data, "Tên phân loại hàng"),
