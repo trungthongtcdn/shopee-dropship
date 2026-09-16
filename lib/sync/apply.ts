@@ -181,11 +181,15 @@ function mapCancellationRow(type: CancellationType) {
     packageCode: getString(row.data, "Mã Kiện Hàng"),
     orderDate: getDate(row.data, "Ngày đặt hàng"),
     status: getString(row.data, "Trạng Thái Đơn Hàng"),
-    // "Lý do hủy" (4.1) and "Nhận xét từ Người mua" (4.2) are different real
-    // headers for the same kind of free-text note — merged into one field.
-    buyerNote: getString(row.data, "Nhận xét từ Người mua", "Lý do hủy"),
-    trackingCode: getString(row.data, "Mã vận đơn"),
-    carrier: getString(row.data, "Đơn Vị Vận Chuyển"),
+    // "Lý do hủy" (4.1), "Nhận xét từ Người mua" (4.2), and "Ghi chú của
+    // Người mua khi trả hàng" (5) are different real headers for the same
+    // kind of free-text buyer note — merged into one field.
+    buyerNote: getString(row.data, "Nhận xét từ Người mua", "Lý do hủy", "Ghi chú của Người mua khi trả hàng"),
+    // "Mã vận đơn"/"Đơn Vị Vận Chuyển" (4.1/4.2) are the outbound tracking
+    // info; tab 5 names the same concept "Mã vận đơn giao hàng"/"Đơn vị vận
+    // chuyển giao hàng" since it also has a separate RETURN shipment below.
+    trackingCode: getString(row.data, "Mã vận đơn", "Mã vận đơn giao hàng"),
+    carrier: getString(row.data, "Đơn Vị Vận Chuyển", "Đơn vị vận chuyển giao hàng"),
     expectedDeliveryDate: getDate(row.data, "Ngày giao hàng dự kiến"),
     deliveredAt: getDate(row.data, "Thời gian giao hàng"),
     // Real header spells "hủy" (mark on u), not "huỷ" (mark on y) — the two
@@ -193,7 +197,30 @@ function mapCancellationRow(type: CancellationType) {
     cancelledAt: getDate(row.data, "Ngày hủy thành công"),
     productName: getString(row.data, "Tên sản phẩm"),
     warehouseName: getString(row.data, "Tên kho hàng"),
-    categoryName: getString(row.data, "Tên phân loại hàng"),
+    // Tab 5 names this column "Phân loại hàng" (no "Tên" prefix), unlike
+    // every other tab's "Tên phân loại hàng".
+    categoryName: getString(row.data, "Tên phân loại hàng", "Phân loại hàng"),
+    returnedQuantity: getInt(row.data, "Số lượng sản phẩm được hoàn trả", "Số lượng Hoàn"),
+    returnRefundStatus: getString(row.data, "Trạng thái Trả hàng/Hoàn tiền"),
+    // Everything below is specific to "5. Trả hàng/hoàn tiền" — its own
+    // complaint/refund workflow, absent from 4.1/4.2. Synced now even though
+    // no dashboard page reads these fields yet.
+    complaintId: getString(row.data, "Mã số khiếu nại"),
+    buyerName: getString(row.data, "Người Mua"),
+    sku: getString(row.data, "SKU sản phẩm"),
+    unitPrice: getInt(row.data, "Đơn Giá"),
+    complaintAt: getDate(row.data, "Thời gian khiếu nại"),
+    fullOrderReturn: getString(row.data, "Trả hàng/Hoàn tiền toàn bộ Đơn Hàng?"),
+    returnMethod: getString(row.data, "Phương án"),
+    returnReason: getString(row.data, "Lí do Trả hàng/Hoàn tiền"),
+    refundAmount: getInt(row.data, "Tổng số tiền Hoàn trả"),
+    refundedAt: getDate(row.data, "Thời gian hoàn tiền"),
+    returnCarrier: getString(row.data, "Đơn vị vận chuyển trả hàng"),
+    returnTrackingCode: getString(row.data, "Mã vận đơn trả hàng"),
+    returnStatus: getString(row.data, "Trạng thái trả hàng"),
+    returnCompletedAt: getDate(row.data, "Thời gian hoàn trả hàng thành công"),
+    totalValue: getInt(row.data, "Tổng Giá Trị"),
+    complaintStatus: getString(row.data, "Trạng thái xử lý khiếu nại"),
   });
 }
 

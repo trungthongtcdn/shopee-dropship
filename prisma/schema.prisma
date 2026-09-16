@@ -85,6 +85,27 @@ model Cancellation {
   productName          String?          @map("product_name")
   warehouseName        String?          @map("warehouse_name")
   categoryName         String?          @map("category_name")
+  returnedQuantity     Int?             @map("returned_quantity")
+  returnRefundStatus   String?          @map("return_refund_status")
+  // "5. Trả hàng/hoàn tiền" only — its own complaint/refund workflow, not
+  // present on the other two cancellation-family tabs. Synced now so it's
+  // available once the dashboard needs it; no UI reads these yet.
+  complaintId          String?          @map("complaint_id")
+  buyerName            String?          @map("buyer_name")
+  sku                  String?
+  unitPrice            Float?           @map("unit_price")
+  complaintAt          DateTime?        @map("complaint_at")
+  fullOrderReturn      String?          @map("full_order_return")
+  returnMethod         String?          @map("return_method")
+  returnReason         String?          @map("return_reason")
+  refundAmount         Float?           @map("refund_amount")
+  refundedAt           DateTime?        @map("refunded_at")
+  returnCarrier        String?          @map("return_carrier")
+  returnTrackingCode   String?          @map("return_tracking_code")
+  returnStatus         String?          @map("return_status")
+  returnCompletedAt    DateTime?        @map("return_completed_at")
+  totalValue           Float?           @map("total_value")
+  complaintStatus      String?          @map("complaint_status")
   rawRowHash           String           @map("raw_row_hash")
   sheetRowIndex        Int              @map("sheet_row_index")
   isActive             Boolean          @default(true) @map("is_active")
