@@ -116,6 +116,17 @@ function manualTestSync() {
   Logger.log(JSON.stringify(rows.slice(0, 3), null, 2));
 }
 
+// Read-only check across every tab in one run — logs row count + first 2
+// rows per tab, no webhook call. Use this to verify header/column mapping
+// before ever running syncAllTabs for real.
+function manualTestAllTabs() {
+  TABS.forEach(function (tab) {
+    var rows = readTabRows(tab.sheetName);
+    Logger.log("=== " + tab.name + " (\"" + tab.sheetName + "\") — " + rows.length + " rows ===");
+    Logger.log(JSON.stringify(rows.slice(0, 2), null, 2));
+  });
+}
+
 function createTimeTrigger() {
   ScriptApp.newTrigger("syncAllTabs").timeBased().everyMinutes(10).create();
 }
