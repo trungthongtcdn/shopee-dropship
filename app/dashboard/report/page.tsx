@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildReportRows } from "@/lib/report/buildReport";
 import { RowEditor } from "./RowEditor";
+import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,21 @@ function formatDate(value: Date | null) {
   return value === null ? "-" : value.toISOString().slice(0, 10);
 }
 
-export default async function ReportPage() {
-  const [orders, products, latestBatch, cancellations] = await Promise.all([
-    prisma.order.findMany({ where: { isActive: true }, orderBy: { shopeeOrderId: "asc" } }),
+export default async function ReportPage({
+  searchParams,
+}: {
+  searchParams: { page?: string };
+}) {
+  const page = parsePage(searchParams.page);
+
+  const [orders, totalCount, products, latestBatch, cancellations] = await Promise.all([
+    prisma.order.findMany({
+      where: { isActive: true },
+      orderBy: { shopeeOrderId: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.order.count({ where: { isActive: true } }),
     prisma.product.findMany({
       where: { isActive: true },
       select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
@@ -29,6 +42,7 @@ export default async function ReportPage() {
       select: { shopeeOrderId: true, cancelledAt: true },
     }),
   ]);
+  const totalPages = totalPagesFor(totalCount);
 
   const results = latestBatch
     ? await prisma.reconciliationResult.findMany({
@@ -51,6 +65,7 @@ export default async function ReportPage() {
         Số tiền thanh toán lấy từ batch đối soát gần nhất{latestBatch ? ` (${latestBatch.fileName})` : " — chưa có batch nào"}.
         Chênh lệch quá 2% (cả 2 chiều) tính là không khớp.
       </p>
+      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
       <table border={1} cellPadding={4}>
         <thead>
           <tr>
@@ -103,6 +118,7 @@ export default async function ReportPage() {
           ))}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
     </main>
   );
 }

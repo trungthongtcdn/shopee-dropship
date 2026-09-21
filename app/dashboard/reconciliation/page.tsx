@@ -1,6 +1,7 @@
 import { MatchStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
+import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,9 @@ function formatAmount(value: number | null) {
 export default async function ReconciliationPage({
   searchParams,
 }: {
-  searchParams: { status?: string; batchId?: string };
+  searchParams: { status?: string; batchId?: string; page?: string };
 }) {
+  const page = parsePage(searchParams.page);
   const batches = await prisma.reconciliationBatch.findMany({
     orderBy: { uploadedAt: "desc" },
     take: 20,
@@ -56,9 +58,19 @@ export default async function ReconciliationPage({
     return total + Math.abs(result.sheetAmount - result.excelAmount);
   }, 0);
 
-  const results = statusFilter
+  const filteredResults = statusFilter
     ? batchResults.filter((result) => result.matchStatus === statusFilter)
     : batchResults;
+  const totalPages = totalPagesFor(filteredResults.length);
+  const results = filteredResults.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const buildPageHref = (p: number) => {
+    const params = new URLSearchParams();
+    if (selectedBatch) params.set("batchId", String(selectedBatch.id));
+    if (statusFilter) params.set("status", statusFilter);
+    params.set("page", String(p));
+    return `?${params.toString()}`;
+  };
 
   return (
     <main>
@@ -110,6 +122,8 @@ export default async function ReconciliationPage({
             <strong>total discrepancy:</strong> {discrepancyTotal.toLocaleString("vi-VN")}
           </p>
 
+          <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
+
           <table>
             <thead>
               <tr>
@@ -131,6 +145,7 @@ export default async function ReconciliationPage({
             </tbody>
           </table>
           {results.length === 0 ? <p>No results for this filter.</p> : null}
+          <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
         </>
       ) : null}
     </main>

@@ -1,18 +1,31 @@
 import { prisma } from "@/lib/db";
+import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 
 export const dynamic = "force-dynamic";
 
-export default async function OrdersPage() {
-  const orders = await prisma.order.findMany({
-    where: { isActive: true },
-    orderBy: { lastSyncedAt: "desc" },
-    take: 200,
-  });
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: { page?: string };
+}) {
+  const page = parsePage(searchParams.page);
+
+  const [orders, totalCount] = await Promise.all([
+    prisma.order.findMany({
+      where: { isActive: true },
+      orderBy: { lastSyncedAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.order.count({ where: { isActive: true } }),
+  ]);
+  const totalPages = totalPagesFor(totalCount);
 
   return (
     <main>
       <h1>Orders</h1>
       <p>Each row is one product line — an order id can appear more than once.</p>
+      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
       <table>
         <thead>
           <tr>
@@ -43,6 +56,7 @@ export default async function OrdersPage() {
           ))}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
     </main>
   );
 }
