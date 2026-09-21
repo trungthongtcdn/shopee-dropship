@@ -9,6 +9,28 @@
 5. Run `syncAllTabs` once manually, confirm rows appear in the app's database.
 6. Run `createTimeTrigger` once to install the 10-minute polling trigger.
 
+## Second script: SKU pricing (a different workbook)
+
+`PricingSync.gs` is a **separate** container-bound script for a **different**
+Google Sheet — "MII dữ liệu đối soát Luân up" (Luân's own SKU→price reference
+file, not Shopee's). It only syncs one tab, "THÔNG TIN HÀNG HOÁ", to the
+`sku_pricing` backend tab, which patches `kiot_code`/`collect_price` onto
+`Product` rows that already exist from the main Shopee sync — it never
+creates or deletes Product rows on its own.
+
+Deploy it the same way as `Sync.gs`, but bound to the *other* spreadsheet:
+
+1. Open "MII dữ liệu đối soát Luân up", then Extensions > Apps Script.
+2. Paste the contents of `PricingSync.gs`.
+3. Script Properties: same `SYNC_WEBHOOK_URL` and `SYNC_SECRET` as `Sync.gs` (same backend, same secret).
+4. Run `manualTestPricingSync` once, check the log.
+5. Run `syncPricing` once, confirm `products.kiot_code`/`collect_price` populate for existing SKUs.
+6. Run `createPricingTimeTrigger` once (polls every 30 minutes — this data changes far less often than order status).
+
+This sheet's tab uses a normal row-1 header (no "MII điền" banner row like
+the Shopee workbook), so `PricingSync.gs` reads headers from row 1, data from
+row 2 — do not copy `Sync.gs`'s `HEADER_ROW = 2` convention onto it.
+
 ## Real sheet layout
 
 `TABS` in `Sync.gs` points at the real tab names in the live workbook

@@ -7,6 +7,7 @@ import {
   applyDeliveryFailedPayload,
   applyReturnedRefundedPayload,
   applyProductsPayload,
+  applySkuPricingPayload,
 } from "@/lib/sync/apply";
 
 const APPLY_BY_TAB = {
@@ -32,6 +33,19 @@ export async function POST(request: NextRequest) {
 
   const { tab, rows } = parsedBody.data;
   const { validRows, errors } = parseIncomingRows(rows);
+
+  // sku_pricing is update-only (no insert/soft-delete concept), so it has its
+  // own response shape rather than forcing it through the insert/update/
+  // soft-delete counters every other tab reports.
+  if (tab === "sku_pricing") {
+    const applied = await applySkuPricingPayload(validRows);
+    return NextResponse.json({
+      updated: applied.updated,
+      skipped: applied.skipped,
+      invalidRows: errors,
+      dbErrors: applied.rowErrors,
+    });
+  }
 
   // Counts come from applyTabPayload's per-phase success counters, so they
   // report work that actually landed in the DB rather than work attempted.

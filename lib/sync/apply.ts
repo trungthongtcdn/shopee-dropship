@@ -343,3 +343,60 @@ export function applyProductsPayload(rows: IncomingRow[]) {
     rows
   );
 }
+
+export interface SkuPricingResult {
+  updated: number;
+  skipped: number;
+  rowErrors: RowError[];
+}
+
+// Comes from a *different* workbook ("MII dữ liệu đối soát Luân up" →
+// "THÔNG TIN HÀNG HOÁ"), Luân's own SKU→price reference sheet — not Shopee's.
+// Deliberately NOT the insert/update/soft-delete diff pattern: this sync only
+// ever patches kiot_code/collect_price onto a Product row that already exists
+// from the Shopee-side products sync. A SKU with no matching Product is
+// skipped, not created — this sheet doesn't carry enough fields (no
+// import_price) to originate a Product row on its own.
+export async function applySkuPricingPayload(rows: IncomingRow[]): Promise<SkuPricingResult> {
+  let updated = 0;
+  let skipped = 0;
+  const rowErrors: RowError[] = [];
+
+  for (const row of rows) {
+    const sku = String(getByHeader(row.data, "MÃ PHÂN LOẠI (SKU)") ?? "");
+    if (!sku) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const existing = await prisma.product.findUnique({ where: { sku } });
+      if (!existing) {
+        skipped += 1;
+        continue;
+      }
+
+      const updatedProduct = await prisma.product.update({
+        where: { sku },
+        data: {
+          kiotCode: getString(row.data, "MÃ KIOT"),
+          collectPrice: getInt(row.data, "GIÁ CẦN THU VỀ"),
+        },
+      });
+      await prisma.syncLog.create({
+        data: {
+          sourceTab: "sku_pricing",
+          sheetRowIndex: row.rowIndex,
+          changeType: "update",
+          oldValue: toJsonSafe(existing),
+          newValue: toJsonSafe(updatedProduct),
+        },
+      });
+      updated += 1;
+    } catch (error) {
+      rowErrors.push({ identifier: String(row.rowIndex), error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { updated, skipped, rowErrors };
+}

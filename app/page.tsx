@@ -5,6 +5,7 @@ export default function HomePage() {
       <ul>
         <li><a href="/dashboard/orders">Orders</a></li>
         <li><a href="/dashboard/reconciliation">Reconciliation</a></li>
+        <li><a href="/dashboard/report">Report (LUÂN CẦN)</a></li>
       </ul>
     </main>
   );

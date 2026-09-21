@@ -33,6 +33,18 @@ model Order {
   firstSyncedAt        DateTime  @default(now()) @map("first_synced_at")
   lastSyncedAt         DateTime  @updatedAt @map("last_synced_at")
 
+  // Below: operational fields Luân fills in by hand (the "LUÂN CẦN" report
+  // columns that aren't derivable from any synced sheet) — edited in-app,
+  // never written by the sync webhook.
+  sentAt               DateTime?            @map("sent_at")
+  sendStatus           OrderSendStatus?     @map("send_status")
+  paidAt               DateTime?            @map("paid_at")
+  defectRate           Float?               @map("defect_rate")
+  cancelReceiptStatus  CancelReceiptStatus? @map("cancel_receipt_status")
+  cancelComplaintNote  String?              @map("cancel_complaint_note")
+  note                 String?
+  luanCheck            Boolean              @default(false) @map("luan_check")
+
   @@unique([shopeeOrderId, categoryName])
   @@map("orders")
 }
@@ -67,6 +79,17 @@ enum CancellationType {
   cancelled
   delivery_failed
   returned_refunded
+}
+
+enum OrderSendStatus {
+  sent
+  cancelled
+}
+
+enum CancelReceiptStatus {
+  received_full
+  not_received
+  received_partial
 }
 
 model Cancellation {
@@ -124,6 +147,11 @@ model Product {
   categoryName  String?   @map("category_name")
   parentSku     String?   @map("parent_sku")
   importPrice   Float     @map("import_price")
+  // Patched in from a separate workbook ("MII dữ liệu đối soát Luân up" →
+  // "THÔNG TIN HÀNG HOÁ"), keyed by the same sku — that sync is update-only
+  // (see applySkuPricingPayload) and never creates a Product row on its own.
+  kiotCode      String?   @map("kiot_code")
+  collectPrice  Float?    @map("collect_price")
   rawRowHash    String    @map("raw_row_hash")
   sheetRowIndex Int       @map("sheet_row_index")
   isActive      Boolean   @default(true) @map("is_active")
@@ -141,6 +169,7 @@ enum SourceTab {
   delivery_failed
   returned_refunded
   products
+  sku_pricing
 }
 
 enum ChangeType {

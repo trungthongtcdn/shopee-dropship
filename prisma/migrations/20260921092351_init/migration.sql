@@ -2,7 +2,13 @@
 CREATE TYPE "CancellationType" AS ENUM ('cancelled', 'delivery_failed', 'returned_refunded');
 
 -- CreateEnum
-CREATE TYPE "SourceTab" AS ENUM ('orders', 'delivered_orders', 'cancelled', 'delivery_failed', 'returned_refunded', 'products');
+CREATE TYPE "OrderSendStatus" AS ENUM ('sent', 'cancelled');
+
+-- CreateEnum
+CREATE TYPE "CancelReceiptStatus" AS ENUM ('received_full', 'not_received', 'received_partial');
+
+-- CreateEnum
+CREATE TYPE "SourceTab" AS ENUM ('orders', 'delivered_orders', 'cancelled', 'delivery_failed', 'returned_refunded', 'products', 'sku_pricing');
 
 -- CreateEnum
 CREATE TYPE "ChangeType" AS ENUM ('insert', 'update', 'delete');
@@ -34,6 +40,14 @@ CREATE TABLE "orders" (
     "deleted_at" TIMESTAMP(3),
     "first_synced_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "last_synced_at" TIMESTAMP(3) NOT NULL,
+    "sent_at" TIMESTAMP(3),
+    "send_status" "OrderSendStatus",
+    "paid_at" TIMESTAMP(3),
+    "defect_rate" DOUBLE PRECISION,
+    "cancel_receipt_status" "CancelReceiptStatus",
+    "cancel_complaint_note" TEXT,
+    "note" TEXT,
+    "luan_check" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "orders_pkey" PRIMARY KEY ("id")
 );
@@ -116,6 +130,8 @@ CREATE TABLE "products" (
     "category_name" TEXT,
     "parent_sku" TEXT,
     "import_price" DOUBLE PRECISION NOT NULL,
+    "kiot_code" TEXT,
+    "collect_price" DOUBLE PRECISION,
     "raw_row_hash" TEXT NOT NULL,
     "sheet_row_index" INTEGER NOT NULL,
     "is_active" BOOLEAN NOT NULL DEFAULT true,

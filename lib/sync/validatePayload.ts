@@ -7,7 +7,15 @@ export const incomingRowSchema = z.object({
 });
 
 export const syncPayloadSchema = z.object({
-  tab: z.enum(["orders", "delivered_orders", "cancelled", "delivery_failed", "returned_refunded", "products"]),
+  tab: z.enum([
+    "orders",
+    "delivered_orders",
+    "cancelled",
+    "delivery_failed",
+    "returned_refunded",
+    "products",
+    "sku_pricing",
+  ]),
   rows: z.array(z.unknown()),
 });
 

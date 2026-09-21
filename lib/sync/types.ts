@@ -4,7 +4,8 @@ export type SyncTab =
   | "cancelled"
   | "delivery_failed"
   | "returned_refunded"
-  | "products";
+  | "products"
+  | "sku_pricing";
 
 export interface IncomingRow {
   rowIndex: number;
