@@ -31,11 +31,13 @@ cd shopee-dropship
 cat > .env.prod <<EOF
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 SYNC_WEBHOOK_SECRET=$(openssl rand -hex 24)
+DASHBOARD_USER=luan
+DASHBOARD_PASSWORD=$(openssl rand -hex 12)
 DOMAIN=your-domain.com
 EOF
 cat .env.prod
 ```
-Save the values it prints — you'll need `SYNC_WEBHOOK_SECRET` again for the Apps Script side.
+Save the values it prints — you'll need `SYNC_WEBHOOK_SECRET` again for the Apps Script side, and `DASHBOARD_USER`/`DASHBOARD_PASSWORD` to log into the dashboard itself (the browser will prompt for them on first visit).
 
 ## 5. Start everything
 

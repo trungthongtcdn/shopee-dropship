@@ -5,6 +5,8 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/shopee_reconciliation
       SYNC_WEBHOOK_SECRET: ${SYNC_WEBHOOK_SECRET}
+      DASHBOARD_USER: ${DASHBOARD_USER}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
     depends_on:
       - postgres
     expose:
