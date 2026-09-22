@@ -450,3 +450,56 @@ export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentR
 
   return { upserted, skipped, rowErrors };
 }
+
+export interface PaymentBatchResult {
+  lineCount: number;
+  rowErrors: RowError[];
+}
+
+// One payload per weekly tab in the payment settlement file. Unlike
+// applyPaymentPayload's cross-week aggregate, this keeps the raw per-line
+// rows (Mã sản phẩm, Giá bán, Phí dịch vụ...) so the Reconciliation page can
+// browse a given week's orders in detail. Full replace per batch — delete
+// every existing line for this weekLabel, then recreate from the payload —
+// matching the "payload is the complete current state" convention used
+// elsewhere, just scoped to one batch instead of one whole tab.
+export async function applyPaymentBatchPayload(weekLabel: string, rows: IncomingRow[]): Promise<PaymentBatchResult> {
+  const batch = await prisma.paymentBatch.upsert({
+    where: { weekLabel },
+    create: { weekLabel },
+    update: { syncedAt: new Date() },
+  });
+
+  const rowErrors: RowError[] = [];
+  const lines: Prisma.PaymentBatchLineCreateManyInput[] = [];
+
+  for (const row of rows) {
+    const shopeeOrderId = String(getByHeader(row.data, "Mã đơn hàng") ?? "");
+    const netAmount = getInt(row.data, "Giá trị còn lại");
+    if (!shopeeOrderId || netAmount === null) {
+      rowErrors.push({ identifier: String(row.rowIndex), error: "missing order id or amount" });
+      continue;
+    }
+
+    lines.push({
+      batchId: batch.id,
+      shopeeOrderId,
+      sku: getString(row.data, "Mã sản phẩm"),
+      productName: getString(row.data, "Tên hàng hóa"),
+      quantity: getInt(row.data, "Số lượng"),
+      sellPrice: getInt(row.data, "Giá bán"),
+      serviceFee: getInt(row.data, "Phí dịch vụ"),
+      taxDeduction: getInt(row.data, "Khấu trừ thuế"),
+      netAmount,
+      sheetRowIndex: row.rowIndex,
+      rawRowHash: row.hash,
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.paymentBatchLine.deleteMany({ where: { batchId: batch.id } }),
+    prisma.paymentBatchLine.createMany({ data: lines }),
+  ]);
+
+  return { lineCount: lines.length, rowErrors };
+}

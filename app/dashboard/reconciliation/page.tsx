@@ -20,7 +20,7 @@ function formatAmount(value: number | null) {
 export default async function ReconciliationPage({
   searchParams,
 }: {
-  searchParams: { status?: string; batchId?: string; page?: string };
+  searchParams: { status?: string; batchId?: string; page?: string; paymentBatchId?: string; pbPage?: string };
 }) {
   const page = parsePage(searchParams.page);
   const batches = await prisma.reconciliationBatch.findMany({
@@ -69,6 +69,36 @@ export default async function ReconciliationPage({
     if (selectedBatch) params.set("batchId", String(selectedBatch.id));
     if (statusFilter) params.set("status", statusFilter);
     params.set("page", String(p));
+    return `?${params.toString()}`;
+  };
+
+  // Weekly payment batches synced from Drive — independent of the manual
+  // upload batches above (see PaymentSync.gs's syncPaymentBatches).
+  const pbPage = parsePage(searchParams.pbPage);
+  const paymentBatches = await prisma.paymentBatch.findMany({ orderBy: { syncedAt: "desc" } });
+
+  const requestedPaymentBatchId = Number(searchParams.paymentBatchId);
+  const selectedPaymentBatch = Number.isInteger(requestedPaymentBatchId)
+    ? paymentBatches.find((batch) => batch.id === requestedPaymentBatchId)
+    : undefined;
+
+  const paymentBatchLineTotal = selectedPaymentBatch
+    ? await prisma.paymentBatchLine.count({ where: { batchId: selectedPaymentBatch.id } })
+    : 0;
+  const paymentBatchTotalPages = totalPagesFor(paymentBatchLineTotal);
+  const paymentBatchLines = selectedPaymentBatch
+    ? await prisma.paymentBatchLine.findMany({
+        where: { batchId: selectedPaymentBatch.id },
+        orderBy: { sheetRowIndex: "asc" },
+        skip: (pbPage - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+      })
+    : [];
+
+  const buildPaymentBatchPageHref = (p: number) => {
+    const params = new URLSearchParams();
+    if (selectedPaymentBatch) params.set("paymentBatchId", String(selectedPaymentBatch.id));
+    params.set("pbPage", String(p));
     return `?${params.toString()}`;
   };
 
@@ -146,6 +176,65 @@ export default async function ReconciliationPage({
           </table>
           {results.length === 0 ? <p>No results for this filter.</p> : null}
           <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
+        </>
+      ) : null}
+
+      <h2>Đối soát thanh toán (tự động từ Drive)</h2>
+      <p>Mỗi tuần trên file thanh toán Shopee là 1 batch dưới đây, tên trùng với tên sheet.</p>
+      {paymentBatches.length === 0 ? (
+        <p>Chưa có batch nào được đồng bộ.</p>
+      ) : (
+        <ul>
+          {paymentBatches.map((batch) => (
+            <li key={batch.id}>
+              <a href={`?paymentBatchId=${batch.id}`}>
+                {batch.weekLabel} — đồng bộ lúc {batch.syncedAt.toISOString()}
+              </a>
+              {batch.id === selectedPaymentBatch?.id ? " ← đang xem" : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selectedPaymentBatch ? (
+        <>
+          <h3>Batch: {selectedPaymentBatch.weekLabel}</h3>
+          <p>
+            <strong>Số dòng:</strong> {paymentBatchLineTotal}
+          </p>
+
+          <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
+
+          <table>
+            <thead>
+              <tr>
+                <th>Mã đơn hàng</th>
+                <th>Mã sản phẩm</th>
+                <th>Tên hàng hóa</th>
+                <th>SL</th>
+                <th>Giá bán</th>
+                <th>Phí dịch vụ</th>
+                <th>Khấu trừ thuế</th>
+                <th>Giá trị còn lại</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paymentBatchLines.map((line) => (
+                <tr key={line.id}>
+                  <td>{line.shopeeOrderId}</td>
+                  <td>{line.sku ?? "-"}</td>
+                  <td>{line.productName ?? "-"}</td>
+                  <td>{line.quantity ?? "-"}</td>
+                  <td>{formatAmount(line.sellPrice)}</td>
+                  <td>{formatAmount(line.serviceFee)}</td>
+                  <td>{formatAmount(line.taxDeduction)}</td>
+                  <td>{formatAmount(line.netAmount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
         </>
       ) : null}
     </main>

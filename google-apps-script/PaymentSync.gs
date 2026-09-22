@@ -133,3 +133,110 @@ function manualTestPaymentSync() {
 function createPaymentTimeTrigger() {
   ScriptApp.newTrigger("syncPayment").timeBased().everyMinutes(30).create();
 }
+
+// Raw per-line rows, grouped by week tab — separate from readPaymentRows'
+// cross-week aggregate above. Backs the Reconciliation page's per-batch
+// (per-week) order detail view, keyed by the same names as the sheet's tabs.
+function readPaymentBatches() {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty("PAYMENT_SHEET_URL");
+  if (!url) {
+    Logger.log("WARNING: PAYMENT_SHEET_URL script property not set");
+    return [];
+  }
+
+  var ss = SpreadsheetApp.openByUrl(url);
+  var sheets = ss.getSheets();
+  var batches = [];
+
+  sheets.forEach(function (sheet) {
+    var lastRow = sheet.getLastRow();
+    var lastColumn = sheet.getLastColumn();
+    if (lastRow < PAYMENT_DATA_START_ROW) return;
+
+    var headers = sheet.getRange(PAYMENT_HEADER_ROW, 1, 1, lastColumn).getValues()[0];
+    var orderIdCol = headers.indexOf("Mã đơn hàng");
+    var amountCol = headers.indexOf("Giá trị còn lại");
+    if (orderIdCol === -1 || amountCol === -1) {
+      Logger.log("WARNING: skipping tab (unexpected header layout): " + sheet.getName());
+      return;
+    }
+
+    var values = sheet.getRange(PAYMENT_DATA_START_ROW, 1, lastRow - PAYMENT_DATA_START_ROW + 1, lastColumn).getValues();
+    var rows = [];
+    values.forEach(function (rowValues, i) {
+      var orderId = String(rowValues[orderIdCol] || "").trim();
+      var amount = Number(rowValues[amountCol]);
+      if (!orderId || isNaN(amount)) return;
+
+      var data = {};
+      headers.forEach(function (header, colIndex) {
+        if (header) data[header] = rowValues[colIndex];
+      });
+      rows.push({
+        rowIndex: PAYMENT_DATA_START_ROW + i,
+        hash: paymentComputeRowHash(rowValues),
+        data: data,
+      });
+    });
+
+    if (rows.length > 0) {
+      batches.push({ weekLabel: sheet.getName(), rows: rows });
+    }
+  });
+
+  return batches;
+}
+
+function pushPaymentBatchPayload(weekLabel, rows) {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty("SYNC_WEBHOOK_URL");
+  var secret = props.getProperty("SYNC_SECRET");
+
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    headers: { "X-Sync-Secret": secret },
+    payload: JSON.stringify({ tab: "payment_batch", batchLabel: weekLabel, rows: rows }),
+    muteHttpExceptions: true,
+  };
+
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+
+    if (code < 200 || code >= 300) {
+      var detail = "payment_batch(" + weekLabel + ") -> HTTP " + code + " (attempt " + attempt + "/3): " + response.getContentText().slice(0, 300);
+      Logger.log("ERROR: " + detail);
+      paymentRecordSyncError(detail);
+    }
+
+    if (code < 500) return response;
+    Utilities.sleep(2000 * attempt);
+  }
+
+  var exhausted = "payment_batch(" + weekLabel + ") -> push failed after 3 attempts (5xx)";
+  Logger.log("ERROR: " + exhausted);
+  paymentRecordSyncError(exhausted);
+  return null;
+}
+
+function syncPaymentBatches() {
+  var batches = readPaymentBatches();
+  batches.forEach(function (batch) {
+    pushPaymentBatchPayload(batch.weekLabel, batch.rows);
+  });
+}
+
+function manualTestPaymentBatches() {
+  var batches = readPaymentBatches();
+  Logger.log("Found " + batches.length + " weekly batches.");
+  if (batches.length > 0) {
+    Logger.log(batches[0].weekLabel + ": " + batches[0].rows.length + " rows. First row:");
+    Logger.log(JSON.stringify(batches[0].rows[0], null, 2));
+  }
+}
+
+function createPaymentBatchTimeTrigger() {
+  ScriptApp.newTrigger("syncPaymentBatches").timeBased().everyMinutes(30).create();
+}

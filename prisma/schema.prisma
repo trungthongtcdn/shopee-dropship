@@ -171,6 +171,7 @@ enum SourceTab {
   products
   sku_pricing
   payment
+  payment_batch
 }
 
 // Synced from a third, separate Drive file — a weekly Shopee settlement
@@ -189,6 +190,39 @@ model PaymentRecord {
   lastSyncedAt  DateTime @updatedAt @map("last_synced_at")
 
   @@map("payment_records")
+}
+
+// One row per weekly tab in the same payment settlement file — lets the
+// Reconciliation page browse the raw per-line data (Mã sản phẩm, Giá bán,
+// Phí dịch vụ...) week by week, same names as the sheet's own tabs. Fully
+// replaced on every sync (delete-then-recreate its lines), independent of
+// PaymentRecord's cross-week aggregate above — kept separate so the
+// already-working Report page amount sync isn't touched by this.
+model PaymentBatch {
+  id        Int                @id @default(autoincrement())
+  weekLabel String             @unique @map("week_label")
+  syncedAt  DateTime           @default(now()) @map("synced_at")
+  lines     PaymentBatchLine[]
+
+  @@map("payment_batches")
+}
+
+model PaymentBatchLine {
+  id            Int          @id @default(autoincrement())
+  batchId       Int          @map("batch_id")
+  batch         PaymentBatch @relation(fields: [batchId], references: [id])
+  shopeeOrderId String       @map("shopee_order_id")
+  sku           String?
+  productName   String?      @map("product_name")
+  quantity      Int?
+  sellPrice     Float?       @map("sell_price")
+  serviceFee    Float?       @map("service_fee")
+  taxDeduction  Float?       @map("tax_deduction")
+  netAmount     Float        @map("net_amount")
+  sheetRowIndex Int          @map("sheet_row_index")
+  rawRowHash    String       @map("raw_row_hash")
+
+  @@map("payment_batch_lines")
 }
 
 enum ChangeType {

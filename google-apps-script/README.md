@@ -63,6 +63,24 @@ Deploy:
    page's "Số tiền thanh toán" column should populate).
 6. Run `createPaymentTimeTrigger` once (polls every 30 minutes).
 
+### Per-week batch detail (Reconciliation page)
+
+The same file also feeds a second, independent sync: `syncPaymentBatches`
+sends one payload PER WEEKLY TAB (raw per-line rows, not the cross-week
+aggregate `syncPayment` sends), landing in `payment_batches` /
+`payment_batch_lines`. This is what the Reconciliation page's batch list
+browses — one batch per sheet tab, same name, click through to see that
+week's raw order lines (Mã sản phẩm, Giá bán, Phí dịch vụ, Khấu trừ thuế,
+Giá trị còn lại). It does not affect the Report page's amount column —
+that stays on `syncPayment`'s aggregate, untouched.
+
+7. Run `manualTestPaymentBatches` once, check the log for the batch count
+   and a sample row.
+8. Run `syncPaymentBatches` once, confirm batches appear on the
+   Reconciliation page.
+9. Run `createPaymentBatchTimeTrigger` once (polls every 30 minutes,
+   independent of `createPaymentTimeTrigger`'s trigger).
+
 ## Real sheet layout
 
 `TABS` in `Sync.gs` points at the real tab names in the live workbook

@@ -16,7 +16,12 @@ export const syncPayloadSchema = z.object({
     "products",
     "sku_pricing",
     "payment",
+    "payment_batch",
   ]),
+  // Only present (and required) when tab is "payment_batch" — the payment
+  // settlement file has one tab per week, so unlike every other source this
+  // one has no fixed name; the caller must say which week this payload is.
+  batchLabel: z.string().min(1).optional(),
   rows: z.array(z.unknown()),
 });
 
