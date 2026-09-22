@@ -24,7 +24,7 @@ export default async function ReportPage({
 }) {
   const page = parsePage(searchParams.page);
 
-  const [orders, totalCount, products, latestBatch, cancellations] = await Promise.all([
+  const [orders, totalCount, products, payments, cancellations] = await Promise.all([
     prisma.order.findMany({
       where: { isActive: true },
       orderBy: { shopeeOrderId: "asc" },
@@ -36,7 +36,7 @@ export default async function ReportPage({
       where: { isActive: true },
       select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
     }),
-    prisma.reconciliationBatch.findFirst({ orderBy: { uploadedAt: "desc" } }),
+    prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, amount: true } }),
     prisma.cancellation.findMany({
       where: { isActive: true },
       select: { shopeeOrderId: true, cancelledAt: true },
@@ -44,25 +44,13 @@ export default async function ReportPage({
   ]);
   const totalPages = totalPagesFor(totalCount);
 
-  const results = latestBatch
-    ? await prisma.reconciliationResult.findMany({
-        where: { batchId: latestBatch.id, shopeeOrderId: { not: null } },
-        select: { shopeeOrderId: true, excelAmount: true },
-      })
-    : [];
-
-  const rows = buildReportRows(
-    orders,
-    products,
-    results.map((result) => ({ shopeeOrderId: result.shopeeOrderId!, excelAmount: result.excelAmount })),
-    cancellations
-  );
+  const rows = buildReportRows(orders, products, payments, cancellations);
 
   return (
     <main>
       <h1>Report (LUÂN CẦN)</h1>
       <p>
-        Số tiền thanh toán lấy từ batch đối soát gần nhất{latestBatch ? ` (${latestBatch.fileName})` : " — chưa có batch nào"}.
+        Số tiền thanh toán đồng bộ tự động từ file thanh toán Shopee trên Drive.
         Chênh lệch quá 2% (cả 2 chiều) tính là không khớp.
       </p>
       <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />

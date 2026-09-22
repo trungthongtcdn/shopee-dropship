@@ -400,3 +400,53 @@ export async function applySkuPricingPayload(rows: IncomingRow[]): Promise<SkuPr
 
   return { updated, skipped, rowErrors };
 }
+
+export interface PaymentResult {
+  upserted: number;
+  skipped: number;
+  rowErrors: RowError[];
+}
+
+// Comes from a third, separate Drive file — a weekly Shopee settlement
+// report, view-only access. The Apps Script already sums "Giá trị còn lại"
+// per order across every weekly tab before sending, so each row here is one
+// order's total. Upsert-only (create or update), never soft-deleted — an
+// order missing from one sync cycle's payload should not erase its
+// previously-synced payment.
+export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentResult> {
+  let upserted = 0;
+  let skipped = 0;
+  const rowErrors: RowError[] = [];
+
+  for (const row of rows) {
+    const shopeeOrderId = String(getByHeader(row.data, "Mã đơn hàng") ?? "");
+    const amount = getInt(row.data, "Giá trị còn lại");
+    if (!shopeeOrderId || amount === null) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const before = await prisma.paymentRecord.findUnique({ where: { shopeeOrderId } });
+      const after = await prisma.paymentRecord.upsert({
+        where: { shopeeOrderId },
+        create: { shopeeOrderId, amount, rawRowHash: row.hash },
+        update: { amount, rawRowHash: row.hash },
+      });
+      await prisma.syncLog.create({
+        data: {
+          sourceTab: "payment",
+          sheetRowIndex: row.rowIndex,
+          changeType: before ? "update" : "insert",
+          oldValue: before ? toJsonSafe(before) : undefined,
+          newValue: toJsonSafe(after),
+        },
+      });
+      upserted += 1;
+    } catch (error) {
+      rowErrors.push({ identifier: shopeeOrderId, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { upserted, skipped, rowErrors };
+}

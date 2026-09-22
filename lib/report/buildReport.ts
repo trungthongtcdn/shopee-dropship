@@ -25,7 +25,7 @@ export interface ReportProductInput {
 
 export interface ReportPaymentInput {
   shopeeOrderId: string;
-  excelAmount: number | null;
+  amount: number | null;
 }
 
 export interface ReportCancellationInput {
@@ -76,7 +76,7 @@ export function buildReportRows(
   const productByCategory = new Map(
     products.filter((product) => product.categoryName).map((product) => [normalizeCategoryName(product.categoryName!), product])
   );
-  const paymentByOrderId = new Map(payments.map((payment) => [payment.shopeeOrderId, payment.excelAmount]));
+  const paymentByOrderId = new Map(payments.map((payment) => [payment.shopeeOrderId, payment.amount]));
   const cancelledAtByOrderId = new Map(cancellations.map((cancellation) => [cancellation.shopeeOrderId, cancellation.cancelledAt]));
 
   return orders.map((order) => {

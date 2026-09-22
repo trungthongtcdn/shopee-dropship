@@ -49,7 +49,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", excelAmount: 1020 }],
+      [{ shopeeOrderId: "SP001", amount: 1020 }],
       []
     );
     expect(rows[0].amountDue).toBe(1000);
@@ -62,7 +62,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", excelAmount: 970 }],
+      [{ shopeeOrderId: "SP001", amount: 970 }],
       []
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
@@ -72,14 +72,14 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", excelAmount: 1050 }],
+      [{ shopeeOrderId: "SP001", amount: 1050 }],
       []
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
   });
 
   it("leaves amountDue and paymentMatch null when no product matches the category", () => {
-    const rows = buildReportRows([order({ categoryName: "unknown-category" })], [], [{ shopeeOrderId: "SP001", excelAmount: 1000 }], []);
+    const rows = buildReportRows([order({ categoryName: "unknown-category" })], [], [{ shopeeOrderId: "SP001", amount: 1000 }], []);
     expect(rows[0].amountDue).toBeNull();
     expect(rows[0].paymentMatch).toBeNull();
   });

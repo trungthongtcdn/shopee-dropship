@@ -31,6 +31,38 @@ This sheet's tab uses a normal row-1 header (no "MII điền" banner row like
 the Shopee workbook), so `PricingSync.gs` reads headers from row 1, data from
 row 2 — do not copy `Sync.gs`'s `HEADER_ROW = 2` convention onto it.
 
+## Third script: weekly payment settlement (a third workbook, view-only)
+
+`PaymentSync.gs` is added as a **second file in the same Apps Script project**
+as `PricingSync.gs` (bound to "MII dữ liệu đối soát Luân up") — it is not its
+own bound script, because the actual source file, Shopee's weekly settlement
+report ("[MII-Furniture]- PAYMENT-..."), is only Viewer-accessible. Reading a
+spreadsheet by URL via `SpreadsheetApp.openByUrl` only needs Viewer access;
+binding a script to it (like the other two sources) would need Editor.
+
+That file has **one tab per week** (tab name is the date range, e.g.
+"07/09/2026-13/09/2026"), each row is one product line within an order (not
+one row per order), and the header row is row 8 (data from row 9) — a few
+company/report-title rows sit above it. `PaymentSync.gs` sums "Giá trị còn
+lại" (net amount after service fee + tax deduction) per "Mã đơn hàng", across
+every tab in the file, and sends one aggregated row per order to the backend
+under the `payment` tab, which upserts (never deletes) `PaymentRecord` rows.
+
+Deploy:
+
+1. Open "MII dữ liệu đối soát Luân up" → Extensions → Apps Script (same
+   project `PricingSync.gs` is already in).
+2. Add a new script file, paste `PaymentSync.gs`'s contents.
+3. Script Properties: add `PAYMENT_SHEET_URL` = the full URL of the
+   "[MII-Furniture]- PAYMENT-..." spreadsheet (copy from its address bar).
+   `SYNC_WEBHOOK_URL`/`SYNC_SECRET` are already set from the `PricingSync.gs`
+   deploy — reused as-is.
+4. Run `manualTestPaymentSync` once, check the log for the aggregated order
+   count and a sample of rows.
+5. Run `syncPayment` once, confirm `payment_records` rows appear (the Report
+   page's "Số tiền thanh toán" column should populate).
+6. Run `createPaymentTimeTrigger` once (polls every 30 minutes).
+
 ## Real sheet layout
 
 `TABS` in `Sync.gs` points at the real tab names in the live workbook

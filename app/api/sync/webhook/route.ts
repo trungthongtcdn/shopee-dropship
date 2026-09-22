@@ -8,6 +8,7 @@ import {
   applyReturnedRefundedPayload,
   applyProductsPayload,
   applySkuPricingPayload,
+  applyPaymentPayload,
 } from "@/lib/sync/apply";
 
 const APPLY_BY_TAB = {
@@ -41,6 +42,18 @@ export async function POST(request: NextRequest) {
     const applied = await applySkuPricingPayload(validRows);
     return NextResponse.json({
       updated: applied.updated,
+      skipped: applied.skipped,
+      invalidRows: errors,
+      dbErrors: applied.rowErrors,
+    });
+  }
+
+  // payment is upsert-only (no soft-delete concept either), same reasoning
+  // as sku_pricing — its own response shape.
+  if (tab === "payment") {
+    const applied = await applyPaymentPayload(validRows);
+    return NextResponse.json({
+      upserted: applied.upserted,
       skipped: applied.skipped,
       invalidRows: errors,
       dbErrors: applied.rowErrors,

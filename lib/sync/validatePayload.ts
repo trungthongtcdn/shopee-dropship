@@ -15,6 +15,7 @@ export const syncPayloadSchema = z.object({
     "returned_refunded",
     "products",
     "sku_pricing",
+    "payment",
   ]),
   rows: z.array(z.unknown()),
 });

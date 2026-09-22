@@ -170,6 +170,25 @@ enum SourceTab {
   returned_refunded
   products
   sku_pricing
+  payment
+}
+
+// Synced from a third, separate Drive file — a weekly Shopee settlement
+// report ("[MII-Furniture]- PAYMENT-..."), view-only access. One row per
+// order: the Apps Script sums "Giá trị còn lại" across every weekly tab
+// (each week is its own sheet in that file) before sending, since the sheet
+// itself has one row per product line, not per order. Upsert-only, no
+// soft-delete — a week disappearing from the payload should never erase a
+// previously-synced payment.
+model PaymentRecord {
+  id            Int      @id @default(autoincrement())
+  shopeeOrderId String   @unique @map("shopee_order_id")
+  amount        Float
+  rawRowHash    String   @map("raw_row_hash")
+  firstSyncedAt DateTime @default(now()) @map("first_synced_at")
+  lastSyncedAt  DateTime @updatedAt @map("last_synced_at")
+
+  @@map("payment_records")
 }
 
 enum ChangeType {
