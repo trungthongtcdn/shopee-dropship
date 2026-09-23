@@ -7,7 +7,8 @@ export type SyncTab =
   | "products"
   | "sku_pricing"
   | "payment"
-  | "payment_batch";
+  | "payment_batch"
+  | "cancel_receipt";
 
 export interface IncomingRow {
   rowIndex: number;

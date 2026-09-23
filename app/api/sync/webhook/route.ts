@@ -10,6 +10,7 @@ import {
   applySkuPricingPayload,
   applyPaymentPayload,
   applyPaymentBatchPayload,
+  applyCancelReceiptPayload,
 } from "@/lib/sync/apply";
 
 const APPLY_BY_TAB = {
@@ -70,6 +71,18 @@ export async function POST(request: NextRequest) {
     const applied = await applyPaymentBatchPayload(batchLabel, validRows);
     return NextResponse.json({
       lineCount: applied.lineCount,
+      invalidRows: errors,
+      dbErrors: applied.rowErrors,
+    });
+  }
+
+  // cancel_receipt matches by trackingCode (updateMany, no soft-delete
+  // concept) — its own response shape, same reasoning as sku_pricing/payment.
+  if (tab === "cancel_receipt") {
+    const applied = await applyCancelReceiptPayload(validRows);
+    return NextResponse.json({
+      updated: applied.updated,
+      skipped: applied.skipped,
       invalidRows: errors,
       dbErrors: applied.rowErrors,
     });

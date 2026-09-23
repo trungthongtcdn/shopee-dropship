@@ -1,4 +1,4 @@
-import { Prisma, CancellationType } from "@prisma/client";
+import { Prisma, CancellationType, CancelReceiptStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { computeSyncDiff } from "@/lib/sync/diff";
 import { getByHeader, getString, getDate, getInt } from "@/lib/sync/headerLookup";
@@ -502,4 +502,65 @@ export async function applyPaymentBatchPayload(weekLabel: string, rows: Incoming
   ]);
 
   return { lineCount: lines.length, rowErrors };
+}
+
+export interface CancelReceiptResult {
+  updated: number;
+  skipped: number;
+  rowErrors: RowError[];
+}
+
+const CANCEL_RECEIPT_STATUS_MAP: Record<string, CancelReceiptStatus> = {
+  "ĐÃ NHẬN ĐỦ": "received_full",
+  "CHƯA NHẬN": "not_received",
+  "NHẬN THIẾU": "received_partial",
+};
+
+// From "MII dữ liệu đối soát Luân up" → "ĐƠN HUỶ" (same workbook as
+// sku_pricing) — Luân's manual tracking of returned/cancelled goods
+// actually arriving back at her warehouse. Column A is pre-filled with a
+// running calendar of dates as a template; a row only represents a real
+// event once column B (Mã vận đơn) is filled in, so rows with no tracking
+// code are skipped rather than treated as errors. Matches Order rows by
+// trackingCode (not shopeeOrderId) since that's the sheet's only key, and
+// deliberately updateMany — one tracking code can cover every product line
+// of a multi-line order, and all of them should get the same values.
+//
+// % hỏng convention: treated as a whole-number percent (5 = 5%), same as
+// the manual RowEditor input — unverified against real data, since this
+// sheet tab had no filled rows yet when this was written.
+export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<CancelReceiptResult> {
+  let updated = 0;
+  let skipped = 0;
+  const rowErrors: RowError[] = [];
+
+  for (const row of rows) {
+    const trackingCode = getString(row.data, "Mã vận đơn");
+    if (!trackingCode) {
+      skipped += 1;
+      continue;
+    }
+
+    const cancelReceivedAt = getDate(row.data, "Ngày nhận đơn huỷ");
+    const defectPercent = getInt(row.data, "Tỷ lệ % hỏng");
+    const defectRate = defectPercent === null ? null : defectPercent / 100;
+    const statusRaw = getString(row.data, "Trạng thái nhận đơn huỷ");
+    const cancelReceiptStatus = statusRaw ? (CANCEL_RECEIPT_STATUS_MAP[statusRaw.trim().toUpperCase()] ?? null) : null;
+
+    try {
+      const result = await prisma.order.updateMany({
+        where: { trackingCode },
+        data: {
+          ...(cancelReceivedAt !== null ? { cancelReceivedAt } : {}),
+          ...(defectRate !== null ? { defectRate } : {}),
+          ...(cancelReceiptStatus !== null ? { cancelReceiptStatus } : {}),
+        },
+      });
+      updated += result.count;
+    } catch (error) {
+      rowErrors.push({ identifier: trackingCode, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { updated, skipped, rowErrors };
 }

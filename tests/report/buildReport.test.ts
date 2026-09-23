@@ -13,6 +13,7 @@ function order(overrides: Partial<ReportOrderInput> = {}): ReportOrderInput {
     sentAt: null,
     sendStatus: null,
     paidAt: null,
+    cancelReceivedAt: null,
     defectRate: null,
     cancelReceiptStatus: null,
     cancelComplaintNote: null,
@@ -27,7 +28,6 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order({ lineQuantity: 3 })],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: "Kiot1", collectPrice: 1000 }],
-      [],
       []
     );
     expect(rows[0].sku).toBe("SKU1");
@@ -39,7 +39,6 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order({ categoryName: "  d100 " })],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 500 }],
-      [],
       []
     );
     expect(rows[0].amountDue).toBe(500);
@@ -49,8 +48,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 1020 }],
-      []
+      [{ shopeeOrderId: "SP001", amount: 1020 }]
     );
     expect(rows[0].amountDue).toBe(1000);
     expect(rows[0].amountPaid).toBe(1020);
@@ -62,8 +60,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 970 }],
-      []
+      [{ shopeeOrderId: "SP001", amount: 970 }]
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
   });
@@ -72,14 +69,13 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 1050 }],
-      []
+      [{ shopeeOrderId: "SP001", amount: 1050 }]
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
   });
 
   it("leaves amountDue and paymentMatch null when no product matches the category", () => {
-    const rows = buildReportRows([order({ categoryName: "unknown-category" })], [], [{ shopeeOrderId: "SP001", amount: 1000 }], []);
+    const rows = buildReportRows([order({ categoryName: "unknown-category" })], [], [{ shopeeOrderId: "SP001", amount: 1000 }]);
     expect(rows[0].amountDue).toBeNull();
     expect(rows[0].paymentMatch).toBeNull();
   });
@@ -88,7 +84,6 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [],
       []
     );
     expect(rows[0].amountDue).toBe(1000);
@@ -96,23 +91,29 @@ describe("buildReportRows", () => {
     expect(rows[0].paymentMatch).toBeNull();
   });
 
-  it("joins the cancellation date by order id", () => {
-    const cancelledAt = new Date("2026-06-20T17:00:00Z");
-    const rows = buildReportRows([order()], [], [], [{ shopeeOrderId: "SP001", cancelledAt }]);
-    expect(rows[0].cancelReceivedAt).toEqual(cancelledAt);
-  });
-
-  it("passes through the manual operational fields unchanged", () => {
+  it("passes through the manual/cancel-receipt operational fields unchanged", () => {
     const paidAt = new Date("2026-06-25T00:00:00Z");
+    const cancelReceivedAt = new Date("2026-06-20T17:00:00Z");
     const rows = buildReportRows(
-      [order({ sendStatus: "sent", paidAt, defectRate: 0.05, luanCheck: true, note: "ghi chú" })],
-      [],
+      [
+        order({
+          sendStatus: "sent",
+          paidAt,
+          cancelReceivedAt,
+          defectRate: 0.05,
+          cancelReceiptStatus: "received_full",
+          luanCheck: true,
+          note: "ghi chú",
+        }),
+      ],
       [],
       []
     );
     expect(rows[0].sendStatus).toBe("sent");
     expect(rows[0].paidAt).toEqual(paidAt);
+    expect(rows[0].cancelReceivedAt).toEqual(cancelReceivedAt);
     expect(rows[0].defectRate).toBe(0.05);
+    expect(rows[0].cancelReceiptStatus).toBe("received_full");
     expect(rows[0].luanCheck).toBe(true);
     expect(rows[0].note).toBe("ghi chú");
   });

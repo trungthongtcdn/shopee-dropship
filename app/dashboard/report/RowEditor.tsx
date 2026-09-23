@@ -21,6 +21,7 @@ export interface RowEditorProps {
   sentAt: string | null;
   sendStatus: string | null;
   paidAt: string | null;
+  cancelReceivedAt: string | null;
   defectRate: number | null;
   cancelReceiptStatus: string | null;
   cancelComplaintNote: string | null;
@@ -33,6 +34,7 @@ export function RowEditor(props: RowEditorProps) {
   const [sentAt, setSentAt] = useState(toDateInputValue(props.sentAt));
   const [sendStatus, setSendStatus] = useState(props.sendStatus ?? "");
   const [paidAt, setPaidAt] = useState(toDateInputValue(props.paidAt));
+  const [cancelReceivedAt, setCancelReceivedAt] = useState(toDateInputValue(props.cancelReceivedAt));
   const [defectRatePercent, setDefectRatePercent] = useState(toPercentInputValue(props.defectRate));
   const [cancelReceiptStatus, setCancelReceiptStatus] = useState(props.cancelReceiptStatus ?? "");
   const [cancelComplaintNote, setCancelComplaintNote] = useState(props.cancelComplaintNote ?? "");
@@ -51,6 +53,7 @@ export function RowEditor(props: RowEditorProps) {
         sentAt: sentAt ? new Date(sentAt).toISOString() : null,
         sendStatus: sendStatus || null,
         paidAt: paidAt ? new Date(paidAt).toISOString() : null,
+        cancelReceivedAt: cancelReceivedAt ? new Date(cancelReceivedAt).toISOString() : null,
         defectRate,
         cancelReceiptStatus: cancelReceiptStatus || null,
         cancelComplaintNote: cancelComplaintNote || null,
@@ -93,6 +96,10 @@ export function RowEditor(props: RowEditorProps) {
       <div className="field">
         <span className="field-label">Ngày thanh toán</span>
         <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+      </div>
+      <div className="field">
+        <span className="field-label">Ngày nhận đơn huỷ</span>
+        <input className="input" type="date" value={cancelReceivedAt} onChange={(e) => setCancelReceivedAt(e.target.value)} />
       </div>
       <div className="field">
         <span className="field-label">% hỏng</span>

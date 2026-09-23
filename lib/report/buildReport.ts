@@ -9,6 +9,7 @@ export interface ReportOrderInput {
   sentAt: Date | null;
   sendStatus: string | null;
   paidAt: Date | null;
+  cancelReceivedAt: Date | null;
   defectRate: number | null;
   cancelReceiptStatus: string | null;
   cancelComplaintNote: string | null;
@@ -26,11 +27,6 @@ export interface ReportProductInput {
 export interface ReportPaymentInput {
   shopeeOrderId: string;
   amount: number | null;
-}
-
-export interface ReportCancellationInput {
-  shopeeOrderId: string;
-  cancelledAt: Date | null;
 }
 
 export type PaymentMatch = "matched" | "not_matched";
@@ -70,14 +66,12 @@ function normalizeCategoryName(value: string) {
 export function buildReportRows(
   orders: ReportOrderInput[],
   products: ReportProductInput[],
-  payments: ReportPaymentInput[],
-  cancellations: ReportCancellationInput[]
+  payments: ReportPaymentInput[]
 ): ReportRow[] {
   const productByCategory = new Map(
     products.filter((product) => product.categoryName).map((product) => [normalizeCategoryName(product.categoryName!), product])
   );
   const paymentByOrderId = new Map(payments.map((payment) => [payment.shopeeOrderId, payment.amount]));
-  const cancelledAtByOrderId = new Map(cancellations.map((cancellation) => [cancellation.shopeeOrderId, cancellation.cancelledAt]));
 
   return orders.map((order) => {
     const product = order.categoryName ? productByCategory.get(normalizeCategoryName(order.categoryName)) : undefined;
@@ -106,7 +100,7 @@ export function buildReportRows(
       amountPaid,
       diffPercent,
       paymentMatch,
-      cancelReceivedAt: cancelledAtByOrderId.get(order.shopeeOrderId) ?? null,
+      cancelReceivedAt: order.cancelReceivedAt,
       sentAt: order.sentAt,
       sendStatus: order.sendStatus,
       paidAt: order.paidAt,

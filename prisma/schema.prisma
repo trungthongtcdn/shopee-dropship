@@ -34,11 +34,18 @@ model Order {
   lastSyncedAt         DateTime  @updatedAt @map("last_synced_at")
 
   // Below: operational fields Luân fills in by hand (the "LUÂN CẦN" report
-  // columns that aren't derivable from any synced sheet) — edited in-app,
-  // never written by the sync webhook.
+  // columns that aren't derivable from any synced sheet) — edited in-app.
+  // sentAt/sendStatus are also written by the Zalo poller (lib/zalo/poller.ts);
+  // cancelReceivedAt/defectRate/cancelReceiptStatus are also written by the
+  // cancel_receipt sync (applyCancelReceiptPayload) from "MII dữ liệu đối
+  // soát Luân up" → "ĐƠN HUỶ" — both stay editable here as a manual override.
   sentAt               DateTime?            @map("sent_at")
   sendStatus           OrderSendStatus?     @map("send_status")
   paidAt               DateTime?            @map("paid_at")
+  // Date Luân's warehouse physically received the returned/cancelled goods
+  // back — distinct from Cancellation.cancelledAt, which is when Shopee's
+  // own system processed the cancellation.
+  cancelReceivedAt     DateTime?            @map("cancel_received_at")
   defectRate           Float?               @map("defect_rate")
   cancelReceiptStatus  CancelReceiptStatus? @map("cancel_receipt_status")
   cancelComplaintNote  String?              @map("cancel_complaint_note")
@@ -172,6 +179,7 @@ enum SourceTab {
   sku_pricing
   payment
   payment_batch
+  cancel_receipt
 }
 
 // Synced from a third, separate Drive file — a weekly Shopee settlement

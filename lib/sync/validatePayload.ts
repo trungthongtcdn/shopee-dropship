@@ -17,6 +17,7 @@ export const syncPayloadSchema = z.object({
     "sku_pricing",
     "payment",
     "payment_batch",
+    "cancel_receipt",
   ]),
   // Only present (and required) when tab is "payment_batch" — the payment
   // settlement file has one tab per week, so unlike every other source this

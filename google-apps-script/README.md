@@ -31,6 +31,42 @@ This sheet's tab uses a normal row-1 header (no "MII điền" banner row like
 the Shopee workbook), so `PricingSync.gs` reads headers from row 1, data from
 row 2 — do not copy `Sync.gs`'s `HEADER_ROW = 2` convention onto it.
 
+## Fourth script: cancel/return receipt tracking (same workbook as pricing)
+
+`CancelReceiptSync.gs` is a **new file added to the same Apps Script
+project** as `PricingSync.gs` — same workbook ("MII dữ liệu đối soát Luân
+up"), same container binding, no extra Editor access needed. It reads the
+"ĐƠN HUỶ" tab: Luân's manual log of returned/cancelled goods actually
+arriving back at her warehouse (a different date than
+`cancellations.cancelled_at`, which is when Shopee's own system processed
+the cancellation).
+
+Column A ("Ngày nhận đơn huỷ") is pre-filled with a running calendar of
+dates as a template, so a row only counts once column B ("Mã vận đơn") is
+filled in by hand — rows with an empty tracking code are skipped. The
+backend (`cancel_receipt` tab, `applyCancelReceiptPayload`) matches `Order`
+rows by `trackingCode`, not `shopeeOrderId` — a package can cover multiple
+product lines of the same order, and all of them get the same values.
+
+**% hỏng convention (unverified):** treated as a whole-number percent (5 =
+5%, divided by 100 before storing), matching the manual "% hỏng" input on
+the report page — the "ĐƠN HUỶ" tab had no filled-in rows yet when this was
+built, so double check the first real row lands correctly and adjust
+`applyCancelReceiptPayload` if the sheet actually stores it differently
+(e.g. already a 0–1 fraction, or a `"5%"` formatted string).
+
+Deploy:
+
+1. Open "MII dữ liệu đối soát Luân up" → Extensions → Apps Script (same
+   project `PricingSync.gs`/`PaymentSync.gs` are already in).
+2. Add a new script file, paste `CancelReceiptSync.gs`'s contents.
+3. `SYNC_WEBHOOK_URL`/`SYNC_SECRET` already set — reused as-is.
+4. Run `manualTestCancelReceiptSync`, check the log.
+5. Run `syncCancelReceipt` — real push. Confirm on `/dashboard/report`:
+   "Ngày nhận đơn huỷ" / "% hỏng" (via order detail) / cancel-receipt status
+   populate for orders whose tracking code has a filled-in row.
+6. Run `createCancelReceiptTimeTrigger` once (polls every 30 minutes).
+
 ## Third script: weekly payment settlement (a third workbook, view-only)
 
 `PaymentSync.gs` is added as a **second file in the same Apps Script project**

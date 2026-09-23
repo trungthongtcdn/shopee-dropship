@@ -8,6 +8,7 @@ const updateOrderSchema = z.object({
   sentAt: z.string().datetime().nullable().optional(),
   sendStatus: z.enum(["sent", "cancelled"]).nullable().optional(),
   paidAt: z.string().datetime().nullable().optional(),
+  cancelReceivedAt: z.string().datetime().nullable().optional(),
   defectRate: z.number().min(0).max(1).nullable().optional(),
   cancelReceiptStatus: z.enum(["received_full", "not_received", "received_partial"]).nullable().optional(),
   cancelComplaintNote: z.string().nullable().optional(),
@@ -27,7 +28,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: "invalid payload", issues: parsed.error.issues }, { status: 400 });
   }
 
-  const { sentAt, paidAt, ...rest } = parsed.data;
+  const { sentAt, paidAt, cancelReceivedAt, ...rest } = parsed.data;
 
   try {
     const updated = await prisma.order.update({
@@ -36,6 +37,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         ...rest,
         ...(sentAt !== undefined ? { sentAt: sentAt ? new Date(sentAt) : null } : {}),
         ...(paidAt !== undefined ? { paidAt: paidAt ? new Date(paidAt) : null } : {}),
+        ...(cancelReceivedAt !== undefined ? { cancelReceivedAt: cancelReceivedAt ? new Date(cancelReceivedAt) : null } : {}),
       },
     });
     return NextResponse.json({ order: updated });

@@ -24,7 +24,7 @@ export default async function ReportPage({
 }) {
   const page = parsePage(searchParams.page);
 
-  const [orders, totalCount, products, payments, cancellations] = await Promise.all([
+  const [orders, totalCount, products, payments] = await Promise.all([
     prisma.order.findMany({
       where: { isActive: true },
       orderBy: { shopeeOrderId: "asc" },
@@ -37,14 +37,10 @@ export default async function ReportPage({
       select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
     }),
     prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, amount: true } }),
-    prisma.cancellation.findMany({
-      where: { isActive: true },
-      select: { shopeeOrderId: true, cancelledAt: true },
-    }),
   ]);
   const totalPages = totalPagesFor(totalCount);
 
-  const rows = buildReportRows(orders, products, payments, cancellations);
+  const rows = buildReportRows(orders, products, payments);
 
   return (
     <main className="page">
@@ -105,6 +101,7 @@ export default async function ReportPage({
                     sentAt={row.sentAt?.toISOString() ?? null}
                     sendStatus={row.sendStatus}
                     paidAt={row.paidAt?.toISOString() ?? null}
+                    cancelReceivedAt={row.cancelReceivedAt?.toISOString() ?? null}
                     defectRate={row.defectRate}
                     cancelReceiptStatus={row.cancelReceiptStatus}
                     cancelComplaintNote={row.cancelComplaintNote}
