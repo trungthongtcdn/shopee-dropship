@@ -27,6 +27,7 @@ async function seedOrder(overrides: { shopeeOrderId: string; categoryName?: stri
 describe("applyCancelReceiptPayload", () => {
   beforeEach(async () => {
     await prisma.order.deleteMany();
+    await prisma.cancelReceiptSyncState.deleteMany();
   });
 
   it("patches cancelReceivedAt/defectRate/cancelReceiptStatus by matching trackingCode", async () => {
@@ -90,8 +91,60 @@ describe("applyCancelReceiptPayload", () => {
     expect(order?.cancelReceiptStatus).toBe("not_received");
   });
 
+  it("skips a re-sync of an unchanged row instead of re-writing it", async () => {
+    await seedOrder({ shopeeOrderId: "SP004", trackingCode: "SPXVN004" });
+
+    const row = cancelRow(2, "same-hash", { "Mã vận đơn": "SPXVN004", "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN ĐỦ" });
+    const first = await applyCancelReceiptPayload([row]);
+    expect(first.updated).toBe(1);
+    expect(first.unchanged).toBe(0);
+
+    // Simulate a manual correction in RowEditor between sync cycles.
+    await prisma.order.updateMany({ where: { shopeeOrderId: "SP004" }, data: { cancelReceiptStatus: "not_received" } });
+
+    const second = await applyCancelReceiptPayload([row]);
+    expect(second.updated).toBe(0);
+    expect(second.unchanged).toBe(1);
+
+    // The manual correction must survive the unchanged re-sync.
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP004" } });
+    expect(order?.cancelReceiptStatus).toBe("not_received");
+  });
+
+  it("re-applies when the row's content actually changed (different hash)", async () => {
+    await seedOrder({ shopeeOrderId: "SP005", trackingCode: "SPXVN005" });
+
+    await applyCancelReceiptPayload([cancelRow(2, "hash-v1", { "Mã vận đơn": "SPXVN005", "Trạng thái nhận đơn huỷ": "CHƯA NHẬN" })]);
+    const second = await applyCancelReceiptPayload([
+      cancelRow(2, "hash-v2", { "Mã vận đơn": "SPXVN005", "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN ĐỦ" }),
+    ]);
+
+    expect(second.updated).toBe(1);
+    expect(second.unchanged).toBe(0);
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP005" } });
+    expect(order?.cancelReceiptStatus).toBe("received_full");
+  });
+
+  it("retries an unmatched tracking code instead of permanently skipping it once the order appears", async () => {
+    const row = cancelRow(2, "same-hash", { "Mã vận đơn": "SPXVN006", "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN ĐỦ" });
+
+    const first = await applyCancelReceiptPayload([row]);
+    expect(first.updated).toBe(0);
+    expect(first.unchanged).toBe(0);
+
+    // Order syncs in from the main Shopee sheet after the cancel-receipt row.
+    await seedOrder({ shopeeOrderId: "SP006", trackingCode: "SPXVN006" });
+
+    const second = await applyCancelReceiptPayload([row]);
+    expect(second.updated).toBe(1);
+    expect(second.unchanged).toBe(0);
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP006" } });
+    expect(order?.cancelReceiptStatus).toBe("received_full");
+  });
+
   afterAll(async () => {
     await prisma.order.deleteMany();
+    await prisma.cancelReceiptSyncState.deleteMany();
     await prisma.$disconnect();
   });
 });

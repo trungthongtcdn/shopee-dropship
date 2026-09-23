@@ -506,6 +506,7 @@ export async function applyPaymentBatchPayload(weekLabel: string, rows: Incoming
 
 export interface CancelReceiptResult {
   updated: number;
+  unchanged: number;
   skipped: number;
   rowErrors: RowError[];
 }
@@ -526,11 +527,18 @@ const CANCEL_RECEIPT_STATUS_MAP: Record<string, CancelReceiptStatus> = {
 // deliberately updateMany — one tracking code can cover every product line
 // of a multi-line order, and all of them should get the same values.
 //
+// The Apps Script resends every filled-in row on every ~30min cycle (no
+// diffing on its end), so CancelReceiptSyncState remembers the last-applied
+// hash per tracking code and skips rows whose content hasn't changed —
+// otherwise an unchanged sheet row would silently overwrite a manual edit
+// Luân made in RowEditor since the last real sheet change.
+//
 // % hỏng convention: treated as a whole-number percent (5 = 5%), same as
 // the manual RowEditor input — unverified against real data, since this
 // sheet tab had no filled rows yet when this was written.
 export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<CancelReceiptResult> {
   let updated = 0;
+  let unchanged = 0;
   let skipped = 0;
   const rowErrors: RowError[] = [];
 
@@ -541,13 +549,19 @@ export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<Ca
       continue;
     }
 
-    const cancelReceivedAt = getDate(row.data, "Ngày nhận đơn huỷ");
-    const defectPercent = getInt(row.data, "Tỷ lệ % hỏng");
-    const defectRate = defectPercent === null ? null : defectPercent / 100;
-    const statusRaw = getString(row.data, "Trạng thái nhận đơn huỷ");
-    const cancelReceiptStatus = statusRaw ? (CANCEL_RECEIPT_STATUS_MAP[statusRaw.trim().toUpperCase()] ?? null) : null;
-
     try {
+      const syncState = await prisma.cancelReceiptSyncState.findUnique({ where: { trackingCode } });
+      if (syncState?.rawRowHash === row.hash) {
+        unchanged += 1;
+        continue;
+      }
+
+      const cancelReceivedAt = getDate(row.data, "Ngày nhận đơn huỷ");
+      const defectPercent = getInt(row.data, "Tỷ lệ % hỏng");
+      const defectRate = defectPercent === null ? null : defectPercent / 100;
+      const statusRaw = getString(row.data, "Trạng thái nhận đơn huỷ");
+      const cancelReceiptStatus = statusRaw ? (CANCEL_RECEIPT_STATUS_MAP[statusRaw.trim().toUpperCase()] ?? null) : null;
+
       const result = await prisma.order.updateMany({
         where: { trackingCode },
         data: {
@@ -556,11 +570,21 @@ export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<Ca
           ...(cancelReceiptStatus !== null ? { cancelReceiptStatus } : {}),
         },
       });
+      // Only remember this row once it actually matched an order — if the
+      // matching order hasn't synced in yet, leave no state so the next
+      // cycle retries instead of skipping it as "unchanged" forever.
+      if (result.count > 0) {
+        await prisma.cancelReceiptSyncState.upsert({
+          where: { trackingCode },
+          create: { trackingCode, rawRowHash: row.hash },
+          update: { rawRowHash: row.hash },
+        });
+      }
       updated += result.count;
     } catch (error) {
       rowErrors.push({ identifier: trackingCode, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
-  return { updated, skipped, rowErrors };
+  return { updated, unchanged, skipped, rowErrors };
 }

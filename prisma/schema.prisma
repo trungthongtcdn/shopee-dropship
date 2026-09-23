@@ -321,3 +321,15 @@ model ZaloConfirmationLog {
 
   @@map("zalo_confirmation_logs")
 }
+
+// Remembers the last-applied row hash per tracking code from the "ĐƠN HUỶ"
+// cancel-receipt sync, so a 30-minute re-sync of the sheet's unchanged rows
+// is a no-op instead of re-writing the same values (and silently clobbering
+// a manual edit Luân made in RowEditor since the last real sheet change).
+model CancelReceiptSyncState {
+  trackingCode String   @id @map("tracking_code")
+  rawRowHash   String   @map("raw_row_hash")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("cancel_receipt_sync_state")
+}

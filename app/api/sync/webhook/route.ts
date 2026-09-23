@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
     const applied = await applyCancelReceiptPayload(validRows);
     return NextResponse.json({
       updated: applied.updated,
+      unchanged: applied.unchanged,
       skipped: applied.skipped,
       invalidRows: errors,
       dbErrors: applied.rowErrors,
