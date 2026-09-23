@@ -66,6 +66,15 @@ In `google-apps-script/README.md`'s Script Properties step, set:
 - `SYNC_WEBHOOK_URL` = `https://your-domain.com/api/sync/webhook`
 - `SYNC_SECRET` = the `SYNC_WEBHOOK_SECRET` value from step 4
 
+## 9. Zalo watch feature (optional)
+
+Add to `.env.prod` (then redeploy — see below):
+```
+ZALO_BRIDGE_URL=http://172.18.0.1:8788
+ZALO_BRIDGE_SECRET=<WEBHOOK_SECRET from the bridge's own .env>
+```
+Use the bridge's public HTTPS URL instead if the internal one isn't reachable from this app's container. Then go to `/dashboard/zalo` in the browser and pick the group to watch.
+
 ## Redeploying after a code change
 
 ```bash

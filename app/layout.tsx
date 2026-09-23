@@ -33,6 +33,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link className="nav-link" href="/dashboard/report">
                 Report (LUÂN CẦN)
               </Link>
+              <Link className="nav-link" href="/dashboard/zalo">
+                Zalo
+              </Link>
             </nav>
           </div>
         </header>

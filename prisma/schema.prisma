@@ -280,3 +280,36 @@ model ReconciliationResult {
 
   @@map("reconciliation_results")
 }
+
+// Singleton row (id is always 1) — which Zalo group the background poller
+// watches, plus its cursor/state. lastProcessedMsgId is the since_msg_id
+// cursor for the next /messages poll; pendingPdfUrl/pendingPdfMsgId track a
+// waybill-PDF link message seen but not yet confirmed by staff, since the
+// Zalo bridge has no reply-chain info — confirmation is matched to whichever
+// PDF link came most recently in the same thread, not a true threaded reply.
+model ZaloWatchConfig {
+  id                 Int      @id @default(1)
+  threadId           String   @map("thread_id")
+  threadType         String   @map("thread_type")
+  threadName         String   @map("thread_name")
+  lastProcessedMsgId String?  @map("last_processed_msg_id")
+  pendingPdfUrl      String?  @map("pending_pdf_url")
+  pendingPdfMsgId    String?  @map("pending_pdf_msg_id")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("zalo_watch_config")
+}
+
+// Audit trail: one row per "đã đóng" confirmation the poller acted on, so
+// Luân can verify what got auto-applied to orders and when.
+model ZaloConfirmationLog {
+  id              Int      @id @default(autoincrement())
+  threadId        String   @map("thread_id")
+  pdfUrl          String   @map("pdf_url")
+  orderIds        Json     @map("order_ids")
+  matchedCount    Int      @map("matched_count")
+  confirmedByName String?  @map("confirmed_by_name")
+  confirmedAt     DateTime @default(now()) @map("confirmed_at")
+
+  @@map("zalo_confirmation_logs")
+}

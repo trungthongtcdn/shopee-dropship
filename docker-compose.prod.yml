@@ -7,10 +7,27 @@ services:
       SYNC_WEBHOOK_SECRET: ${SYNC_WEBHOOK_SECRET}
       DASHBOARD_USER: ${DASHBOARD_USER}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+      ZALO_BRIDGE_URL: ${ZALO_BRIDGE_URL}
+      ZALO_BRIDGE_SECRET: ${ZALO_BRIDGE_SECRET}
     depends_on:
       - postgres
     expose:
       - "3000"
+
+  # Same image as `app`, different command — polls the Zalo bridge for the
+  # configured group and applies "đã đóng" confirmations. Separate process
+  # on purpose (see scripts/zaloPoller.ts's comment) rather than running
+  # inside the Next.js server.
+  zalo-poller:
+    build: .
+    restart: unless-stopped
+    command: ["npx", "tsx", "scripts/zaloPoller.ts"]
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/shopee_reconciliation
+      ZALO_BRIDGE_URL: ${ZALO_BRIDGE_URL}
+      ZALO_BRIDGE_SECRET: ${ZALO_BRIDGE_SECRET}
+    depends_on:
+      - postgres
 
   postgres:
     image: postgres:16

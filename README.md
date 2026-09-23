@@ -17,6 +17,8 @@
 3. Run `npx prisma migrate deploy` against the production `DATABASE_URL` before or right after the first deploy.
 4. Deploy the Apps Script per `google-apps-script/README.md`, pointing `SYNC_WEBHOOK_URL` at `https://<your-vercel-domain>/api/sync/webhook` and `SYNC_SECRET` matching `SYNC_WEBHOOK_SECRET`.
 
+Note: the Zalo watch feature (`/dashboard/zalo`) does not work on Vercel — it needs a long-running process for its background poller (`instrumentation.ts`) and the `pdftotext` system binary, neither of which Vercel's serverless functions support. VPS only.
+
 ### Option B: self-hosted VPS (Docker Compose + Caddy)
 
 See [DEPLOY_VPS.md](DEPLOY_VPS.md) — app + Postgres + automatic HTTPS, no Vercel/Neon needed.
