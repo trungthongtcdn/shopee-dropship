@@ -80,9 +80,13 @@ That file has **one tab per week** (tab name is the date range, e.g.
 "07/09/2026-13/09/2026"), each row is one product line within an order (not
 one row per order), and the header row is row 8 (data from row 9) — a few
 company/report-title rows sit above it. `PaymentSync.gs` sums "Giá trị còn
-lại" (net amount after service fee + tax deduction) per "Mã đơn hàng", across
-every tab in the file, and sends one aggregated row per order to the backend
-under the `payment` tab, which upserts (never deletes) `PaymentRecord` rows.
+lại" (net amount after service fee + tax deduction) per **(Mã đơn hàng, Mã
+sản phẩm) pair** — not per order alone — across every tab in the file, and
+sends one aggregated row per (order, sku) to the backend under the `payment`
+tab, which upserts (never deletes) `PaymentRecord` rows keyed the same way.
+A multi-line order gets one `PaymentRecord` per line/SKU; summing every line
+into one order-level total would make the Report page compare a single
+line's "Giá cần thu về" against the whole order's payment.
 
 Deploy:
 

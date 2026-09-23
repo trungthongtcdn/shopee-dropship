@@ -10,10 +10,13 @@
 // "07/09/2026-13/09/2026"), each with the same layout: a few header rows,
 // then a real header row at row 8 ("Tháng | Kỳ thanh toán | Mã đơn hàng |
 // Mã sản phẩm | ... | Giá trị còn lại"), data from row 9. Each row is one
-// product LINE within an order, not one row per order — so this script sums
-// "Giá trị còn lại" (net amount after service fee + tax deduction) per "Mã
-// đơn hàng", across every tab in the file, before sending. The backend's
-// applyPaymentPayload (tab "payment") expects one row per order.
+// product LINE within an order (one "Mã sản phẩm" per line — same identifier
+// as the Report page's "SKU" column) — so this script sums "Giá trị còn lại"
+// per (Mã đơn hàng, Mã sản phẩm) PAIR across every weekly tab, NOT per order
+// alone: summing every line of a multi-line order into one order-level
+// total would make the backend compare a single line's amountDue against
+// the whole order's amountPaid. The backend's applyPaymentPayload (tab
+// "payment") expects one row per (order, sku).
 
 var PAYMENT_HEADER_ROW = 8;
 var PAYMENT_DATA_START_ROW = 9;
@@ -36,8 +39,9 @@ function paymentRecordSyncError(message) {
   props.setProperty("last_error_at", new Date().toISOString());
 }
 
-// Sums "Giá trị còn lại" per "Mã đơn hàng" across every weekly tab in the
-// payment file, returning one aggregated row per order.
+// Sums "Giá trị còn lại" per (Mã đơn hàng, Mã sản phẩm) pair across every
+// weekly tab in the payment file — a multi-line order gets one row PER
+// LINE here, never combined across different SKUs.
 function readPaymentRows() {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty("PAYMENT_SHEET_URL");
@@ -48,7 +52,7 @@ function readPaymentRows() {
 
   var ss = SpreadsheetApp.openByUrl(url);
   var sheets = ss.getSheets();
-  var totalsByOrderId = {};
+  var totals = {}; // key: orderId + "::" + sku
 
   sheets.forEach(function (sheet) {
     var lastRow = sheet.getLastRow();
@@ -57,8 +61,9 @@ function readPaymentRows() {
 
     var headers = sheet.getRange(PAYMENT_HEADER_ROW, 1, 1, lastColumn).getValues()[0];
     var orderIdCol = headers.indexOf("Mã đơn hàng");
+    var skuCol = headers.indexOf("Mã sản phẩm");
     var amountCol = headers.indexOf("Giá trị còn lại");
-    if (orderIdCol === -1 || amountCol === -1) {
+    if (orderIdCol === -1 || skuCol === -1 || amountCol === -1) {
       Logger.log("WARNING: skipping tab (unexpected header layout): " + sheet.getName());
       return;
     }
@@ -66,21 +71,25 @@ function readPaymentRows() {
     var values = sheet.getRange(PAYMENT_DATA_START_ROW, 1, lastRow - PAYMENT_DATA_START_ROW + 1, lastColumn).getValues();
     values.forEach(function (rowValues) {
       var orderId = String(rowValues[orderIdCol] || "").trim();
+      var sku = String(rowValues[skuCol] || "").trim();
       var amount = Number(rowValues[amountCol]);
-      if (!orderId || isNaN(amount)) return;
-      totalsByOrderId[orderId] = (totalsByOrderId[orderId] || 0) + amount;
+      if (!orderId || !sku || isNaN(amount)) return;
+
+      var key = orderId + "::" + sku;
+      if (!totals[key]) totals[key] = { orderId: orderId, sku: sku, amount: 0 };
+      totals[key].amount += amount;
     });
   });
 
   var rows = [];
   var index = 0;
-  for (var orderId in totalsByOrderId) {
+  for (var key in totals) {
     index += 1;
-    var amount = totalsByOrderId[orderId];
+    var t = totals[key];
     rows.push({
       rowIndex: index,
-      hash: paymentComputeRowHash([orderId, amount]),
-      data: { "Mã đơn hàng": orderId, "Giá trị còn lại": amount },
+      hash: paymentComputeRowHash([t.orderId, t.sku, t.amount]),
+      data: { "Mã đơn hàng": t.orderId, "Mã sản phẩm": t.sku, "Giá trị còn lại": t.amount },
     });
   }
   return rows;
@@ -126,7 +135,7 @@ function syncPayment() {
 
 function manualTestPaymentSync() {
   var rows = readPaymentRows();
-  Logger.log("Aggregated " + rows.length + " orders. First 3:");
+  Logger.log("Aggregated " + rows.length + " (order, sku) pairs. First 3:");
   Logger.log(JSON.stringify(rows.slice(0, 3), null, 2));
 }
 

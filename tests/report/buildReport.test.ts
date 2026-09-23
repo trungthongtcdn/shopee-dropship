@@ -48,7 +48,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 1020 }]
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 1020 }]
     );
     expect(rows[0].amountDue).toBe(1000);
     expect(rows[0].amountPaid).toBe(1020);
@@ -60,7 +60,7 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 970 }]
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 970 }]
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
   });
@@ -69,15 +69,45 @@ describe("buildReportRows", () => {
     const rows = buildReportRows(
       [order()],
       [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
-      [{ shopeeOrderId: "SP001", amount: 1050 }]
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 1050 }]
     );
     expect(rows[0].paymentMatch).toBe("not_matched");
   });
 
   it("leaves amountDue and paymentMatch null when no product matches the category", () => {
-    const rows = buildReportRows([order({ categoryName: "unknown-category" })], [], [{ shopeeOrderId: "SP001", amount: 1000 }]);
+    const rows = buildReportRows(
+      [order({ categoryName: "unknown-category" })],
+      [],
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 1000 }]
+    );
     expect(rows[0].amountDue).toBeNull();
     expect(rows[0].paymentMatch).toBeNull();
+  });
+
+  it("does not cross-match payment amounts between two lines of the same multi-line order", () => {
+    const rows = buildReportRows(
+      [
+        order({ id: 1, categoryName: "D100", lineQuantity: 1 }),
+        order({ id: 2, categoryName: "D120", lineQuantity: 1 }),
+      ],
+      [
+        { categoryName: "D100", sku: "SKU-A", kiotCode: null, collectPrice: 1000 },
+        { categoryName: "D120", sku: "SKU-B", kiotCode: null, collectPrice: 2000 },
+      ],
+      [
+        { shopeeOrderId: "SP001", sku: "SKU-A", amount: 1000 },
+        { shopeeOrderId: "SP001", sku: "SKU-B", amount: 2000 },
+      ]
+    );
+
+    const lineA = rows.find((row) => row.orderId === 1)!;
+    const lineB = rows.find((row) => row.orderId === 2)!;
+    expect(lineA.amountDue).toBe(1000);
+    expect(lineA.amountPaid).toBe(1000);
+    expect(lineA.paymentMatch).toBe("matched");
+    expect(lineB.amountDue).toBe(2000);
+    expect(lineB.amountPaid).toBe(2000);
+    expect(lineB.paymentMatch).toBe("matched");
   });
 
   it("leaves paymentMatch null when no payment has been uploaded yet", () => {

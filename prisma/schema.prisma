@@ -189,14 +189,23 @@ enum SourceTab {
 // itself has one row per product line, not per order. Upsert-only, no
 // soft-delete — a week disappearing from the payload should never erase a
 // previously-synced payment.
+// Keyed by (shopeeOrderId, sku) — NOT shopeeOrderId alone. A multi-line
+// order has one payment row per product line in the settlement file (same
+// column as the Report page's "SKU"); summing every line of an order into
+// one total mis-compares a single line's amountDue against the whole
+// order's amountPaid. Sums only within the same (order, sku) pair — a SKU
+// that appears more than once for an order across different weekly tabs
+// (e.g. a correction) is still totalled together, just not across SKUs.
 model PaymentRecord {
   id            Int      @id @default(autoincrement())
-  shopeeOrderId String   @unique @map("shopee_order_id")
+  shopeeOrderId String   @map("shopee_order_id")
+  sku           String
   amount        Float
   rawRowHash    String   @map("raw_row_hash")
   firstSyncedAt DateTime @default(now()) @map("first_synced_at")
   lastSyncedAt  DateTime @updatedAt @map("last_synced_at")
 
+  @@unique([shopeeOrderId, sku])
   @@map("payment_records")
 }
 

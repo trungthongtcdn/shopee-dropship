@@ -36,7 +36,7 @@ export default async function ReportPage({
       where: { isActive: true },
       select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
     }),
-    prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, amount: true } }),
+    prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, sku: true, amount: true } }),
   ]);
   const totalPages = totalPagesFor(totalCount);
 

@@ -26,6 +26,7 @@ export interface ReportProductInput {
 
 export interface ReportPaymentInput {
   shopeeOrderId: string;
+  sku: string;
   amount: number | null;
 }
 
@@ -63,6 +64,14 @@ function normalizeCategoryName(value: string) {
   return value.trim().toLowerCase();
 }
 
+// (shopeeOrderId, sku) — not shopeeOrderId alone. A multi-line order has a
+// separate payment amount per product line (same sku as the joined
+// Product), so the lookup must be per line, not per order — see
+// applyPaymentPayload's comment in lib/sync/apply.ts for the full story.
+function paymentKey(shopeeOrderId: string, sku: string) {
+  return `${shopeeOrderId}::${sku}`;
+}
+
 export function buildReportRows(
   orders: ReportOrderInput[],
   products: ReportProductInput[],
@@ -71,13 +80,13 @@ export function buildReportRows(
   const productByCategory = new Map(
     products.filter((product) => product.categoryName).map((product) => [normalizeCategoryName(product.categoryName!), product])
   );
-  const paymentByOrderId = new Map(payments.map((payment) => [payment.shopeeOrderId, payment.amount]));
+  const paymentByKey = new Map(payments.map((payment) => [paymentKey(payment.shopeeOrderId, payment.sku), payment.amount]));
 
   return orders.map((order) => {
     const product = order.categoryName ? productByCategory.get(normalizeCategoryName(order.categoryName)) : undefined;
     const quantity = order.lineQuantity ?? 1;
     const amountDue = product?.collectPrice != null ? product.collectPrice * quantity : null;
-    const amountPaid = paymentByOrderId.get(order.shopeeOrderId) ?? null;
+    const amountPaid = product ? (paymentByKey.get(paymentKey(order.shopeeOrderId, product.sku)) ?? null) : null;
 
     let diffPercent: number | null = null;
     let paymentMatch: PaymentMatch | null = null;

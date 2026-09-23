@@ -408,11 +408,15 @@ export interface PaymentResult {
 }
 
 // Comes from a third, separate Drive file — a weekly Shopee settlement
-// report, view-only access. The Apps Script already sums "Giá trị còn lại"
-// per order across every weekly tab before sending, so each row here is one
-// order's total. Upsert-only (create or update), never soft-deleted — an
-// order missing from one sync cycle's payload should not erase its
-// previously-synced payment.
+// report, view-only access. Keyed by (shopeeOrderId, sku) — the Apps Script
+// sums "Giá trị còn lại" per (order, sku) pair across every weekly tab
+// before sending, NOT per order alone: a multi-line order has one payment
+// row per product line (same "sku" as the Report page's "SKU" column), and
+// summing every line into one order-level total would compare a single
+// line's amountDue against the whole order's amountPaid. Upsert-only
+// (create or update), never soft-deleted — an (order, sku) pair missing
+// from one sync cycle's payload should not erase its previously-synced
+// payment.
 export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentResult> {
   let upserted = 0;
   let skipped = 0;
@@ -420,17 +424,19 @@ export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentR
 
   for (const row of rows) {
     const shopeeOrderId = String(getByHeader(row.data, "Mã đơn hàng") ?? "");
+    const sku = String(getByHeader(row.data, "Mã sản phẩm") ?? "");
     const amount = getInt(row.data, "Giá trị còn lại");
-    if (!shopeeOrderId || amount === null) {
+    if (!shopeeOrderId || !sku || amount === null) {
       skipped += 1;
       continue;
     }
 
+    const key = { shopeeOrderId_sku: { shopeeOrderId, sku } };
     try {
-      const before = await prisma.paymentRecord.findUnique({ where: { shopeeOrderId } });
+      const before = await prisma.paymentRecord.findUnique({ where: key });
       const after = await prisma.paymentRecord.upsert({
-        where: { shopeeOrderId },
-        create: { shopeeOrderId, amount, rawRowHash: row.hash },
+        where: key,
+        create: { shopeeOrderId, sku, amount, rawRowHash: row.hash },
         update: { amount, rawRowHash: row.hash },
       });
       await prisma.syncLog.create({
@@ -444,7 +450,7 @@ export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentR
       });
       upserted += 1;
     } catch (error) {
-      rowErrors.push({ identifier: shopeeOrderId, error: error instanceof Error ? error.message : String(error) });
+      rowErrors.push({ identifier: `${shopeeOrderId}/${sku}`, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
