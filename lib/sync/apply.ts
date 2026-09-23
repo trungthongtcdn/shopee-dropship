@@ -417,6 +417,14 @@ export interface PaymentResult {
 // (create or update), never soft-deleted — an (order, sku) pair missing
 // from one sync cycle's payload should not erase its previously-synced
 // payment.
+//
+// The sheet has no per-row "payment date" column — confirmed with the user
+// to use the END date of the weekly tab's date-range name instead (Apps
+// Script sends it as "Ngày thanh toán"). When present, this also patches
+// Order.paidAt (the Report page's manually-editable "Ngày thanh toán"
+// field) for whichever order line this sku belongs to, found by joining
+// through Product.categoryName — same override pattern as cancel_receipt,
+// still editable by hand afterward.
 export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentResult> {
   let upserted = 0;
   let skipped = 0;
@@ -431,6 +439,7 @@ export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentR
       continue;
     }
 
+    const paidAt = getDate(row.data, "Ngày thanh toán");
     const key = { shopeeOrderId_sku: { shopeeOrderId, sku } };
     try {
       const before = await prisma.paymentRecord.findUnique({ where: key });
@@ -449,6 +458,16 @@ export async function applyPaymentPayload(rows: IncomingRow[]): Promise<PaymentR
         },
       });
       upserted += 1;
+
+      if (paidAt !== null) {
+        const product = await prisma.product.findUnique({ where: { sku } });
+        if (product?.categoryName) {
+          await prisma.order.updateMany({
+            where: { shopeeOrderId, categoryName: product.categoryName },
+            data: { paidAt },
+          });
+        }
+      }
     } catch (error) {
       rowErrors.push({ identifier: `${shopeeOrderId}/${sku}`, error: error instanceof Error ? error.message : String(error) });
     }

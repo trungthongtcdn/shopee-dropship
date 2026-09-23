@@ -100,7 +100,8 @@ Deploy:
 4. Run `manualTestPaymentSync` once, check the log for the aggregated order
    count and a sample of rows.
 5. Run `syncPayment` once, confirm `payment_records` rows appear (the Report
-   page's "Số tiền thanh toán" column should populate).
+   page's "Số tiền thanh toán" column should populate, and "Ngày thanh toán"
+   too — the end date of whichever weekly tab the order/sku pair came from).
 6. Run `createPaymentTimeTrigger` once (polls every 30 minutes).
 
 ### Per-week batch detail (Reconciliation page)

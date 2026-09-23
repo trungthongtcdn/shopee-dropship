@@ -17,6 +17,11 @@
 // total would make the backend compare a single line's amountDue against
 // the whole order's amountPaid. The backend's applyPaymentPayload (tab
 // "payment") expects one row per (order, sku).
+//
+// No column in the sheet is an explicit "payment date" — confirmed with
+// Luân to use the END date of the tab's own date-range name instead (see
+// paymentParseWeekEndDate), sent as "Ngày thanh toán". The backend patches
+// this onto Order.paidAt (Report page's "Ngày thanh toán").
 
 var PAYMENT_HEADER_ROW = 8;
 var PAYMENT_DATA_START_ROW = 9;
@@ -37,6 +42,21 @@ function paymentRecordSyncError(message) {
   var props = PropertiesService.getScriptProperties();
   props.setProperty("last_error", String(message).slice(0, 500));
   props.setProperty("last_error_at", new Date().toISOString());
+}
+
+// The sheet has no per-row payment-date column — the tab name itself is the
+// date range (e.g. "07/09/2026-13/09/2026"), confirmed with Luân to use the
+// END date of that range as "Ngày thanh toán". Format is DD/MM/YYYY-DD/MM/YYYY.
+function paymentParseWeekEndDate(tabName) {
+  var parts = tabName.split("-");
+  if (parts.length !== 2) return null;
+  var endParts = parts[1].split("/");
+  if (endParts.length !== 3) return null;
+  var day = Number(endParts[0]);
+  var month = Number(endParts[1]);
+  var year = Number(endParts[2]);
+  if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+  return new Date(year, month - 1, day);
 }
 
 // Sums "Giá trị còn lại" per (Mã đơn hàng, Mã sản phẩm) pair across every
@@ -68,6 +88,8 @@ function readPaymentRows() {
       return;
     }
 
+    var weekEndDate = paymentParseWeekEndDate(sheet.getName());
+
     var values = sheet.getRange(PAYMENT_DATA_START_ROW, 1, lastRow - PAYMENT_DATA_START_ROW + 1, lastColumn).getValues();
     values.forEach(function (rowValues) {
       var orderId = String(rowValues[orderIdCol] || "").trim();
@@ -76,8 +98,13 @@ function readPaymentRows() {
       if (!orderId || !sku || isNaN(amount)) return;
 
       var key = orderId + "::" + sku;
-      if (!totals[key]) totals[key] = { orderId: orderId, sku: sku, amount: 0 };
+      if (!totals[key]) totals[key] = { orderId: orderId, sku: sku, amount: 0, paidAt: null };
       totals[key].amount += amount;
+      // If the same (order, sku) pair appears in more than one weekly tab
+      // (e.g. a correction), keep the most recent week's end date.
+      if (weekEndDate && (!totals[key].paidAt || weekEndDate > totals[key].paidAt)) {
+        totals[key].paidAt = weekEndDate;
+      }
     });
   });
 
@@ -86,10 +113,12 @@ function readPaymentRows() {
   for (var key in totals) {
     index += 1;
     var t = totals[key];
+    var data = { "Mã đơn hàng": t.orderId, "Mã sản phẩm": t.sku, "Giá trị còn lại": t.amount };
+    if (t.paidAt) data["Ngày thanh toán"] = t.paidAt.toISOString();
     rows.push({
       rowIndex: index,
-      hash: paymentComputeRowHash([t.orderId, t.sku, t.amount]),
-      data: { "Mã đơn hàng": t.orderId, "Mã sản phẩm": t.sku, "Giá trị còn lại": t.amount },
+      hash: paymentComputeRowHash([t.orderId, t.sku, t.amount, t.paidAt ? t.paidAt.toISOString() : ""]),
+      data: data,
     });
   }
   return rows;
