@@ -2,6 +2,13 @@ import { prisma } from "@/lib/db";
 import { buildReportRows } from "@/lib/report/buildReport";
 import { RowEditor } from "./RowEditor";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import {
+  parseReportFilters,
+  buildOrderWhere,
+  matchesPaymentMatchFilter,
+  reportFiltersToSearchParams,
+  type ReportFilters,
+} from "@/lib/report/filters";
 
 export const dynamic = "force-dynamic";
 
@@ -20,27 +27,30 @@ function formatDate(value: Date | null) {
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: { page?: string };
+  searchParams: { page?: string } & Record<string, string | undefined>;
 }) {
   const page = parsePage(searchParams.page);
+  const filters = parseReportFilters(searchParams);
+  const filterQuery = reportFiltersToSearchParams(filters).toString();
+  const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
 
-  const [orders, totalCount, products, payments] = await Promise.all([
+  const [orders, products, payments] = await Promise.all([
     prisma.order.findMany({
-      where: { isActive: true },
+      where: buildOrderWhere(filters),
       orderBy: { shopeeOrderId: "asc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
     }),
-    prisma.order.count({ where: { isActive: true } }),
     prisma.product.findMany({
       where: { isActive: true },
       select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
     }),
     prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, sku: true, amount: true } }),
   ]);
-  const totalPages = totalPagesFor(totalCount);
 
-  const rows = buildReportRows(orders, products, payments);
+  const allRows = buildReportRows(orders, products, payments).filter((row) =>
+    matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch)
+  );
+  const totalPages = totalPagesFor(allRows.length);
+  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <main className="page">
@@ -49,7 +59,13 @@ export default async function ReportPage({
         Số tiền thanh toán đồng bộ tự động từ file thanh toán Shopee trên Drive. Chênh lệch quá 2% (cả 2 chiều) tính là không khớp.
       </p>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
+      <ReportFilterForm filters={filters} />
+
+      <p className="cell-muted" style={{ marginBottom: "var(--space-2)" }}>
+        {allRows.length} đơn
+      </p>
+
+      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
 
       <div className="table-wrap">
         <table className="data-table">
@@ -113,10 +129,92 @@ export default async function ReportPage({
             ))}
           </tbody>
         </table>
-        {rows.length === 0 ? <p className="empty-state">Chưa có dữ liệu.</p> : null}
+        {rows.length === 0 ? <p className="empty-state">Không có đơn nào khớp bộ lọc.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
+      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
     </main>
+  );
+}
+
+function ReportFilterForm({ filters }: { filters: ReportFilters }) {
+  return (
+    <form className="toolbar" method="get">
+      <div className="field">
+        <span className="field-label">Tìm kiếm</span>
+        <input
+          className="input"
+          type="text"
+          name="q"
+          defaultValue={filters.q}
+          placeholder="Mã đơn hàng / mã vận đơn"
+          style={{ minWidth: 220 }}
+        />
+      </div>
+
+      <div className="field">
+        <span className="field-label">Đối soát TT</span>
+        <select className="select" name="paymentMatch" defaultValue={filters.paymentMatch}>
+          <option value="">Tất cả</option>
+          <option value="matched">Khớp</option>
+          <option value="not_matched">Không khớp</option>
+          <option value="none">Chưa đối soát</option>
+        </select>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Trạng thái đóng đơn</span>
+        <select className="select" name="sendStatus" defaultValue={filters.sendStatus}>
+          <option value="">Tất cả</option>
+          <option value="sent">Đã gửi</option>
+          <option value="cancelled">Huỷ</option>
+          <option value="none">Chưa đóng đơn</option>
+        </select>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Trạng thái nhận huỷ</span>
+        <select className="select" name="cancelReceiptStatus" defaultValue={filters.cancelReceiptStatus}>
+          <option value="">Tất cả</option>
+          <option value="received_full">Đã nhận đủ</option>
+          <option value="not_received">Chưa nhận</option>
+          <option value="received_partial">Nhận thiếu</option>
+          <option value="none">Chưa có</option>
+        </select>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Ngày gửi đơn</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          <input className="input" type="date" name="sentFrom" defaultValue={filters.sentFrom} />
+          <input className="input" type="date" name="sentTo" defaultValue={filters.sentTo} />
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Ngày nhận đơn huỷ</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          <input className="input" type="date" name="cancelFrom" defaultValue={filters.cancelFrom} />
+          <input className="input" type="date" name="cancelTo" defaultValue={filters.cancelTo} />
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Ngày thanh toán</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
+          <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />
+        </div>
+      </div>
+
+      <div className="field" style={{ flexDirection: "row", gap: "var(--space-2)" }}>
+        <button type="submit" className="btn btn-primary btn-sm">
+          Lọc
+        </button>
+        <a href="/dashboard/report" className="btn btn-secondary btn-sm">
+          Xoá lọc
+        </a>
+      </div>
+    </form>
   );
 }
