@@ -93,7 +93,13 @@ function readPaymentRows() {
     var values = sheet.getRange(PAYMENT_DATA_START_ROW, 1, lastRow - PAYMENT_DATA_START_ROW + 1, lastColumn).getValues();
     values.forEach(function (rowValues) {
       var orderId = String(rowValues[orderIdCol] || "").trim();
-      var sku = String(rowValues[skuCol] || "").trim();
+      // "Mã sản phẩm" in this file is "itemId_modelId" (e.g.
+      // "46662131156_351051228328"); Product.sku only stores the modelId
+      // half (e.g. "351051228328") — take the part after the last "_" so
+      // this matches the same identifier the Report page's "SKU" column
+      // and PricingSync.gs's Product rows use.
+      var rawSku = String(rowValues[skuCol] || "").trim();
+      var sku = rawSku.indexOf("_") !== -1 ? rawSku.slice(rawSku.lastIndexOf("_") + 1) : rawSku;
       var amount = Number(rowValues[amountCol]);
       if (!orderId || !sku || isNaN(amount)) return;
 
