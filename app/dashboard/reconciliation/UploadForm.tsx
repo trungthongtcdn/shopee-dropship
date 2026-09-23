@@ -34,10 +34,12 @@ export function UploadForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <input type="file" name="file" accept=".xlsx,.xls" required />
-      <button type="submit">Upload</button>
-      {status && <p>{status}</p>}
+    <form onSubmit={handleSubmit} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+      <input className="input" type="file" name="file" accept=".xlsx,.xls" required />
+      <button type="submit" className="btn btn-primary">
+        Upload
+      </button>
+      {status && <span className="editor-status">{status}</span>}
     </form>
   );
 }

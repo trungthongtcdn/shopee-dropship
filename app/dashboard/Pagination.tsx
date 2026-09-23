@@ -23,10 +23,12 @@ export function Pagination({
   if (totalPages <= 1) return null;
 
   return (
-    <p>
-      {page > 1 ? <a href={buildHref(page - 1)}>« Trước</a> : <span>« Trước</span>}
-      {" "}Trang {page} / {totalPages}{" "}
-      {page < totalPages ? <a href={buildHref(page + 1)}>Sau »</a> : <span>Sau »</span>}
-    </p>
+    <div className="pagination">
+      {page > 1 ? <a href={buildHref(page - 1)}>« Trước</a> : <span className="disabled">« Trước</span>}
+      <span className="pagination-status">
+        Trang {page} / {totalPages}
+      </span>
+      {page < totalPages ? <a href={buildHref(page + 1)}>Sau »</a> : <span className="disabled">Sau »</span>}
+    </div>
   );
 }

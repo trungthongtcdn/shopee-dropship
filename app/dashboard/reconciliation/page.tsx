@@ -17,6 +17,12 @@ function formatAmount(value: number | null) {
   return value === null ? "-" : value.toLocaleString("vi-VN");
 }
 
+function matchStatusBadgeClass(status: MatchStatus) {
+  if (status === "matched") return "badge badge-success";
+  if (status === "status_mismatch") return "badge badge-danger";
+  return "badge badge-warning";
+}
+
 export default async function ReconciliationPage({
   searchParams,
 }: {
@@ -103,21 +109,26 @@ export default async function ReconciliationPage({
   };
 
   return (
-    <main>
+    <main className="page">
       <h1>Reconciliation</h1>
-      <UploadForm />
 
-      <h2>Batches</h2>
+      <div className="card">
+        <UploadForm />
+      </div>
+
+      <h2>Batches (upload tay)</h2>
       {batches.length === 0 ? (
-        <p>No batches uploaded yet.</p>
+        <p className="empty-state">Chưa có batch nào được upload.</p>
       ) : (
-        <ul>
+        <ul className="list-plain">
           {batches.map((batch) => (
             <li key={batch.id}>
-              <a href={`?batchId=${batch.id}`}>
-                {batch.fileName} — {batch.uploadedAt.toISOString()} ({batch.status})
+              <a className={`list-item-link${batch.id === selectedBatch?.id ? " active" : ""}`} href={`?batchId=${batch.id}`}>
+                <span>{batch.fileName}</span>
+                <span className="list-item-meta">
+                  {batch.uploadedAt.toLocaleString("vi-VN")} · {batch.status}
+                </span>
               </a>
-              {batch.id === selectedBatch?.id ? " ← viewing" : null}
             </li>
           ))}
         </ul>
@@ -125,72 +136,85 @@ export default async function ReconciliationPage({
 
       {selectedBatch ? (
         <>
-          <h2>
+          <h3>
             Batch {selectedBatch.id}: {selectedBatch.fileName}
-          </h2>
+          </h3>
 
-          <p>
-            <strong>Filter:</strong>{" "}
-            <a href={`?batchId=${selectedBatch.id}`}>{statusFilter ? "all" : "all (active)"}</a>
+          <div className="toolbar">
+            <a className={`filter-pill${!statusFilter ? " active" : ""}`} href={`?batchId=${selectedBatch.id}`}>
+              Tất cả
+            </a>
             {VALID_MATCH_STATUSES.map((status) => (
-              <span key={status}>
-                {" | "}
-                <a href={`?batchId=${selectedBatch.id}&status=${status}`}>
-                  {status}
-                  {statusFilter === status ? " (active)" : ""}
-                </a>
+              <a
+                key={status}
+                className={`filter-pill${statusFilter === status ? " active" : ""}`}
+                href={`?batchId=${selectedBatch.id}&status=${status}`}
+              >
+                {status}
+              </a>
+            ))}
+          </div>
+
+          <div className="summary-bar">
+            <span className="stat-chip">
+              <strong>{batchResults.length}</strong> kết quả
+            </span>
+            {countsByStatus.map((entry) => (
+              <span className="stat-chip" key={entry.status}>
+                {entry.status}: <strong>{entry.count}</strong>
               </span>
             ))}
-          </p>
-
-          <p>
-            <strong>Summary:</strong> {batchResults.length} results
-            {countsByStatus.length > 0
-              ? ` — ${countsByStatus.map((entry) => `${entry.status}: ${entry.count}`).join(", ")}`
-              : ""}
-            {" — "}
-            <strong>total discrepancy:</strong> {discrepancyTotal.toLocaleString("vi-VN")}
-          </p>
+            <span className="stat-chip">
+              Tổng chênh lệch: <strong>{discrepancyTotal.toLocaleString("vi-VN")}</strong>
+            </span>
+          </div>
 
           <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
 
-          <table>
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Status</th>
-                <th>Sheet amount</th>
-                <th>Excel amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((result) => (
-                <tr key={result.id}>
-                  <td>{result.shopeeOrderId ?? "-"}</td>
-                  <td>{result.matchStatus}</td>
-                  <td>{formatAmount(result.sheetAmount)}</td>
-                  <td>{formatAmount(result.excelAmount)}</td>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Mã đơn hàng</th>
+                  <th>Trạng thái</th>
+                  <th>Sheet amount</th>
+                  <th>Excel amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {results.length === 0 ? <p>No results for this filter.</p> : null}
+              </thead>
+              <tbody>
+                {results.map((result) => (
+                  <tr key={result.id}>
+                    <td>{result.shopeeOrderId ?? "-"}</td>
+                    <td>
+                      <span className={matchStatusBadgeClass(result.matchStatus)}>{result.matchStatus}</span>
+                    </td>
+                    <td className="num">{formatAmount(result.sheetAmount)}</td>
+                    <td className="num">{formatAmount(result.excelAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {results.length === 0 ? <p className="empty-state">Không có kết quả cho bộ lọc này.</p> : null}
+          </div>
           <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
         </>
       ) : null}
 
       <h2>Đối soát thanh toán (tự động từ Drive)</h2>
-      <p>Mỗi tuần trên file thanh toán Shopee là 1 batch dưới đây, tên trùng với tên sheet.</p>
+      <p className="page-description">Mỗi tuần trên file thanh toán Shopee là 1 batch dưới đây, tên trùng với tên sheet.</p>
       {paymentBatches.length === 0 ? (
-        <p>Chưa có batch nào được đồng bộ.</p>
+        <p className="empty-state">Chưa có batch nào được đồng bộ.</p>
       ) : (
-        <ul>
+        <ul className="list-plain">
           {paymentBatches.map((batch) => (
             <li key={batch.id}>
-              <a href={`?paymentBatchId=${batch.id}`}>
-                {batch.weekLabel} — đồng bộ lúc {batch.syncedAt.toISOString()}
+              <a
+                className={`list-item-link${batch.id === selectedPaymentBatch?.id ? " active" : ""}`}
+                href={`?paymentBatchId=${batch.id}`}
+              >
+                <span>{batch.weekLabel}</span>
+                <span className="list-item-meta">đồng bộ lúc {batch.syncedAt.toLocaleString("vi-VN")}</span>
               </a>
-              {batch.id === selectedPaymentBatch?.id ? " ← đang xem" : null}
             </li>
           ))}
         </ul>
@@ -199,40 +223,44 @@ export default async function ReconciliationPage({
       {selectedPaymentBatch ? (
         <>
           <h3>Batch: {selectedPaymentBatch.weekLabel}</h3>
-          <p>
-            <strong>Số dòng:</strong> {paymentBatchLineTotal}
-          </p>
+          <div className="summary-bar">
+            <span className="stat-chip">
+              <strong>{paymentBatchLineTotal}</strong> dòng
+            </span>
+          </div>
 
           <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
 
-          <table>
-            <thead>
-              <tr>
-                <th>Mã đơn hàng</th>
-                <th>Mã sản phẩm</th>
-                <th>Tên hàng hóa</th>
-                <th>SL</th>
-                <th>Giá bán</th>
-                <th>Phí dịch vụ</th>
-                <th>Khấu trừ thuế</th>
-                <th>Giá trị còn lại</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paymentBatchLines.map((line) => (
-                <tr key={line.id}>
-                  <td>{line.shopeeOrderId}</td>
-                  <td>{line.sku ?? "-"}</td>
-                  <td>{line.productName ?? "-"}</td>
-                  <td>{line.quantity ?? "-"}</td>
-                  <td>{formatAmount(line.sellPrice)}</td>
-                  <td>{formatAmount(line.serviceFee)}</td>
-                  <td>{formatAmount(line.taxDeduction)}</td>
-                  <td>{formatAmount(line.netAmount)}</td>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Mã đơn hàng</th>
+                  <th>Mã sản phẩm</th>
+                  <th>Tên hàng hóa</th>
+                  <th>SL</th>
+                  <th>Giá bán</th>
+                  <th>Phí dịch vụ</th>
+                  <th>Khấu trừ thuế</th>
+                  <th>Giá trị còn lại</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paymentBatchLines.map((line) => (
+                  <tr key={line.id}>
+                    <td>{line.shopeeOrderId}</td>
+                    <td>{line.sku ?? "-"}</td>
+                    <td>{line.productName ?? "-"}</td>
+                    <td className="num">{line.quantity ?? "-"}</td>
+                    <td className="num">{formatAmount(line.sellPrice)}</td>
+                    <td className="num">{formatAmount(line.serviceFee)}</td>
+                    <td className="num">{formatAmount(line.taxDeduction)}</td>
+                    <td className="num">{formatAmount(line.netAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
         </>

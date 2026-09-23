@@ -68,13 +68,20 @@ export function RowEditor(props: RowEditorProps) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>
-      <label>
-        Ngày gửi đơn: <input type="date" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />
-      </label>
-      <label>
-        Trạng thái đóng đơn:{" "}
-        <select value={sendStatus} onChange={(e) => setSendStatus(e.target.value)}>
+    <details className="editor-details">
+      <summary className="editor-summary">
+        {luanCheck ? <span className="badge badge-success">đã check</span> : <span className="badge">chưa check</span>}
+        {sendStatus ? <span className="cell-muted">{sendStatus === "sent" ? "đã gửi" : "huỷ"}</span> : null}
+        <span className="editor-summary-action">Sửa ▾</span>
+      </summary>
+      <div style={{ minWidth: 220, marginTop: "var(--space-2)" }}>
+      <div className="field">
+        <span className="field-label">Ngày gửi đơn</span>
+        <input className="input" type="date" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />
+      </div>
+      <div className="field">
+        <span className="field-label">Trạng thái đóng đơn</span>
+        <select className="select" value={sendStatus} onChange={(e) => setSendStatus(e.target.value)}>
           <option value="">-</option>
           {SEND_STATUS_OPTIONS.map((value) => (
             <option key={value} value={value}>
@@ -82,13 +89,15 @@ export function RowEditor(props: RowEditorProps) {
             </option>
           ))}
         </select>
-      </label>
-      <label>
-        Ngày thanh toán: <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
-      </label>
-      <label>
-        % hỏng:{" "}
+      </div>
+      <div className="field">
+        <span className="field-label">Ngày thanh toán</span>
+        <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+      </div>
+      <div className="field">
+        <span className="field-label">% hỏng</span>
         <input
+          className="input"
           type="number"
           step="0.1"
           min="0"
@@ -96,10 +105,10 @@ export function RowEditor(props: RowEditorProps) {
           value={defectRatePercent}
           onChange={(e) => setDefectRatePercent(e.target.value)}
         />
-      </label>
-      <label>
-        Trạng thái nhận huỷ:{" "}
-        <select value={cancelReceiptStatus} onChange={(e) => setCancelReceiptStatus(e.target.value)}>
+      </div>
+      <div className="field">
+        <span className="field-label">Trạng thái nhận huỷ</span>
+        <select className="select" value={cancelReceiptStatus} onChange={(e) => setCancelReceiptStatus(e.target.value)}>
           <option value="">-</option>
           {CANCEL_RECEIPT_OPTIONS.map((value) => (
             <option key={value} value={value}>
@@ -107,20 +116,24 @@ export function RowEditor(props: RowEditorProps) {
             </option>
           ))}
         </select>
+      </div>
+      <div className="field">
+        <span className="field-label">TT khiếu nại huỷ</span>
+        <input className="input" type="text" value={cancelComplaintNote} onChange={(e) => setCancelComplaintNote(e.target.value)} />
+      </div>
+      <div className="field">
+        <span className="field-label">Ghi chú</span>
+        <input className="input" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+      <label className="field field-checkbox">
+        <input type="checkbox" checked={luanCheck} onChange={(e) => setLuanCheck(e.target.checked)} />
+        Luân check (DONE)
       </label>
-      <label>
-        TT khiếu nại huỷ: <input type="text" value={cancelComplaintNote} onChange={(e) => setCancelComplaintNote(e.target.value)} />
-      </label>
-      <label>
-        Ghi chú: <input type="text" value={note} onChange={(e) => setNote(e.target.value)} />
-      </label>
-      <label>
-        <input type="checkbox" checked={luanCheck} onChange={(e) => setLuanCheck(e.target.checked)} /> Luân check (DONE)
-      </label>
-      <button type="button" onClick={save}>
+      <button type="button" className="btn btn-primary btn-sm" onClick={save}>
         Lưu
       </button>
-      {status && <span>{status}</span>}
-    </div>
+      {status && <div className="editor-status">{status}</div>}
+      </div>
+    </details>
   );
 }
