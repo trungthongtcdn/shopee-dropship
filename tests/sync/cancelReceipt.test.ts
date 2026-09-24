@@ -74,7 +74,7 @@ describe("applyCancelReceiptPayload", () => {
   it("does not error when a tracking code matches no order yet", async () => {
     const result = await applyCancelReceiptPayload([cancelRow(2, "h1", { "Mã vận đơn": "SPXVN-UNKNOWN" })]);
     expect(result.updated).toBe(0);
-    expect(result.skipped).toBe(0);
+    expect(result.skipped).toBe(1);
     expect(result.rowErrors).toEqual([]);
   });
 
@@ -123,6 +123,45 @@ describe("applyCancelReceiptPayload", () => {
     expect(second.unchanged).toBe(0);
     const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP005" } });
     expect(order?.cancelReceiptStatus).toBe("received_full");
+  });
+
+  it("reports ambiguous and skips when a tracking code currently matches more than one order", async () => {
+    await seedOrder({ shopeeOrderId: "SP007A", trackingCode: "SPXVN007" });
+    await seedOrder({ shopeeOrderId: "SP007B", trackingCode: "SPXVN007" });
+
+    const result = await applyCancelReceiptPayload([
+      cancelRow(2, "h1", { "Mã vận đơn": "SPXVN007", "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN ĐỦ" }),
+    ]);
+
+    expect(result.updated).toBe(0);
+    expect(result.ambiguous).toBe(1);
+    expect(result.rowErrors).toHaveLength(1);
+    expect(result.rowErrors[0].identifier).toBe("SPXVN007");
+
+    const orderA = await prisma.order.findFirst({ where: { shopeeOrderId: "SP007A" } });
+    const orderB = await prisma.order.findFirst({ where: { shopeeOrderId: "SP007B" } });
+    expect(orderA?.cancelReceiptStatus).toBeNull();
+    expect(orderB?.cancelReceiptStatus).toBeNull();
+  });
+
+  it("re-applies when the same tracking code now resolves to a different order, even with an unchanged hash", async () => {
+    await seedOrder({ shopeeOrderId: "SP008", trackingCode: "SPXVN008" });
+    const row = cancelRow(2, "same-hash", { "Mã vận đơn": "SPXVN008", "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN ĐỦ" });
+
+    const first = await applyCancelReceiptPayload([row]);
+    expect(first.updated).toBe(1);
+
+    // Tracking code reassigned: the old order moves off it, a new order
+    // takes it over (carrier code reuse / correction).
+    await prisma.order.updateMany({ where: { shopeeOrderId: "SP008" }, data: { trackingCode: null } });
+    await seedOrder({ shopeeOrderId: "SP009", trackingCode: "SPXVN008" });
+
+    const second = await applyCancelReceiptPayload([row]);
+    expect(second.updated).toBe(1);
+    expect(second.unchanged).toBe(0);
+
+    const newOrder = await prisma.order.findFirst({ where: { shopeeOrderId: "SP009" } });
+    expect(newOrder?.cancelReceiptStatus).toBe("received_full");
   });
 
   it("retries an unmatched tracking code instead of permanently skipping it once the order appears", async () => {

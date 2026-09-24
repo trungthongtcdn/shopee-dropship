@@ -335,10 +335,17 @@ model ZaloConfirmationLog {
 // cancel-receipt sync, so a 30-minute re-sync of the sheet's unchanged rows
 // is a no-op instead of re-writing the same values (and silently clobbering
 // a manual edit Luân made in RowEditor since the last real sheet change).
+//
+// Also remembers which shopeeOrderId the tracking code resolved to — a
+// tracking code getting reassigned to a different order (carrier code
+// reuse, or the 1-order-1-tracking-code assumption breaking) must force a
+// re-apply even if the sheet row's own text is unchanged, since the
+// resolved order changed underneath it. See applyCancelReceiptPayload.
 model CancelReceiptSyncState {
-  trackingCode String   @id @map("tracking_code")
-  rawRowHash   String   @map("raw_row_hash")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  trackingCode  String   @id @map("tracking_code")
+  shopeeOrderId String   @map("shopee_order_id")
+  rawRowHash    String   @map("raw_row_hash")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("cancel_receipt_sync_state")
 }

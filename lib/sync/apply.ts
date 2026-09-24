@@ -533,6 +533,7 @@ export interface CancelReceiptResult {
   updated: number;
   unchanged: number;
   skipped: number;
+  ambiguous: number;
   rowErrors: RowError[];
 }
 
@@ -547,16 +548,28 @@ const CANCEL_RECEIPT_STATUS_MAP: Record<string, CancelReceiptStatus> = {
 // actually arriving back at her warehouse. Column A is pre-filled with a
 // running calendar of dates as a template; a row only represents a real
 // event once column B (Mã vận đơn) is filled in, so rows with no tracking
-// code are skipped rather than treated as errors. Matches Order rows by
-// trackingCode (not shopeeOrderId) since that's the sheet's only key, and
-// deliberately updateMany — one tracking code can cover every product line
-// of a multi-line order, and all of them should get the same values.
+// code are skipped rather than treated as errors.
+//
+// The sheet's only key is trackingCode, but each real order has exactly one
+// trackingCode, so before applying anything we resolve trackingCode ->
+// shopeeOrderId against Order and check BOTH fields from then on: the
+// update's where-clause is scoped to {trackingCode, shopeeOrderId} (not
+// trackingCode alone), and CancelReceiptSyncState remembers shopeeOrderId
+// alongside the row hash — so a tracking code reassigned to a different
+// order later forces a re-apply even if the sheet text didn't change. If a
+// trackingCode currently resolves to more than one distinct shopeeOrderId
+// (the 1-order-1-tracking-code assumption broke — carrier code reuse, a
+// data entry mistake, or a genuine resend), refuse to guess and report it
+// as ambiguous rather than stamping data onto the wrong order.
+// updateMany (not update) is still deliberate: one tracking code covers
+// every product line of a multi-line order, and all of them get the same
+// values.
 //
 // The Apps Script resends every filled-in row on every ~30min cycle (no
-// diffing on its end), so CancelReceiptSyncState remembers the last-applied
-// hash per tracking code and skips rows whose content hasn't changed —
-// otherwise an unchanged sheet row would silently overwrite a manual edit
-// Luân made in RowEditor since the last real sheet change.
+// diffing on its end), so CancelReceiptSyncState skips rows whose content
+// (and resolved order) hasn't changed — otherwise an unchanged sheet row
+// would silently overwrite a manual edit Luân made in RowEditor since the
+// last real sheet change.
 //
 // % hỏng convention: treated as a whole-number percent (5 = 5%), same as
 // the manual RowEditor input — unverified against real data, since this
@@ -565,6 +578,7 @@ export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<Ca
   let updated = 0;
   let unchanged = 0;
   let skipped = 0;
+  let ambiguous = 0;
   const rowErrors: RowError[] = [];
 
   for (const row of rows) {
@@ -575,8 +589,32 @@ export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<Ca
     }
 
     try {
+      const matches = await prisma.order.findMany({
+        where: { trackingCode, isActive: true },
+        select: { shopeeOrderId: true },
+        distinct: ["shopeeOrderId"],
+      });
+
+      if (matches.length === 0) {
+        // No order has synced in under this tracking code yet — leave no
+        // state so the next cycle retries instead of blackholing it.
+        skipped += 1;
+        continue;
+      }
+
+      if (matches.length > 1) {
+        ambiguous += 1;
+        rowErrors.push({
+          identifier: trackingCode,
+          error: `trackingCode khớp ${matches.length} đơn khác nhau (${matches.map((m) => m.shopeeOrderId).join(", ")}) — bỏ qua, cần kiểm tra thủ công`,
+        });
+        continue;
+      }
+
+      const shopeeOrderId = matches[0].shopeeOrderId;
+
       const syncState = await prisma.cancelReceiptSyncState.findUnique({ where: { trackingCode } });
-      if (syncState?.rawRowHash === row.hash) {
+      if (syncState?.rawRowHash === row.hash && syncState.shopeeOrderId === shopeeOrderId) {
         unchanged += 1;
         continue;
       }
@@ -588,28 +626,24 @@ export async function applyCancelReceiptPayload(rows: IncomingRow[]): Promise<Ca
       const cancelReceiptStatus = statusRaw ? (CANCEL_RECEIPT_STATUS_MAP[statusRaw.trim().toUpperCase()] ?? null) : null;
 
       const result = await prisma.order.updateMany({
-        where: { trackingCode },
+        where: { trackingCode, shopeeOrderId },
         data: {
           ...(cancelReceivedAt !== null ? { cancelReceivedAt } : {}),
           ...(defectRate !== null ? { defectRate } : {}),
           ...(cancelReceiptStatus !== null ? { cancelReceiptStatus } : {}),
         },
       });
-      // Only remember this row once it actually matched an order — if the
-      // matching order hasn't synced in yet, leave no state so the next
-      // cycle retries instead of skipping it as "unchanged" forever.
-      if (result.count > 0) {
-        await prisma.cancelReceiptSyncState.upsert({
-          where: { trackingCode },
-          create: { trackingCode, rawRowHash: row.hash },
-          update: { rawRowHash: row.hash },
-        });
-      }
+
+      await prisma.cancelReceiptSyncState.upsert({
+        where: { trackingCode },
+        create: { trackingCode, shopeeOrderId, rawRowHash: row.hash },
+        update: { shopeeOrderId, rawRowHash: row.hash },
+      });
       updated += result.count;
     } catch (error) {
       rowErrors.push({ identifier: trackingCode, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
-  return { updated, unchanged, skipped, rowErrors };
+  return { updated, unchanged, skipped, ambiguous, rowErrors };
 }

@@ -76,14 +76,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // cancel_receipt matches by trackingCode (updateMany, no soft-delete
-  // concept) — its own response shape, same reasoning as sku_pricing/payment.
+  // cancel_receipt resolves trackingCode -> shopeeOrderId then matches on
+  // both (updateMany, no soft-delete concept) — its own response shape,
+  // same reasoning as sku_pricing/payment.
   if (tab === "cancel_receipt") {
     const applied = await applyCancelReceiptPayload(validRows);
     return NextResponse.json({
       updated: applied.updated,
       unchanged: applied.unchanged,
       skipped: applied.skipped,
+      ambiguous: applied.ambiguous,
       invalidRows: errors,
       dbErrors: applied.rowErrors,
     });
