@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildReportRows } from "@/lib/report/buildReport";
-import { RowEditor } from "./RowEditor";
+import { RowEditor, LuanCheckToggle } from "./RowEditor";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import {
   parseReportFilters,
@@ -22,6 +22,19 @@ function formatPercent(value: number | null) {
 
 function formatDate(value: Date | null) {
   return value === null ? "-" : value.toISOString().slice(0, 10);
+}
+
+function sendStatusBadge(value: string | null) {
+  if (value === "sent") return <span className="badge badge-success">đã gửi</span>;
+  if (value === "cancelled") return <span className="badge badge-danger">huỷ</span>;
+  return <span className="cell-muted">-</span>;
+}
+
+function cancelReceiptStatusBadge(value: string | null) {
+  if (value === "received_full") return <span className="badge badge-success">đã nhận đủ</span>;
+  if (value === "received_partial") return <span className="badge badge-warning">nhận thiếu</span>;
+  if (value === "not_received") return <span className="badge badge-danger">chưa nhận</span>;
+  return <span className="cell-muted">-</span>;
 }
 
 export default async function ReportPage({
@@ -83,8 +96,16 @@ export default async function ReportPage({
               <th>Số tiền thanh toán</th>
               <th>Chênh lệch %</th>
               <th>Đối soát TT</th>
+              <th>Ngày gửi đơn</th>
+              <th>Trạng thái đóng đơn</th>
+              <th>Ngày thanh toán</th>
               <th>Ngày nhận đơn huỷ</th>
-              <th>Thao tác thủ công</th>
+              <th>% hỏng</th>
+              <th>Trạng thái nhận huỷ</th>
+              <th>TT khiếu nại huỷ</th>
+              <th>Ghi chú</th>
+              <th>Luân check</th>
+              <th>Sửa</th>
             </tr>
           </thead>
           <tbody>
@@ -110,7 +131,17 @@ export default async function ReportPage({
                     <span className="cell-muted">-</span>
                   )}
                 </td>
+                <td className="cell-muted">{formatDate(row.sentAt)}</td>
+                <td>{sendStatusBadge(row.sendStatus)}</td>
+                <td className="cell-muted">{formatDate(row.paidAt)}</td>
                 <td className="cell-muted">{formatDate(row.cancelReceivedAt)}</td>
+                <td className="num">{formatPercent(row.defectRate)}</td>
+                <td>{cancelReceiptStatusBadge(row.cancelReceiptStatus)}</td>
+                <td className="cell-muted">{row.cancelComplaintNote ?? "-"}</td>
+                <td className="cell-muted">{row.note ?? "-"}</td>
+                <td>
+                  <LuanCheckToggle orderId={row.orderId} luanCheck={row.luanCheck} />
+                </td>
                 <td>
                   <RowEditor
                     orderId={row.orderId}
@@ -122,7 +153,6 @@ export default async function ReportPage({
                     cancelReceiptStatus={row.cancelReceiptStatus}
                     cancelComplaintNote={row.cancelComplaintNote}
                     note={row.note}
-                    luanCheck={row.luanCheck}
                   />
                 </td>
               </tr>
