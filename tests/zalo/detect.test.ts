@@ -51,12 +51,17 @@ Nếu anh/chị có bất kỳ thắc mắc gì, vui lòng liên hệ bên em h�
 });
 
 describe("isConfirmationMessage", () => {
-  it("matches the exact confirmation phrase", () => {
-    expect(isConfirmationMessage("Đã đóng")).toBe(true);
+  it("matches the bare prefix", () => {
+    expect(isConfirmationMessage("Đã in")).toBe(true);
+  });
+
+  it("matches regardless of what follows the prefix", () => {
+    expect(isConfirmationMessage("Đã in 50 đơn")).toBe(true);
+    expect(isConfirmationMessage("đã in xong rồi nhé shop")).toBe(true);
   });
 
   it("matches case-insensitively with surrounding words", () => {
-    expect(isConfirmationMessage("shop ơi đã đóng hàng xong rồi nhé")).toBe(true);
+    expect(isConfirmationMessage("shop ơi đã in hết rồi nha")).toBe(true);
   });
 
   it("does not match unrelated messages", () => {

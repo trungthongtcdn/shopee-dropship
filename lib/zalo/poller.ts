@@ -34,7 +34,7 @@ export interface PlanResult {
 // lib/zalo/bridge.ts — fetchMessages/searchGroups, no send capability), so
 // is_self never means "a message our own bot posted". In real deployments
 // the bridge is logged into the operator's own personal Zalo account (the
-// same one they use to send the waybill link and type "đã đóng"), so
+// same one they use to send the waybill link and type "Đã in ..."), so
 // skipping is_self would silently ignore every message from the one person
 // actually running this workflow.
 export function planFromMessages(messages: ZaloMessage[], initialState: PollState): PlanResult {

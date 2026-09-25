@@ -14,8 +14,8 @@ export default async function ZaloPage() {
     <main className="page">
       <h1>Zalo</h1>
       <p className="page-description">
-        Chọn nhóm Zalo cần theo dõi. Khi đối tác gửi link phiếu giao hàng (PDF) và nhân viên reply "đã đóng" trong nhóm
-        đó, hệ thống tự cập nhật trạng thái đóng hàng + ngày gửi cho các đơn trong file.
+        Chọn nhóm Zalo cần theo dõi. Khi đối tác gửi link phiếu giao hàng (PDF) và nhân viên reply "Đã in..." (phần sau
+        không quan trọng) trong nhóm đó, hệ thống tự cập nhật trạng thái đóng hàng + ngày gửi cho các đơn trong file.
       </p>
 
       <div className="card">

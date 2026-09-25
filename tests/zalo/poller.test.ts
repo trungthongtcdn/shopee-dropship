@@ -19,7 +19,7 @@ describe("planFromMessages", () => {
   it("produces a confirmation when a pdf link is followed by the confirm phrase", () => {
     const messages = [
       msg({ msg_id: "1", content: "link: https://example.com/waybill.pdf" }),
-      msg({ msg_id: "2", from_name: "Nhân viên A", content: "Đã đóng" }),
+      msg({ msg_id: "2", from_name: "Nhân viên A", content: "Đã in 3 đơn" }),
     ];
     const result = planFromMessages(messages, EMPTY_STATE);
 
@@ -31,7 +31,7 @@ describe("planFromMessages", () => {
   });
 
   it("ignores a confirm phrase with no pending pdf link", () => {
-    const messages = [msg({ msg_id: "1", content: "Đã đóng" })];
+    const messages = [msg({ msg_id: "1", content: "Đã in 3 đơn" })];
     const result = planFromMessages(messages, EMPTY_STATE);
 
     expect(result.confirmations).toEqual([]);
@@ -41,7 +41,7 @@ describe("planFromMessages", () => {
   it("processes is_self messages too (the bridge is read-only, and the operator's own account is usually the one logged in)", () => {
     const messages = [
       msg({ msg_id: "1", is_self: true, content: "link: https://example.com/waybill.pdf" }),
-      msg({ msg_id: "2", is_self: true, from_name: "Luân", content: "Đã đóng" }),
+      msg({ msg_id: "2", is_self: true, from_name: "Luân", content: "Đã in 3 đơn" }),
     ];
     const result = planFromMessages(messages, EMPTY_STATE);
 
@@ -55,7 +55,7 @@ describe("planFromMessages", () => {
     const messages = [
       msg({ msg_id: "1", content: "https://example.com/old.pdf" }),
       msg({ msg_id: "2", content: "https://example.com/new.pdf" }),
-      msg({ msg_id: "3", content: "Đã đóng" }),
+      msg({ msg_id: "3", content: "Đã in 3 đơn" }),
     ];
     const result = planFromMessages(messages, EMPTY_STATE);
 
@@ -66,7 +66,7 @@ describe("planFromMessages", () => {
 
   it("carries forward a pending link from a previous poll cycle (initialState)", () => {
     const initialState: PollState = { pendingPdfUrl: "https://example.com/waybill.pdf", pendingPdfMsgId: "0" };
-    const messages = [msg({ msg_id: "1", content: "Đã đóng" })];
+    const messages = [msg({ msg_id: "1", content: "Đã in 3 đơn" })];
     const result = planFromMessages(messages, initialState);
 
     expect(result.confirmations).toHaveLength(1);
@@ -76,9 +76,9 @@ describe("planFromMessages", () => {
   it("handles two independent link+confirm cycles in one batch", () => {
     const messages = [
       msg({ msg_id: "1", content: "https://example.com/a.pdf" }),
-      msg({ msg_id: "2", content: "Đã đóng" }),
+      msg({ msg_id: "2", content: "Đã in 3 đơn" }),
       msg({ msg_id: "3", content: "https://example.com/b.pdf" }),
-      msg({ msg_id: "4", content: "Đã đóng" }),
+      msg({ msg_id: "4", content: "Đã in 3 đơn" }),
     ];
     const result = planFromMessages(messages, EMPTY_STATE);
 

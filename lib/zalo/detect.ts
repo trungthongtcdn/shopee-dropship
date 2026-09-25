@@ -1,6 +1,7 @@
-// Confirmed by user: staff always types this exact phrase (Vietnamese, no
-// diacritic variants expected) as their confirmation reply in the group.
-const CONFIRM_PHRASE = "đã đóng";
+// Confirmed by user: staff types "Đã in" followed by anything (e.g. "Đã in
+// 50 đơn") as their confirmation reply in the group — only the prefix
+// matters, whatever comes after is free text and ignored.
+const CONFIRM_PHRASE = "đã in";
 
 const PDF_URL_RE = /\.pdf(?:[?#]|$)/i;
 
