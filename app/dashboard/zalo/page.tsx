@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ZaloWatchForm } from "./ZaloWatchForm";
+import { ManualConfirmForm } from "./ManualConfirmForm";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,15 @@ export default async function ZaloPage() {
         <ZaloWatchForm />
       </div>
 
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Nhập thủ công</h3>
+        <p className="cell-muted" style={{ marginTop: 0 }}>
+          Dùng khi Zalo không tự bắt được tin nhắn — dán link hoặc chọn file PDF phiếu vận đơn, chọn đúng ngày giờ đã
+          gửi, xử lý y hệt như khi đồng bộ tự động từ Zalo.
+        </p>
+        <ManualConfirmForm />
+      </div>
+
       <h2>Lịch sử xác nhận</h2>
       {logs.length === 0 ? (
         <p className="empty-state">Chưa có xác nhận nào.</p>
@@ -63,9 +73,13 @@ export default async function ZaloPage() {
                     <td className="num">{orderIds.length}</td>
                     <td className="num">{log.matchedCount}</td>
                     <td>
-                      <a href={log.pdfUrl} target="_blank" rel="noreferrer">
-                        Xem PDF
-                      </a>
+                      {log.pdfUrl.startsWith("http") ? (
+                        <a href={log.pdfUrl} target="_blank" rel="noreferrer">
+                          Xem PDF
+                        </a>
+                      ) : (
+                        <span className="cell-muted">{log.pdfUrl}</span>
+                      )}
                     </td>
                   </tr>
                 );

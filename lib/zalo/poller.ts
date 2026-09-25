@@ -65,6 +65,41 @@ export interface PollCycleResult {
   confirmed: number;
 }
 
+export interface ApplyWaybillConfirmationParams {
+  orderIds: string[];
+  confirmedAt: Date;
+  confirmedByName: string | null;
+  pdfUrl: string;
+  threadId: string;
+}
+
+export interface ApplyWaybillConfirmationResult {
+  matchedCount: number;
+}
+
+// Shared by the automatic Zalo poller below and the manual-entry API route
+// (app/api/zalo/manual-confirm) — same effect either way: mark the given
+// orders sent as of confirmedAt, and log what happened. The manual route
+// exists because the bridge's /messages endpoint is a forward-only live
+// buffer (see lib/zalo/bridge.ts) that can miss messages, so staff need a
+// way to paste/upload the waybill PDF directly when that happens.
+export async function applyWaybillConfirmation(
+  params: ApplyWaybillConfirmationParams
+): Promise<ApplyWaybillConfirmationResult> {
+  const { orderIds, confirmedAt, confirmedByName, pdfUrl, threadId } = params;
+
+  const result = await prisma.order.updateMany({
+    where: { shopeeOrderId: { in: orderIds } },
+    data: { sendStatus: "sent", sentAt: confirmedAt },
+  });
+
+  await prisma.zaloConfirmationLog.create({
+    data: { threadId, pdfUrl, orderIds, matchedCount: result.count, confirmedByName, confirmedAt },
+  });
+
+  return { matchedCount: result.count };
+}
+
 export async function runPollCycle(): Promise<PollCycleResult | null> {
   const config = await prisma.zaloWatchConfig.findUnique({ where: { id: 1 } });
   if (!config) return null;
@@ -88,20 +123,12 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // runs every ~20s, so "now" is close enough for a date-level field.
     const confirmedAt = new Date();
 
-    const result = await prisma.order.updateMany({
-      where: { shopeeOrderId: { in: orderIds } },
-      data: { sendStatus: "sent", sentAt: confirmedAt },
-    });
-
-    await prisma.zaloConfirmationLog.create({
-      data: {
-        threadId: config.threadId,
-        pdfUrl: confirmation.pdfUrl,
-        orderIds,
-        matchedCount: result.count,
-        confirmedByName: confirmation.confirmedByName,
-        confirmedAt,
-      },
+    await applyWaybillConfirmation({
+      orderIds,
+      confirmedAt,
+      confirmedByName: confirmation.confirmedByName,
+      pdfUrl: confirmation.pdfUrl,
+      threadId: config.threadId,
     });
     confirmedCount += 1;
   }
