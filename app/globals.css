@@ -226,16 +226,23 @@ a:hover {
   background: var(--color-muted);
   color: var(--color-muted-foreground);
   text-align: left;
+  vertical-align: bottom;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 1.25;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  padding: var(--space-2) var(--space-3);
+  letter-spacing: 0.01em;
+  /* Titles wrap to fit — as many columns visible at once beats every
+     header staying on one line. Body cells (.data-table td) keep
+     white-space: nowrap from the table default. */
+  white-space: normal;
+  max-width: 110px;
+  padding: 5px 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
 .data-table td {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--color-border);
   vertical-align: top;
 }
