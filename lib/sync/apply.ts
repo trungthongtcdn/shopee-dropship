@@ -539,6 +539,10 @@ export interface CancelReceiptResult {
 
 const CANCEL_RECEIPT_STATUS_MAP: Record<string, CancelReceiptStatus> = {
   "ĐÃ NHẬN ĐỦ": "received_full",
+  // The sheet's actual data-validation dropdown turned out to store the
+  // shorter "ĐÃ NHẬN" (confirmed against real filled-in rows), not the
+  // "ĐÃ NHẬN ĐỦ" the instructional note in row 3 describes — accept both.
+  "ĐÃ NHẬN": "received_full",
   "CHƯA NHẬN": "not_received",
   "NHẬN THIẾU": "received_partial",
 };

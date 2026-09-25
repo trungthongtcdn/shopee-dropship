@@ -42,6 +42,16 @@ describe("getDate", () => {
   it("returns null when missing", () => {
     expect(getDate({}, "Ngày đặt hàng")).toBeNull();
   });
+
+  it("falls back to parsing a D/M/YYYY text date (manually-typed sheet cell, not a real Date cell)", () => {
+    const result = getDate({ "Ngày nhận đơn huỷ": "23/9/2026" }, "Ngày nhận đơn huỷ");
+    expect(result?.toISOString().slice(0, 10)).toBe("2026-09-23");
+  });
+
+  it("falls back to parsing a D/M/YY text date with a 2-digit year", () => {
+    const result = getDate({ "Ngày nhận đơn huỷ": "23/9/26" }, "Ngày nhận đơn huỷ");
+    expect(result?.toISOString().slice(0, 10)).toBe("2026-09-23");
+  });
 });
 
 describe("getInt", () => {

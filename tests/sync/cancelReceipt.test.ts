@@ -52,6 +52,22 @@ describe("applyCancelReceiptPayload", () => {
     expect(order?.cancelReceiptStatus).toBe("received_full");
   });
 
+  it("accepts the sheet's actual dropdown text 'ĐÃ NHẬN' (not 'ĐÃ NHẬN ĐỦ') as received_full, and a D/M/YY text date", async () => {
+    await seedOrder({ shopeeOrderId: "SP001B", trackingCode: "SPXVN001B" });
+
+    await applyCancelReceiptPayload([
+      cancelRow(2, "h1", {
+        "Ngày nhận đơn huỷ": "23/9/26",
+        "Mã vận đơn": "SPXVN001B",
+        "Trạng thái nhận đơn huỷ": "ĐÃ NHẬN",
+      }),
+    ]);
+
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001B" } });
+    expect(order?.cancelReceiptStatus).toBe("received_full");
+    expect(order?.cancelReceivedAt?.toISOString().slice(0, 10)).toBe("2026-09-23");
+  });
+
   it("updates every product line of a multi-line order sharing the same tracking code", async () => {
     await seedOrder({ shopeeOrderId: "SP002", categoryName: "D100", trackingCode: "SPXVN002" });
     await seedOrder({ shopeeOrderId: "SP002", categoryName: "D120", trackingCode: "SPXVN002" });
