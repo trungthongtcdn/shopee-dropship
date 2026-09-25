@@ -27,9 +27,16 @@ export interface PlanResult {
 //
 // There is no reply-chain info from the bridge, so a PDF link message just
 // becomes "the pending link" for the thread; the next confirmation-phrase
-// message (from anyone other than our own account) resolves it. A second
-// PDF link before a confirmation replaces the pending one — only the most
-// recent unconfirmed link is tracked.
+// message resolves it. A second PDF link before a confirmation replaces the
+// pending one — only the most recent unconfirmed link is tracked.
+//
+// `is_self` messages are NOT skipped: this bridge only ever reads (see
+// lib/zalo/bridge.ts — fetchMessages/searchGroups, no send capability), so
+// is_self never means "a message our own bot posted". In real deployments
+// the bridge is logged into the operator's own personal Zalo account (the
+// same one they use to send the waybill link and type "đã đóng"), so
+// skipping is_self would silently ignore every message from the one person
+// actually running this workflow.
 export function planFromMessages(messages: ZaloMessage[], initialState: PollState): PlanResult {
   let state: PollState = { ...initialState };
   const confirmations: ConfirmationEvent[] = [];
@@ -37,7 +44,6 @@ export function planFromMessages(messages: ZaloMessage[], initialState: PollStat
 
   for (const message of messages) {
     lastMsgId = message.msg_id;
-    if (message.is_self) continue;
 
     const pdfUrl = findPdfUrl(message.content);
     if (pdfUrl) {

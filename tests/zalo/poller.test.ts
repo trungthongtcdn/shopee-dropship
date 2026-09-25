@@ -38,14 +38,16 @@ describe("planFromMessages", () => {
     expect(result.state).toEqual(EMPTY_STATE);
   });
 
-  it("ignores messages from our own account (is_self)", () => {
+  it("processes is_self messages too (the bridge is read-only, and the operator's own account is usually the one logged in)", () => {
     const messages = [
       msg({ msg_id: "1", is_self: true, content: "link: https://example.com/waybill.pdf" }),
-      msg({ msg_id: "2", content: "Đã đóng" }),
+      msg({ msg_id: "2", is_self: true, from_name: "Luân", content: "Đã đóng" }),
     ];
     const result = planFromMessages(messages, EMPTY_STATE);
 
-    expect(result.confirmations).toEqual([]);
+    expect(result.confirmations).toEqual([
+      { pdfUrl: "https://example.com/waybill.pdf", confirmedByName: "Luân", confirmedAt: 1 },
+    ]);
     expect(result.state.pendingPdfUrl).toBeNull();
   });
 
