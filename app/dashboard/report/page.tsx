@@ -114,7 +114,9 @@ export default async function ReportPage({
                 <td>{row.shopeeOrderId}</td>
                 <td>{row.status}</td>
                 <td>{row.trackingCode ?? "-"}</td>
-                <td>{row.productName ?? "-"}</td>
+                <td className="cell-truncate" title={row.productName ?? "-"}>
+                  {row.productName ?? "-"}
+                </td>
                 <td className="cell-muted">{row.categoryName ?? "-"}</td>
                 <td className="num">{row.quantity ?? "-"}</td>
                 <td>{row.sku ?? "-"}</td>
@@ -137,8 +139,12 @@ export default async function ReportPage({
                 <td className="cell-muted">{formatDate(row.cancelReceivedAt)}</td>
                 <td className="num">{formatPercent(row.defectRate)}</td>
                 <td>{cancelReceiptStatusBadge(row.cancelReceiptStatus)}</td>
-                <td className="cell-muted">{row.cancelComplaintNote ?? "-"}</td>
-                <td className="cell-muted">{row.note ?? "-"}</td>
+                <td className="cell-muted cell-truncate" title={row.cancelComplaintNote ?? "-"}>
+                  {row.cancelComplaintNote ?? "-"}
+                </td>
+                <td className="cell-muted cell-truncate" title={row.note ?? "-"}>
+                  {row.note ?? "-"}
+                </td>
                 <td>
                   <LuanCheckToggle orderId={row.orderId} luanCheck={row.luanCheck} />
                 </td>

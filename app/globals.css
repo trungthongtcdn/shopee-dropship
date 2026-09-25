@@ -258,6 +258,17 @@ a:hover {
   color: var(--color-muted-foreground);
 }
 
+/* Free-text "name" columns (product name, notes) that carry no identifying
+   meaning — kept small and truncated with an ellipsis; hover for the full
+   text via the cell's native title attribute. */
+.cell-truncate {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
 /* ---------- Badges ---------- */
 
 .badge {

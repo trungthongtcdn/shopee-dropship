@@ -58,7 +58,9 @@ export default async function OrdersPage({
             {orders.map((order) => (
               <tr key={order.id}>
                 <td>{order.shopeeOrderId}</td>
-                <td>{order.productName ?? "-"}</td>
+                <td className="cell-truncate" title={order.productName ?? "-"}>
+                  {order.productName ?? "-"}
+                </td>
                 <td className="cell-muted">{order.categoryName || "-"}</td>
                 <td className="num">{order.lineQuantity ?? "-"}</td>
                 <td>
