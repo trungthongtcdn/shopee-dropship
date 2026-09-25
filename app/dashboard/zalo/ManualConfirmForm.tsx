@@ -37,7 +37,8 @@ export function ManualConfirmForm() {
     setSubmitting(false);
 
     if (response.ok) {
-      setStatus(`Đã khớp ${json.matchedCount}/${json.orderIds.length} đơn trong file`);
+      const createdNote = json.createdCount > 0 ? `, tạo mới ${json.createdCount} đơn chưa sync` : "";
+      setStatus(`Đã khớp ${json.matchedCount}/${json.orderIds.length} đơn trong file${createdNote}`);
       setPdfUrl("");
       setSentAt("");
       if (fileInputRef.current) fileInputRef.current.value = "";

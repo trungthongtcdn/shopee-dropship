@@ -279,8 +279,45 @@ function whereOfCancellationRow(type: CancellationType) {
   });
 }
 
-export function applyOrdersPayload(rows: IncomingRow[]) {
-  return applyTabPayload(
+// Operational fields a placeholder row (created by applyWaybillConfirmation
+// for an order the Zalo waybill PDF named before this sheet ever synced it
+// in — see lib/zalo/poller.ts) may be carrying that the real sheet sync
+// below never touches on its own. Carried forward onto every real line of
+// the order once it syncs in for real, so nothing set on the placeholder
+// (via the Zalo confirmation itself, or a manual RowEditor edit made while
+// it was still a placeholder) gets lost when it's replaced.
+const PLACEHOLDER_CARRY_FORWARD_FIELDS = [
+  "sentAt",
+  "sendStatus",
+  "paidAt",
+  "cancelReceivedAt",
+  "defectRate",
+  "cancelReceiptStatus",
+  "cancelComplaintNote",
+  "note",
+  "luanCheck",
+] as const;
+
+export async function applyOrdersPayload(rows: IncomingRow[]) {
+  const orderIds = [...new Set(rows.map((row) => String(getByHeader(row.data, "Mã đơn hàng") ?? "")))].filter(Boolean);
+
+  // A placeholder's categoryName is always "" (the PDF has no line-item
+  // breakdown), which won't generally match the real sheet row's
+  // categoryName — so the normal diff/upsert below would just insert a
+  // fresh row alongside it instead of updating it. Delete the placeholder
+  // first (so every real line becomes a plain insert) and reapply its
+  // carried-forward fields to the whole order afterward instead of trying
+  // to merge it into one specific line.
+  const placeholders =
+    orderIds.length === 0
+      ? []
+      : await prisma.order.findMany({ where: { shopeeOrderId: { in: orderIds }, isPlaceholder: true, isActive: true } });
+
+  if (placeholders.length > 0) {
+    await prisma.order.deleteMany({ where: { id: { in: placeholders.map((p) => p.id) } } });
+  }
+
+  const result = await applyTabPayload(
     "orders",
     prisma.order as unknown as TabDelegate,
     ["shopeeOrderId", "categoryName"],
@@ -290,6 +327,13 @@ export function applyOrdersPayload(rows: IncomingRow[]) {
     mapOrderRow,
     rows
   );
+
+  for (const placeholder of placeholders) {
+    const data = Object.fromEntries(PLACEHOLDER_CARRY_FORWARD_FIELDS.map((field) => [field, placeholder[field]]));
+    await prisma.order.updateMany({ where: { shopeeOrderId: placeholder.shopeeOrderId, isActive: true }, data });
+  }
+
+  return result;
 }
 
 export function applyDeliveredOrdersPayload(rows: IncomingRow[]) {

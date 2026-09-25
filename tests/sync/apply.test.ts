@@ -173,6 +173,115 @@ describe("applyOrdersPayload", () => {
   });
 });
 
+describe("applyOrdersPayload adopting a Zalo placeholder row", () => {
+  beforeEach(async () => {
+    await prisma.syncLog.deleteMany();
+    await prisma.order.deleteMany();
+  });
+
+  it("replaces a single-line placeholder with the real row, carrying sendStatus/sentAt forward", async () => {
+    const sentAt = new Date("2026-06-20T10:00:00.000Z");
+    const placeholder = await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP001",
+        categoryName: "",
+        trackingCode: "SPXVN001",
+        status: "Chưa đồng bộ",
+        sendStatus: "sent",
+        sentAt,
+        isPlaceholder: true,
+        rawRowHash: "zalo-placeholder",
+        sheetRowIndex: 0,
+      },
+    });
+
+    const result = await applyOrdersPayload([orderRow(2, "hash-1", "SP001", "D100")]);
+
+    expect(result.inserted).toBe(1);
+    const stale = await prisma.order.findUnique({ where: { id: placeholder.id } });
+    expect(stale).toBeNull();
+
+    const real = await prisma.order.findFirst({ where: { shopeeOrderId: "SP001" } });
+    expect(real?.isPlaceholder).toBe(false);
+    expect(real?.categoryName).toBe("D100");
+    expect(real?.status).toBe("pending");
+    expect(real?.sendStatus).toBe("sent");
+    expect(real?.sentAt?.toISOString()).toBe(sentAt.toISOString());
+  });
+
+  it("carries sendStatus/sentAt onto every line of a multi-line order, not just the first", async () => {
+    const sentAt = new Date("2026-06-20T10:00:00.000Z");
+    await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP002",
+        categoryName: "",
+        status: "Chưa đồng bộ",
+        sendStatus: "sent",
+        sentAt,
+        isPlaceholder: true,
+        rawRowHash: "zalo-placeholder",
+        sheetRowIndex: 0,
+      },
+    });
+
+    await applyOrdersPayload([
+      orderRow(2, "hash-1", "SP002", "D100"),
+      orderRow(3, "hash-2", "SP002", "D120"),
+    ]);
+
+    const lines = await prisma.order.findMany({ where: { shopeeOrderId: "SP002" } });
+    expect(lines).toHaveLength(2);
+    expect(lines.every((line) => line.sendStatus === "sent")).toBe(true);
+    expect(lines.every((line) => line.sentAt?.toISOString() === sentAt.toISOString())).toBe(true);
+  });
+
+  it("carries forward a manual note/luanCheck set on the placeholder before it synced", async () => {
+    await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP003",
+        categoryName: "",
+        status: "Chưa đồng bộ",
+        sendStatus: "sent",
+        sentAt: new Date(),
+        note: "khách hối gấp",
+        luanCheck: true,
+        isPlaceholder: true,
+        rawRowHash: "zalo-placeholder",
+        sheetRowIndex: 0,
+      },
+    });
+
+    await applyOrdersPayload([orderRow(2, "hash-1", "SP003", "D100")]);
+
+    const real = await prisma.order.findFirst({ where: { shopeeOrderId: "SP003" } });
+    expect(real?.note).toBe("khách hối gấp");
+    expect(real?.luanCheck).toBe(true);
+  });
+
+  it("does not touch a real (non-placeholder) row for an unrelated order", async () => {
+    await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP004",
+        categoryName: "D100",
+        status: "Hoàn thành",
+        rawRowHash: "real-seed",
+        sheetRowIndex: 9,
+      },
+    });
+
+    await applyOrdersPayload([orderRow(2, "hash-1", "SP005", "D100")]);
+
+    const untouched = await prisma.order.findFirst({ where: { shopeeOrderId: "SP004" } });
+    expect(untouched?.status).toBe("Hoàn thành");
+  });
+
+  afterAll(async () => {
+    await prisma.syncLog.deleteMany();
+    await prisma.order.deleteMany();
+    await prisma.$disconnect();
+  });
+});
+
 function cancellationRow(rowIndex: number, hash: string, orderId: string, buyerNote: string): IncomingRow {
   return {
     rowIndex,

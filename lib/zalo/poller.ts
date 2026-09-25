@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
-import { downloadAndExtractOrderIds } from "@/lib/zalo/parseWaybill";
+import { downloadAndExtractOrders, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 
 export interface PollState {
   pendingPdfUrl: string | null;
@@ -66,7 +66,7 @@ export interface PollCycleResult {
 }
 
 export interface ApplyWaybillConfirmationParams {
-  orderIds: string[];
+  orders: WaybillOrder[];
   confirmedAt: Date;
   confirmedByName: string | null;
   pdfUrl: string;
@@ -75,6 +75,7 @@ export interface ApplyWaybillConfirmationParams {
 
 export interface ApplyWaybillConfirmationResult {
   matchedCount: number;
+  createdCount: number;
 }
 
 // Shared by the automatic Zalo poller below and the manual-entry API route
@@ -83,21 +84,72 @@ export interface ApplyWaybillConfirmationResult {
 // exists because the bridge's /messages endpoint is a forward-only live
 // buffer (see lib/zalo/bridge.ts) that can miss messages, so staff need a
 // way to paste/upload the waybill PDF directly when that happens.
+//
+// An order the PDF names that hasn't synced in from the main Shopee sheet
+// yet gets a placeholder row (shopeeOrderId + trackingCode + sendStatus
+// "sent" only — categoryName "" since the PDF has no line-item breakdown).
+// applyOrdersPayload (lib/sync/apply.ts) replaces it with the real line(s)
+// once that order actually syncs in, carrying sendStatus/sentAt (and any
+// other operational field set in the meantime) forward first.
 export async function applyWaybillConfirmation(
   params: ApplyWaybillConfirmationParams
 ): Promise<ApplyWaybillConfirmationResult> {
-  const { orderIds, confirmedAt, confirmedByName, pdfUrl, threadId } = params;
+  const { orders, confirmedAt, confirmedByName, pdfUrl, threadId } = params;
+  const orderIds = orders.map((order) => order.shopeeOrderId);
 
   const result = await prisma.order.updateMany({
     where: { shopeeOrderId: { in: orderIds } },
     data: { sendStatus: "sent", sentAt: confirmedAt },
   });
 
-  await prisma.zaloConfirmationLog.create({
-    data: { threadId, pdfUrl, orderIds, matchedCount: result.count, confirmedByName, confirmedAt },
+  const existing = await prisma.order.findMany({
+    where: { shopeeOrderId: { in: orderIds }, isActive: true },
+    select: { shopeeOrderId: true },
+  });
+  const existingIds = new Set(existing.map((order) => order.shopeeOrderId));
+  const seen = new Set<string>();
+  const missing = orders.filter((order) => {
+    if (existingIds.has(order.shopeeOrderId) || seen.has(order.shopeeOrderId)) return false;
+    seen.add(order.shopeeOrderId);
+    return true;
   });
 
-  return { matchedCount: result.count };
+  let createdCount = 0;
+  for (const order of missing) {
+    try {
+      await prisma.order.create({
+        data: {
+          shopeeOrderId: order.shopeeOrderId,
+          trackingCode: order.trackingCode,
+          categoryName: "",
+          status: "Chưa đồng bộ",
+          sendStatus: "sent",
+          sentAt: confirmedAt,
+          isPlaceholder: true,
+          rawRowHash: "zalo-placeholder",
+          sheetRowIndex: 0,
+        },
+      });
+      createdCount += 1;
+    } catch {
+      // Duplicate placeholder race (two confirmations naming the same new
+      // order back-to-back) — the unique (shopeeOrderId, categoryName)
+      // constraint already stopped it, nothing more to do here.
+    }
+  }
+
+  await prisma.zaloConfirmationLog.create({
+    data: {
+      threadId,
+      pdfUrl,
+      orderIds,
+      matchedCount: result.count + createdCount,
+      confirmedByName,
+      confirmedAt,
+    },
+  });
+
+  return { matchedCount: result.count, createdCount };
 }
 
 export async function runPollCycle(): Promise<PollCycleResult | null> {
@@ -114,8 +166,8 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
 
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const orderIds = await downloadAndExtractOrderIds(confirmation.pdfUrl);
-    if (orderIds.length === 0) continue;
+    const orders = await downloadAndExtractOrders(confirmation.pdfUrl);
+    if (orders.length === 0) continue;
 
     // Uses processing time, not the message's own `ts` — the bridge API
     // doesn't document ts's unit (seconds vs ms), and getting that wrong
@@ -124,7 +176,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     const confirmedAt = new Date();
 
     await applyWaybillConfirmation({
-      orderIds,
+      orders,
       confirmedAt,
       confirmedByName: confirmation.confirmedByName,
       pdfUrl: confirmation.pdfUrl,

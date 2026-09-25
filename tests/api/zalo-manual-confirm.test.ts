@@ -3,8 +3,10 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 
 vi.mock("@/lib/zalo/parseWaybill", () => ({
-  extractOrderIdsFromWaybillPdf: vi.fn(async () => ["SP001"]),
-  downloadAndExtractOrderIds: vi.fn(async (url: string) => (url.includes("empty") ? [] : ["SP002"])),
+  extractOrdersFromWaybillPdf: vi.fn(async () => [{ shopeeOrderId: "SP001", trackingCode: null }]),
+  downloadAndExtractOrders: vi.fn(async (url: string) =>
+    url.includes("empty") ? [] : [{ shopeeOrderId: "SP002", trackingCode: null }]
+  ),
 }));
 
 import { POST } from "@/app/api/zalo/manual-confirm/route";

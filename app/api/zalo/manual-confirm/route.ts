@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { downloadAndExtractOrderIds, extractOrderIdsFromWaybillPdf } from "@/lib/zalo/parseWaybill";
+import { downloadAndExtractOrders, extractOrdersFromWaybillPdf, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 
 // Fallback path for when the Zalo bridge doesn't capture the group message
@@ -26,16 +26,16 @@ export async function POST(request: NextRequest) {
   const urlRaw = form.get("pdfUrl");
   const pdfUrl = typeof urlRaw === "string" ? urlRaw.trim() : "";
 
-  let orderIds: string[];
+  let orders: WaybillOrder[];
   let sourceLabel: string;
 
   try {
     if (file instanceof File && file.size > 0) {
       const buffer = Buffer.from(await file.arrayBuffer());
-      orderIds = await extractOrderIdsFromWaybillPdf(buffer);
+      orders = await extractOrdersFromWaybillPdf(buffer);
       sourceLabel = `upload:${file.name}`;
     } else if (pdfUrl) {
-      orderIds = await downloadAndExtractOrderIds(pdfUrl);
+      orders = await downloadAndExtractOrders(pdfUrl);
       sourceLabel = pdfUrl;
     } else {
       return NextResponse.json({ error: "cần nhập link PDF hoặc chọn file" }, { status: 400 });
@@ -44,17 +44,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "lỗi khi đọc file PDF" }, { status: 400 });
   }
 
-  if (orderIds.length === 0) {
+  if (orders.length === 0) {
     return NextResponse.json({ error: "không tìm thấy mã đơn hàng nào trong file", orderIds: [] }, { status: 422 });
   }
 
-  const { matchedCount } = await applyWaybillConfirmation({
-    orderIds,
+  const { matchedCount, createdCount } = await applyWaybillConfirmation({
+    orders,
     confirmedAt: sentAt,
     confirmedByName: "Nhập thủ công",
     pdfUrl: sourceLabel,
     threadId: MANUAL_THREAD_ID,
   });
 
-  return NextResponse.json({ orderIds, matchedCount });
+  return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount });
 }

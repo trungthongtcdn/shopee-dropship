@@ -33,6 +33,16 @@ model Order {
   firstSyncedAt        DateTime  @default(now()) @map("first_synced_at")
   lastSyncedAt         DateTime  @updatedAt @map("last_synced_at")
 
+  // A stand-in row created by applyWaybillConfirmation (lib/zalo/poller.ts)
+  // for an order the waybill PDF names that hasn't synced in from the main
+  // Shopee sheet yet — only shopeeOrderId/trackingCode/status="Chưa đồng bộ"
+  // are real, categoryName is "" since the PDF has no line-item breakdown.
+  // applyOrdersPayload (lib/sync/apply.ts) deletes it and re-creates the
+  // real line(s) once that order actually syncs in, carrying every
+  // operational field below forward first so nothing typed in RowEditor (or
+  // set by the Zalo confirmation itself) gets lost in the swap.
+  isPlaceholder        Boolean   @default(false) @map("is_placeholder")
+
   // Below: operational fields Luân fills in by hand (the "LUÂN CẦN" report
   // columns that aren't derivable from any synced sheet) — edited in-app.
   // sentAt/sendStatus are also written by the Zalo poller (lib/zalo/poller.ts);
