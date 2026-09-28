@@ -137,7 +137,7 @@ export function RowEditor(props: RowEditorProps) {
               </select>
             </div>
             <div className="field">
-              <span className="field-label">Ngày thanh toán</span>
+              <span className="field-label">Ngày đối soát</span>
               <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
             </div>
             <div className="field">

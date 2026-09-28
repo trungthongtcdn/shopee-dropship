@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { buildReportRows, type ReportRow } from "@/lib/report/buildReport";
 import {
   buildOrderWhere,
+  isNoiseCancelledOrder,
   matchesPaymentMatchFilter,
   matchesStatusFilter,
   STATUS_OPTION_MAX_LENGTH,
@@ -13,7 +14,8 @@ import {
 // exactly the same filters — paymentMatch and status are both computed/
 // grouped in memory (see matchesPaymentMatchFilter, matchesStatusFilter)
 // rather than pushed fully into the DB query, so they're filtered here
-// after the fetch.
+// after the fetch. isNoiseCancelledOrder is always applied (not a
+// togglable filter) — see its own comment in filters.ts.
 export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[]> {
   const [orders, products, payments] = await Promise.all([
     prisma.order.findMany({
@@ -29,7 +31,9 @@ export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[
 
   return buildReportRows(orders, products, payments).filter(
     (row) =>
-      matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch) && matchesStatusFilter(row.status, filters.status)
+      !isNoiseCancelledOrder(row) &&
+      matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch) &&
+      matchesStatusFilter(row.status, filters.status)
   );
 }
 

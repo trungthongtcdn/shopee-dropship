@@ -144,6 +144,25 @@ export function matchesStatusFilter(rowStatus: string, filters: string[]): boole
   );
 }
 
+function isCancelledStatus(status: string): boolean {
+  const s = status.toLowerCase();
+  return s.includes("hủy") || s.includes("huỷ");
+}
+
+// Baseline noise rule for the Report page, not a togglable filter — always
+// applied. An order Shopee already cancelled before staff ever touched it
+// (no "đóng đơn" action recorded, sendStatus still null) has nothing left
+// to do: no packing, no reconciliation. It still carries a trackingCode
+// because Shopee assigns that at order creation, before the cancellation —
+// that alone doesn't mean staff need to see it in the LUÂN CẦN worklist.
+export function isNoiseCancelledOrder(row: {
+  status: string;
+  trackingCode: string | null;
+  sendStatus: string | null;
+}): boolean {
+  return isCancelledStatus(row.status) && row.trackingCode !== null && row.sendStatus === null;
+}
+
 export function matchesPaymentMatchFilter(
   rowPaymentMatch: "matched" | "not_matched" | null,
   filters: string[]

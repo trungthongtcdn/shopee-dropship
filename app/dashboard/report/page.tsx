@@ -92,7 +92,7 @@ export default async function ReportPage({
               <th>Đối soát TT</th>
               <th>Ngày gửi đơn</th>
               <th>Trạng thái đóng đơn</th>
-              <th>Ngày thanh toán</th>
+              <th>Ngày đối soát</th>
               <th>Ngày nhận đơn huỷ</th>
               <th>% hỏng</th>
               <th>Trạng thái nhận huỷ</th>
@@ -258,7 +258,7 @@ function ReportFilterForm({
       </div>
 
       <div className="field">
-        <span className="field-label">Ngày thanh toán</span>
+        <span className="field-label">Ngày đối soát</span>
         <div style={{ display: "flex", gap: 4 }}>
           <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
           <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />

@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
-import { loadOrderStatusFilterOptions } from "@/lib/report/loadReportRows";
-import { STATUS_OTHER_VALUE } from "@/lib/report/filters";
+import { loadOrderStatusFilterOptions, loadReportRows } from "@/lib/report/loadReportRows";
+import { parseReportFilters, STATUS_OTHER_VALUE } from "@/lib/report/filters";
 
-async function seedOrder(shopeeOrderId: string, status: string) {
+async function seedOrder(
+  shopeeOrderId: string,
+  status: string,
+  extra: { trackingCode?: string | null; sendStatus?: "sent" | "cancelled" | null } = {}
+) {
   return prisma.order.create({
-    data: { shopeeOrderId, categoryName: `cat-${shopeeOrderId}`, status, rawRowHash: "seed", sheetRowIndex: 1 },
+    data: {
+      shopeeOrderId,
+      categoryName: `cat-${shopeeOrderId}`,
+      status,
+      rawRowHash: "seed",
+      sheetRowIndex: 1,
+      trackingCode: extra.trackingCode ?? null,
+      sendStatus: extra.sendStatus ?? null,
+    },
   });
 }
 
@@ -50,6 +62,32 @@ describe("loadOrderStatusFilterOptions", () => {
     const options = await loadOrderStatusFilterOptions();
     expect(options).toHaveLength(2);
     expect(options).toEqual(expect.arrayContaining([{ value: "Hoàn thành", label: "Hoàn thành" }, { value: "Đã huỷ", label: "Đã huỷ" }]));
+  });
+
+  afterAll(async () => {
+    await prisma.order.deleteMany();
+    await prisma.$disconnect();
+  });
+});
+
+describe("loadReportRows", () => {
+  beforeEach(async () => {
+    await prisma.order.deleteMany();
+  });
+
+  it("hides a cancelled order with a tracking code that staff never touched", async () => {
+    await seedOrder("SP001", "Hoàn thành");
+    await seedOrder("SP002", "Đã huỷ", { trackingCode: "SPXVN00000002" });
+
+    const rows = await loadReportRows(parseReportFilters({}));
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP001"]);
+  });
+
+  it("keeps a cancelled order staff already processed", async () => {
+    await seedOrder("SP001", "Đã huỷ", { trackingCode: "SPXVN00000001", sendStatus: "cancelled" });
+
+    const rows = await loadReportRows(parseReportFilters({}));
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP001"]);
   });
 
   afterAll(async () => {

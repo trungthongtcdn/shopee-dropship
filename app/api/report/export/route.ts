@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     "Đối soát TT": row.paymentMatch ? PAYMENT_MATCH_LABEL[row.paymentMatch] : "",
     "Ngày gửi đơn": formatDate(row.sentAt),
     "Trạng thái đóng đơn": row.sendStatus ? (SEND_STATUS_LABEL[row.sendStatus] ?? row.sendStatus) : "",
-    "Ngày thanh toán": formatDate(row.paidAt),
+    "Ngày đối soát": formatDate(row.paidAt),
     "Ngày nhận đơn huỷ": formatDate(row.cancelReceivedAt),
     "% hỏng": formatPercent(row.defectRate),
     "Trạng thái nhận huỷ": row.cancelReceiptStatus ? (CANCEL_RECEIPT_LABEL[row.cancelReceiptStatus] ?? row.cancelReceiptStatus) : "",
