@@ -107,6 +107,10 @@ enum CancelReceiptStatus {
   received_full
   not_received
   received_partial
+  // "Không cần nhận" — manual-only value (not in Luân's sheet dropdown),
+  // set via RowEditor for orders where the returned goods don't need to
+  // come back to the warehouse at all.
+  not_needed
 }
 
 model Cancellation {

@@ -480,6 +480,41 @@ a:hover {
   color: var(--color-on-primary);
 }
 
+/* Checkbox-backed pills (multi-select filters) — a real <input type=
+   checkbox> inside the label, visually hidden, so the form works with zero
+   JS (repeated `name` attributes just become repeated query params on
+   submit) and stays keyboard/screen-reader accessible. */
+.filter-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 260px;
+}
+
+label.filter-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.filter-pill-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+label.filter-pill:has(.filter-pill-input:checked) {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+label.filter-pill:has(.filter-pill-input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
 .summary-bar {
   display: flex;
   flex-wrap: wrap;

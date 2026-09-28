@@ -1,14 +1,26 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma, type OrderSendStatus, type CancelReceiptStatus } from "@prisma/client";
 
 export const SEND_STATUS_FILTER_OPTIONS = ["sent", "cancelled", "none"] as const;
-export const CANCEL_RECEIPT_FILTER_OPTIONS = ["received_full", "not_received", "received_partial", "none"] as const;
+export const CANCEL_RECEIPT_FILTER_OPTIONS = [
+  "received_full",
+  "not_received",
+  "received_partial",
+  "not_needed",
+  "none",
+] as const;
 export const PAYMENT_MATCH_FILTER_OPTIONS = ["matched", "not_matched", "none"] as const;
 
+// All multi-select: each holds zero or more of the values above (or, for
+// `status`, zero or more of whatever distinct Order.status strings actually
+// exist right now — that field is free text from the Shopee sheet, not a
+// fixed enum, so its options are looked up at render time instead of listed
+// here). Empty array means "no filter on this field", not "match nothing".
 export interface ReportFilters {
   q: string;
-  paymentMatch: "" | (typeof PAYMENT_MATCH_FILTER_OPTIONS)[number];
-  sendStatus: "" | (typeof SEND_STATUS_FILTER_OPTIONS)[number];
-  cancelReceiptStatus: "" | (typeof CANCEL_RECEIPT_FILTER_OPTIONS)[number];
+  paymentMatch: string[];
+  sendStatus: string[];
+  cancelReceiptStatus: string[];
+  status: string[];
   sentFrom: string;
   sentTo: string;
   cancelFrom: string;
@@ -24,12 +36,20 @@ function str(raw: RawSearchParams, key: string): string {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
 }
 
+function strArray(raw: RawSearchParams, key: string): string[] {
+  const value = raw[key];
+  if (value === undefined) return [];
+  const values = Array.isArray(value) ? value : [value];
+  return values.map((v) => v.trim()).filter(Boolean);
+}
+
 export function parseReportFilters(raw: RawSearchParams): ReportFilters {
   return {
     q: str(raw, "q"),
-    paymentMatch: str(raw, "paymentMatch") as ReportFilters["paymentMatch"],
-    sendStatus: str(raw, "sendStatus") as ReportFilters["sendStatus"],
-    cancelReceiptStatus: str(raw, "cancelReceiptStatus") as ReportFilters["cancelReceiptStatus"],
+    paymentMatch: strArray(raw, "paymentMatch"),
+    sendStatus: strArray(raw, "sendStatus"),
+    cancelReceiptStatus: strArray(raw, "cancelReceiptStatus"),
+    status: strArray(raw, "status"),
     sentFrom: str(raw, "sentFrom"),
     sentTo: str(raw, "sentTo"),
     cancelFrom: str(raw, "cancelFrom"),
@@ -47,12 +67,33 @@ function dateRange(from: string, to: string): { gte?: Date; lte?: Date } | undef
   return range;
 }
 
+// A multi-select that includes "none" (meaning "field is null") alongside
+// real enum values needs an OR — Prisma's `{ in: [...] }` can't express
+// "null or one of these" in a single condition.
+function selectedOrNull<T extends string>(
+  values: string[],
+  field: "sendStatus" | "cancelReceiptStatus"
+): Prisma.OrderWhereInput | undefined {
+  if (values.length === 0) return undefined;
+  const concrete = values.filter((v) => v !== "none") as T[];
+  const hasNone = values.includes("none");
+
+  if (hasNone && concrete.length > 0) {
+    return { OR: [{ [field]: null }, { [field]: { in: concrete } }] };
+  }
+  if (hasNone) {
+    return { [field]: null };
+  }
+  return { [field]: { in: concrete } };
+}
+
 // Only the Order-model fields that live directly on the row can be pushed
 // into the DB query. paymentMatch is computed after joining Product +
 // PaymentRecord (see buildReportRows) and is filtered separately, in memory,
-// after that join — see filterRowsByPaymentMatch below.
+// after that join — see matchesPaymentMatchFilter below.
 export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = { isActive: true };
+  const and: Prisma.OrderWhereInput[] = [];
 
   if (filters.q) {
     where.OR = [
@@ -61,11 +102,15 @@ export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput 
     ];
   }
 
-  if (filters.sendStatus === "none") where.sendStatus = null;
-  else if (filters.sendStatus) where.sendStatus = filters.sendStatus;
+  if (filters.status.length > 0) {
+    where.status = { in: filters.status };
+  }
 
-  if (filters.cancelReceiptStatus === "none") where.cancelReceiptStatus = null;
-  else if (filters.cancelReceiptStatus) where.cancelReceiptStatus = filters.cancelReceiptStatus;
+  const sendStatusCond = selectedOrNull<OrderSendStatus>(filters.sendStatus, "sendStatus");
+  if (sendStatusCond) and.push(sendStatusCond);
+
+  const cancelReceiptCond = selectedOrNull<CancelReceiptStatus>(filters.cancelReceiptStatus, "cancelReceiptStatus");
+  if (cancelReceiptCond) and.push(cancelReceiptCond);
 
   const sentAt = dateRange(filters.sentFrom, filters.sentTo);
   if (sentAt) where.sentAt = sentAt;
@@ -76,22 +121,31 @@ export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput 
   const paidAt = dateRange(filters.paidFrom, filters.paidTo);
   if (paidAt) where.paidAt = paidAt;
 
+  if (and.length > 0) where.AND = and;
+
   return where;
 }
 
 export function matchesPaymentMatchFilter(
   rowPaymentMatch: "matched" | "not_matched" | null,
-  filter: ReportFilters["paymentMatch"]
+  filters: string[]
 ): boolean {
-  if (!filter) return true;
-  if (filter === "none") return rowPaymentMatch === null;
-  return rowPaymentMatch === filter;
+  if (filters.length === 0) return true;
+  return filters.some((filter) => (filter === "none" ? rowPaymentMatch === null : rowPaymentMatch === filter));
 }
 
 export function reportFiltersToSearchParams(filters: ReportFilters): URLSearchParams {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value);
-  }
+  if (filters.q) params.set("q", filters.q);
+  for (const v of filters.paymentMatch) params.append("paymentMatch", v);
+  for (const v of filters.sendStatus) params.append("sendStatus", v);
+  for (const v of filters.cancelReceiptStatus) params.append("cancelReceiptStatus", v);
+  for (const v of filters.status) params.append("status", v);
+  if (filters.sentFrom) params.set("sentFrom", filters.sentFrom);
+  if (filters.sentTo) params.set("sentTo", filters.sentTo);
+  if (filters.cancelFrom) params.set("cancelFrom", filters.cancelFrom);
+  if (filters.cancelTo) params.set("cancelTo", filters.cancelTo);
+  if (filters.paidFrom) params.set("paidFrom", filters.paidFrom);
+  if (filters.paidTo) params.set("paidTo", filters.paidTo);
   return params;
 }

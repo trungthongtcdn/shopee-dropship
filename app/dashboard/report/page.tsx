@@ -1,14 +1,14 @@
-import { prisma } from "@/lib/db";
-import { buildReportRows } from "@/lib/report/buildReport";
 import { RowEditor, LuanCheckToggle } from "./RowEditor";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import {
   parseReportFilters,
-  buildOrderWhere,
-  matchesPaymentMatchFilter,
   reportFiltersToSearchParams,
+  SEND_STATUS_FILTER_OPTIONS,
+  CANCEL_RECEIPT_FILTER_OPTIONS,
+  PAYMENT_MATCH_FILTER_OPTIONS,
   type ReportFilters,
 } from "@/lib/report/filters";
+import { loadReportRows, loadDistinctOrderStatuses } from "@/lib/report/loadReportRows";
 
 export const dynamic = "force-dynamic";
 
@@ -34,34 +34,22 @@ function cancelReceiptStatusBadge(value: string | null) {
   if (value === "received_full") return <span className="badge badge-success">đã nhận đủ</span>;
   if (value === "received_partial") return <span className="badge badge-warning">nhận thiếu</span>;
   if (value === "not_received") return <span className="badge badge-danger">chưa nhận</span>;
+  if (value === "not_needed") return <span className="badge">không cần nhận</span>;
   return <span className="cell-muted">-</span>;
 }
 
 export default async function ReportPage({
   searchParams,
 }: {
-  searchParams: { page?: string } & Record<string, string | undefined>;
+  searchParams: { page?: string } & Record<string, string | string[] | undefined>;
 }) {
-  const page = parsePage(searchParams.page);
+  const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
   const filters = parseReportFilters(searchParams);
   const filterQuery = reportFiltersToSearchParams(filters).toString();
   const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
+  const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
 
-  const [orders, products, payments] = await Promise.all([
-    prisma.order.findMany({
-      where: buildOrderWhere(filters),
-      orderBy: { shopeeOrderId: "asc" },
-    }),
-    prisma.product.findMany({
-      where: { isActive: true },
-      select: { categoryName: true, sku: true, kiotCode: true, collectPrice: true },
-    }),
-    prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, sku: true, amount: true } }),
-  ]);
-
-  const allRows = buildReportRows(orders, products, payments).filter((row) =>
-    matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch)
-  );
+  const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadDistinctOrderStatuses()]);
   const totalPages = totalPagesFor(allRows.length);
   const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -72,11 +60,16 @@ export default async function ReportPage({
         Số tiền thanh toán đồng bộ tự động từ file thanh toán Shopee trên Drive. Chênh lệch quá 2% (cả 2 chiều) tính là không khớp.
       </p>
 
-      <ReportFilterForm filters={filters} />
+      <ReportFilterForm filters={filters} orderStatusOptions={orderStatusOptions} />
 
-      <p className="cell-muted" style={{ marginBottom: "var(--space-2)" }}>
-        {allRows.length} đơn
-      </p>
+      <div className="toolbar" style={{ justifyContent: "space-between" }}>
+        <p className="cell-muted" style={{ margin: 0 }}>
+          {allRows.length} đơn
+        </p>
+        <a className="btn btn-secondary btn-sm" href={exportHref}>
+          Xuất Excel
+        </a>
+      </div>
 
       <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
 
@@ -85,7 +78,6 @@ export default async function ReportPage({
           <thead>
             <tr>
               <th>Mã đơn hàng</th>
-              <th>Trạng thái</th>
               <th>Mã vận đơn</th>
               <th>Tên sản phẩm</th>
               <th>Tên phân loại</th>
@@ -95,6 +87,7 @@ export default async function ReportPage({
               <th>Giá cần thu về</th>
               <th>Số tiền thanh toán</th>
               <th>Chênh lệch %</th>
+              <th>Trạng thái</th>
               <th>Đối soát TT</th>
               <th>Ngày gửi đơn</th>
               <th>Trạng thái đóng đơn</th>
@@ -112,7 +105,6 @@ export default async function ReportPage({
             {rows.map((row) => (
               <tr key={row.orderId}>
                 <td>{row.shopeeOrderId}</td>
-                <td>{row.status}</td>
                 <td>{row.trackingCode ?? "-"}</td>
                 <td className="cell-truncate" title={row.productName ?? "-"}>
                   {row.productName ?? "-"}
@@ -124,6 +116,7 @@ export default async function ReportPage({
                 <td className="num">{formatAmount(row.amountDue)}</td>
                 <td className="num">{formatAmount(row.amountPaid)}</td>
                 <td className="num">{formatPercent(row.diffPercent)}</td>
+                <td>{row.status}</td>
                 <td>
                   {row.paymentMatch === "matched" ? (
                     <span className="badge badge-success">khớp</span>
@@ -173,7 +166,60 @@ export default async function ReportPage({
   );
 }
 
-function ReportFilterForm({ filters }: { filters: ReportFilters }) {
+function PillCheckboxGroup({
+  name,
+  options,
+  selected,
+}: {
+  name: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+}) {
+  return (
+    <div className="filter-pill-group">
+      {options.map((option) => (
+        <label key={option.value} className="filter-pill">
+          <input
+            className="filter-pill-input"
+            type="checkbox"
+            name={name}
+            value={option.value}
+            defaultChecked={selected.includes(option.value)}
+          />
+          {option.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const SEND_STATUS_LABELS: Record<(typeof SEND_STATUS_FILTER_OPTIONS)[number], string> = {
+  sent: "Đã gửi",
+  cancelled: "Huỷ",
+  none: "Chưa đóng đơn",
+};
+
+const CANCEL_RECEIPT_LABELS: Record<(typeof CANCEL_RECEIPT_FILTER_OPTIONS)[number], string> = {
+  received_full: "Đã nhận đủ",
+  not_received: "Chưa nhận",
+  received_partial: "Nhận thiếu",
+  not_needed: "Không cần nhận",
+  none: "Chưa có",
+};
+
+const PAYMENT_MATCH_LABELS: Record<(typeof PAYMENT_MATCH_FILTER_OPTIONS)[number], string> = {
+  matched: "Khớp",
+  not_matched: "Không khớp",
+  none: "Chưa đối soát",
+};
+
+function ReportFilterForm({
+  filters,
+  orderStatusOptions,
+}: {
+  filters: ReportFilters;
+  orderStatusOptions: string[];
+}) {
   return (
     <form className="toolbar" method="get">
       <div className="field">
@@ -184,39 +230,44 @@ function ReportFilterForm({ filters }: { filters: ReportFilters }) {
           name="q"
           defaultValue={filters.q}
           placeholder="Mã đơn hàng / mã vận đơn"
-          style={{ minWidth: 220 }}
+          style={{ minWidth: 200 }}
+        />
+      </div>
+
+      <div className="field">
+        <span className="field-label">Trạng thái đơn</span>
+        <PillCheckboxGroup
+          name="status"
+          options={orderStatusOptions.map((status) => ({ value: status, label: status }))}
+          selected={filters.status}
         />
       </div>
 
       <div className="field">
         <span className="field-label">Đối soát TT</span>
-        <select className="select" name="paymentMatch" defaultValue={filters.paymentMatch}>
-          <option value="">Tất cả</option>
-          <option value="matched">Khớp</option>
-          <option value="not_matched">Không khớp</option>
-          <option value="none">Chưa đối soát</option>
-        </select>
+        <PillCheckboxGroup
+          name="paymentMatch"
+          options={PAYMENT_MATCH_FILTER_OPTIONS.map((value) => ({ value, label: PAYMENT_MATCH_LABELS[value] }))}
+          selected={filters.paymentMatch}
+        />
       </div>
 
       <div className="field">
         <span className="field-label">Trạng thái đóng đơn</span>
-        <select className="select" name="sendStatus" defaultValue={filters.sendStatus}>
-          <option value="">Tất cả</option>
-          <option value="sent">Đã gửi</option>
-          <option value="cancelled">Huỷ</option>
-          <option value="none">Chưa đóng đơn</option>
-        </select>
+        <PillCheckboxGroup
+          name="sendStatus"
+          options={SEND_STATUS_FILTER_OPTIONS.map((value) => ({ value, label: SEND_STATUS_LABELS[value] }))}
+          selected={filters.sendStatus}
+        />
       </div>
 
       <div className="field">
         <span className="field-label">Trạng thái nhận huỷ</span>
-        <select className="select" name="cancelReceiptStatus" defaultValue={filters.cancelReceiptStatus}>
-          <option value="">Tất cả</option>
-          <option value="received_full">Đã nhận đủ</option>
-          <option value="not_received">Chưa nhận</option>
-          <option value="received_partial">Nhận thiếu</option>
-          <option value="none">Chưa có</option>
-        </select>
+        <PillCheckboxGroup
+          name="cancelReceiptStatus"
+          options={CANCEL_RECEIPT_FILTER_OPTIONS.map((value) => ({ value, label: CANCEL_RECEIPT_LABELS[value] }))}
+          selected={filters.cancelReceiptStatus}
+        />
       </div>
 
       <div className="field">

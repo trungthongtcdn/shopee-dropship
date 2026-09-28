@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const SEND_STATUS_OPTIONS = ["sent", "cancelled"] as const;
-const CANCEL_RECEIPT_OPTIONS = ["received_full", "not_received", "received_partial"] as const;
+const CANCEL_RECEIPT_OPTIONS = ["received_full", "not_received", "received_partial", "not_needed"] as const;
 
 function toDateInputValue(iso: string | null) {
   if (!iso) return "";
@@ -167,7 +167,13 @@ export function RowEditor(props: RowEditorProps) {
                 <option value="">-</option>
                 {CANCEL_RECEIPT_OPTIONS.map((value) => (
                   <option key={value} value={value}>
-                    {value === "received_full" ? "ĐÃ NHẬN ĐỦ" : value === "not_received" ? "CHƯA NHẬN" : "NHẬN THIẾU"}
+                    {value === "received_full"
+                      ? "ĐÃ NHẬN ĐỦ"
+                      : value === "not_received"
+                        ? "CHƯA NHẬN"
+                        : value === "received_partial"
+                          ? "NHẬN THIẾU"
+                          : "KHÔNG CẦN NHẬN"}
                   </option>
                 ))}
               </select>
