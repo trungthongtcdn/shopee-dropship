@@ -170,15 +170,27 @@ function PillCheckboxGroup({
   name,
   options,
   selected,
+  truncate = false,
 }: {
   name: string;
   options: { value: string; label: string }[];
   selected: string[];
+  // Order.status is free text straight from the Shopee sheet — usually a
+  // short word ("Hoàn thành") but sometimes a full sentence with a dynamic
+  // date baked in (e.g. the post-delivery return-window notice), which blew
+  // up into a giant pill and broke the toolbar layout. Cap the label width
+  // instead of the option list, so every real value is still selectable —
+  // full text is one hover away via the title attribute.
+  truncate?: boolean;
 }) {
   return (
     <div className="filter-pill-group">
       {options.map((option) => (
-        <label key={option.value} className="filter-pill">
+        <label
+          key={option.value}
+          className={truncate ? "filter-pill filter-pill-truncate" : "filter-pill"}
+          title={truncate ? option.label : undefined}
+        >
           <input
             className="filter-pill-input"
             type="checkbox"
@@ -240,6 +252,7 @@ function ReportFilterForm({
           name="status"
           options={orderStatusOptions.map((status) => ({ value: status, label: status }))}
           selected={filters.status}
+          truncate
         />
       </div>
 
