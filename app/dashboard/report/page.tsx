@@ -67,12 +67,11 @@ export default async function ReportPage({
         <p className="cell-muted" style={{ margin: 0 }}>
           {allRows.length} đơn
         </p>
+        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
         <a className="btn btn-secondary btn-sm" href={exportHref}>
           Xuất Excel
         </a>
       </div>
-
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
 
       <div className="table-wrap">
         <table className="data-table">
@@ -198,86 +197,92 @@ function ReportFilterForm({
   filters: ReportFilters;
   orderStatusOptions: StatusFilterOption[];
 }) {
+  const dropdownFieldStyle = { width: 170 };
+
   return (
-    <form className="toolbar" method="get">
-      <div className="field">
-        <span className="field-label">Tìm kiếm</span>
-        <input
-          className="input"
-          type="text"
-          name="q"
-          defaultValue={filters.q}
-          placeholder="Mã đơn hàng / mã vận đơn"
-          style={{ minWidth: 200 }}
-        />
-      </div>
+    <form method="get">
+      <div className="toolbar" style={{ alignItems: "flex-end" }}>
+        <div className="field">
+          <span className="field-label">Tìm kiếm</span>
+          <input
+            className="input"
+            type="text"
+            name="q"
+            defaultValue={filters.q}
+            placeholder="Mã đơn hàng / mã vận đơn"
+            style={{ minWidth: 200 }}
+          />
+        </div>
 
-      <div className="field">
-        <span className="field-label">Trạng thái đơn</span>
-        <FilterDropdown name="status" label="Trạng thái đơn" options={orderStatusOptions} selected={filters.status} />
-      </div>
+        <div className="field" style={dropdownFieldStyle}>
+          <span className="field-label">Trạng thái đơn</span>
+          <FilterDropdown name="status" label="Trạng thái đơn" options={orderStatusOptions} selected={filters.status} />
+        </div>
 
-      <div className="field">
-        <span className="field-label">Đối soát TT</span>
-        <FilterDropdown
-          name="paymentMatch"
-          label="Đối soát TT"
-          options={PAYMENT_MATCH_FILTER_OPTIONS.map((value) => ({ value, label: PAYMENT_MATCH_LABELS[value] }))}
-          selected={filters.paymentMatch}
-        />
-      </div>
+        <div className="field" style={dropdownFieldStyle}>
+          <span className="field-label">Đối soát TT</span>
+          <FilterDropdown
+            name="paymentMatch"
+            label="Đối soát TT"
+            options={PAYMENT_MATCH_FILTER_OPTIONS.map((value) => ({ value, label: PAYMENT_MATCH_LABELS[value] }))}
+            selected={filters.paymentMatch}
+          />
+        </div>
 
-      <div className="field">
-        <span className="field-label">Trạng thái đóng đơn</span>
-        <FilterDropdown
-          name="sendStatus"
-          label="Trạng thái đóng đơn"
-          options={SEND_STATUS_FILTER_OPTIONS.map((value) => ({ value, label: SEND_STATUS_LABELS[value] }))}
-          selected={filters.sendStatus}
-        />
-      </div>
+        <div className="field" style={dropdownFieldStyle}>
+          <span className="field-label">Trạng thái đóng đơn</span>
+          <FilterDropdown
+            name="sendStatus"
+            label="Trạng thái đóng đơn"
+            options={SEND_STATUS_FILTER_OPTIONS.map((value) => ({ value, label: SEND_STATUS_LABELS[value] }))}
+            selected={filters.sendStatus}
+          />
+        </div>
 
-      <div className="field">
-        <span className="field-label">Trạng thái nhận huỷ</span>
-        <FilterDropdown
-          name="cancelReceiptStatus"
-          label="Trạng thái nhận huỷ"
-          options={CANCEL_RECEIPT_FILTER_OPTIONS.map((value) => ({ value, label: CANCEL_RECEIPT_LABELS[value] }))}
-          selected={filters.cancelReceiptStatus}
-        />
-      </div>
-
-      <div className="field">
-        <span className="field-label">Ngày gửi đơn</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          <input className="input" type="date" name="sentFrom" defaultValue={filters.sentFrom} />
-          <input className="input" type="date" name="sentTo" defaultValue={filters.sentTo} />
+        <div className="field" style={dropdownFieldStyle}>
+          <span className="field-label">Trạng thái nhận huỷ</span>
+          <FilterDropdown
+            name="cancelReceiptStatus"
+            label="Trạng thái nhận huỷ"
+            options={CANCEL_RECEIPT_FILTER_OPTIONS.map((value) => ({ value, label: CANCEL_RECEIPT_LABELS[value] }))}
+            selected={filters.cancelReceiptStatus}
+          />
         </div>
       </div>
 
-      <div className="field">
-        <span className="field-label">Ngày nhận đơn huỷ</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          <input className="input" type="date" name="cancelFrom" defaultValue={filters.cancelFrom} />
-          <input className="input" type="date" name="cancelTo" defaultValue={filters.cancelTo} />
+      <div className="toolbar" style={{ alignItems: "flex-end" }}>
+        <div className="field">
+          <span className="field-label">Ngày gửi đơn</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input className="input" type="date" name="sentFrom" defaultValue={filters.sentFrom} />
+            <input className="input" type="date" name="sentTo" defaultValue={filters.sentTo} />
+          </div>
         </div>
-      </div>
 
-      <div className="field">
-        <span className="field-label">Ngày đối soát</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
-          <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />
+        <div className="field">
+          <span className="field-label">Ngày nhận đơn huỷ</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input className="input" type="date" name="cancelFrom" defaultValue={filters.cancelFrom} />
+            <input className="input" type="date" name="cancelTo" defaultValue={filters.cancelTo} />
+          </div>
         </div>
-      </div>
 
-      <div className="field" style={{ flexDirection: "row", gap: "var(--space-2)" }}>
-        <button type="submit" className="btn btn-primary btn-sm">
-          Lọc
-        </button>
-        <a href="/dashboard/report" className="btn btn-secondary btn-sm">
-          Xoá lọc
-        </a>
+        <div className="field">
+          <span className="field-label">Ngày đối soát</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
+            <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />
+          </div>
+        </div>
+
+        <div className="field" style={{ flexDirection: "row", gap: "var(--space-2)" }}>
+          <button type="submit" className="btn btn-primary btn-sm">
+            Lọc
+          </button>
+          <a href="/dashboard/report" className="btn btn-secondary btn-sm">
+            Xoá lọc
+          </a>
+        </div>
       </div>
     </form>
   );

@@ -521,12 +521,16 @@ label.filter-pill:has(.filter-pill-input:focus-visible) {
    and click-outside-to-close, both progressive enhancement. */
 .filter-dropdown {
   position: relative;
+  width: 100%;
 }
 
 .filter-dropdown-summary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
   font-size: 12px;
   font-weight: 500;
   padding: 6px 10px;
