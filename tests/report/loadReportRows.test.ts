@@ -76,16 +76,16 @@ describe("loadReportRows", () => {
     await prisma.order.deleteMany();
   });
 
-  it("hides a cancelled order with a tracking code that staff never touched", async () => {
+  it("hides a cancelled order with no tracking code", async () => {
     await seedOrder("SP001", "Hoàn thành");
-    await seedOrder("SP002", "Đã huỷ", { trackingCode: "SPXVN00000002" });
+    await seedOrder("SP002", "Đã huỷ", { trackingCode: null });
 
     const rows = await loadReportRows(parseReportFilters({}));
     expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP001"]);
   });
 
-  it("keeps a cancelled order staff already processed", async () => {
-    await seedOrder("SP001", "Đã huỷ", { trackingCode: "SPXVN00000001", sendStatus: "cancelled" });
+  it("keeps a cancelled order that has a tracking code", async () => {
+    await seedOrder("SP001", "Đã huỷ", { trackingCode: "SPXVN00000001" });
 
     const rows = await loadReportRows(parseReportFilters({}));
     expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP001"]);

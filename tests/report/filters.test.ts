@@ -96,24 +96,20 @@ describe("buildOrderWhere", () => {
 });
 
 describe("isNoiseCancelledOrder", () => {
-  it("hides a cancelled order with a tracking code that staff never touched", () => {
-    expect(isNoiseCancelledOrder({ status: "Đã huỷ", trackingCode: "SPXVN00000001", sendStatus: null })).toBe(true);
+  it("hides a cancelled order with no tracking code (nothing was ever shipped)", () => {
+    expect(isNoiseCancelledOrder({ status: "Đã huỷ", trackingCode: null })).toBe(true);
   });
 
   it("hides it regardless of which diacritic spelling of huỷ is used", () => {
-    expect(isNoiseCancelledOrder({ status: "Đã hủy", trackingCode: "SPXVN00000001", sendStatus: null })).toBe(true);
+    expect(isNoiseCancelledOrder({ status: "Đã hủy", trackingCode: null })).toBe(true);
   });
 
-  it("keeps a cancelled order with no tracking code (nothing was ever shipped)", () => {
-    expect(isNoiseCancelledOrder({ status: "Đã huỷ", trackingCode: null, sendStatus: null })).toBe(false);
+  it("keeps a cancelled order that has a tracking code", () => {
+    expect(isNoiseCancelledOrder({ status: "Đã huỷ", trackingCode: "SPXVN00000001" })).toBe(false);
   });
 
-  it("keeps a cancelled order staff already processed (sendStatus set)", () => {
-    expect(isNoiseCancelledOrder({ status: "Đã huỷ", trackingCode: "SPXVN00000001", sendStatus: "cancelled" })).toBe(false);
-  });
-
-  it("keeps a non-cancelled order even with a tracking code and no sendStatus", () => {
-    expect(isNoiseCancelledOrder({ status: "Đang giao", trackingCode: "SPXVN00000001", sendStatus: null })).toBe(false);
+  it("keeps a non-cancelled order even with no tracking code", () => {
+    expect(isNoiseCancelledOrder({ status: "Đang giao", trackingCode: null })).toBe(false);
   });
 });
 
