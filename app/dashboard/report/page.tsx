@@ -116,7 +116,9 @@ export default async function ReportPage({
                 <td className="num">{formatAmount(row.amountDue)}</td>
                 <td className="num">{formatAmount(row.amountPaid)}</td>
                 <td className="num">{formatPercent(row.diffPercent)}</td>
-                <td>{row.status}</td>
+                <td className="cell-truncate" title={row.status}>
+                  {row.status}
+                </td>
                 <td>
                   {row.paymentMatch === "matched" ? (
                     <span className="badge badge-success">khớp</span>

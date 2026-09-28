@@ -63,7 +63,7 @@ export default async function OrdersPage({
                 </td>
                 <td className="cell-muted">{order.categoryName || "-"}</td>
                 <td className="num">{order.lineQuantity ?? "-"}</td>
-                <td>
+                <td className="cell-truncate" title={order.status}>
                   <span className={statusBadgeClass(order.status)}>{order.status}</span>
                 </td>
                 <td>{order.trackingCode ?? "-"}</td>
