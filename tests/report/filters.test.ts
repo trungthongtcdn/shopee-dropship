@@ -3,7 +3,9 @@ import {
   parseReportFilters,
   buildOrderWhere,
   matchesPaymentMatchFilter,
+  matchesStatusFilter,
   reportFiltersToSearchParams,
+  STATUS_OTHER_VALUE,
 } from "@/lib/report/filters";
 
 describe("parseReportFilters", () => {
@@ -45,12 +47,11 @@ describe("buildOrderWhere", () => {
     ]);
   });
 
-  it("filters status by a list of exact values", () => {
-    const where = buildOrderWhere(parseReportFilters({ status: ["Hoàn thành", "Đang giao"] }));
-    expect(where.status).toEqual({ in: ["Hoàn thành", "Đang giao"] });
-  });
-
-  it("omits status entirely when no value is selected", () => {
+  // status isn't pushed into the DB where clause: the "Khác" bucket means
+  // "status longer than N chars", which Prisma has no operator for — it's
+  // matched in memory instead, see matchesStatusFilter below.
+  it("never sets status on the DB where clause", () => {
+    expect(buildOrderWhere(parseReportFilters({ status: ["Hoàn thành", "Đang giao"] })).status).toBeUndefined();
     expect(buildOrderWhere(parseReportFilters({})).status).toBeUndefined();
   });
 
@@ -113,6 +114,32 @@ describe("matchesPaymentMatchFilter", () => {
     expect(matchesPaymentMatchFilter("not_matched", ["matched", "not_matched"])).toBe(true);
     expect(matchesPaymentMatchFilter(null, ["matched", "none"])).toBe(true);
     expect(matchesPaymentMatchFilter("matched", ["not_matched", "none"])).toBe(false);
+  });
+});
+
+describe("matchesStatusFilter", () => {
+  it("matches everything when no filter is set", () => {
+    expect(matchesStatusFilter("Hoàn thành", [])).toBe(true);
+    expect(matchesStatusFilter("bất kỳ chuỗi dài nào cũng được, không quan trọng", [])).toBe(true);
+  });
+
+  it("matches an exact short status value", () => {
+    expect(matchesStatusFilter("Hoàn thành", ["Hoàn thành"])).toBe(true);
+    expect(matchesStatusFilter("Đang giao", ["Hoàn thành"])).toBe(false);
+  });
+
+  it("matches any status longer than the threshold when 'Khác' is selected", () => {
+    const longStatus =
+      "Người mua xác nhận đã nhận được hàng, tuy nhiên Người mua vẫn có thể gửi yêu cầu Trả hàng/Hoàn tiền tới ngày 2026-09-10.";
+    expect(matchesStatusFilter(longStatus, [STATUS_OTHER_VALUE])).toBe(true);
+    expect(matchesStatusFilter("Hoàn thành", [STATUS_OTHER_VALUE])).toBe(false);
+  });
+
+  it("combines a short value and 'Khác' via OR", () => {
+    const longStatus = "x".repeat(40);
+    expect(matchesStatusFilter("Hoàn thành", ["Hoàn thành", STATUS_OTHER_VALUE])).toBe(true);
+    expect(matchesStatusFilter(longStatus, ["Hoàn thành", STATUS_OTHER_VALUE])).toBe(true);
+    expect(matchesStatusFilter("Đang giao", ["Hoàn thành", STATUS_OTHER_VALUE])).toBe(false);
   });
 });
 

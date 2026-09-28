@@ -515,17 +515,6 @@ label.filter-pill:has(.filter-pill-input:focus-visible) {
   outline-offset: 1px;
 }
 
-/* Free-text option values (e.g. Order.status straight from the Shopee
-   sheet) can be a full sentence instead of a short word — cap the label
-   instead of letting the pill blow up and break the toolbar layout; full
-   text is available via the label's title attribute on hover. */
-label.filter-pill.filter-pill-truncate {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .summary-bar {
   display: flex;
   flex-wrap: wrap;

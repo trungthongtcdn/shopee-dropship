@@ -8,7 +8,7 @@ import {
   PAYMENT_MATCH_FILTER_OPTIONS,
   type ReportFilters,
 } from "@/lib/report/filters";
-import { loadReportRows, loadDistinctOrderStatuses } from "@/lib/report/loadReportRows";
+import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +49,7 @@ export default async function ReportPage({
   const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
   const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
 
-  const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadDistinctOrderStatuses()]);
+  const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadOrderStatusFilterOptions()]);
   const totalPages = totalPagesFor(allRows.length);
   const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -172,27 +172,15 @@ function PillCheckboxGroup({
   name,
   options,
   selected,
-  truncate = false,
 }: {
   name: string;
   options: { value: string; label: string }[];
   selected: string[];
-  // Order.status is free text straight from the Shopee sheet — usually a
-  // short word ("Hoàn thành") but sometimes a full sentence with a dynamic
-  // date baked in (e.g. the post-delivery return-window notice), which blew
-  // up into a giant pill and broke the toolbar layout. Cap the label width
-  // instead of the option list, so every real value is still selectable —
-  // full text is one hover away via the title attribute.
-  truncate?: boolean;
 }) {
   return (
     <div className="filter-pill-group">
       {options.map((option) => (
-        <label
-          key={option.value}
-          className={truncate ? "filter-pill filter-pill-truncate" : "filter-pill"}
-          title={truncate ? option.label : undefined}
-        >
+        <label key={option.value} className="filter-pill">
           <input
             className="filter-pill-input"
             type="checkbox"
@@ -232,7 +220,7 @@ function ReportFilterForm({
   orderStatusOptions,
 }: {
   filters: ReportFilters;
-  orderStatusOptions: string[];
+  orderStatusOptions: StatusFilterOption[];
 }) {
   return (
     <form className="toolbar" method="get">
@@ -250,12 +238,7 @@ function ReportFilterForm({
 
       <div className="field">
         <span className="field-label">Trạng thái đơn</span>
-        <PillCheckboxGroup
-          name="status"
-          options={orderStatusOptions.map((status) => ({ value: status, label: status }))}
-          selected={filters.status}
-          truncate
-        />
+        <PillCheckboxGroup name="status" options={orderStatusOptions} selected={filters.status} />
       </div>
 
       <div className="field">

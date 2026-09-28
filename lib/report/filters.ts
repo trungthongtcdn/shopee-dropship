@@ -10,6 +10,17 @@ export const CANCEL_RECEIPT_FILTER_OPTIONS = [
 ] as const;
 export const PAYMENT_MATCH_FILTER_OPTIONS = ["matched", "not_matched", "none"] as const;
 
+// Order.status is free text from the Shopee sheet, not a fixed enum — real
+// categories are all short ("Chờ giao hàng", "Hoàn thành", ~20 chars max).
+// Some orders instead carry an auto-generated sentence with a dynamic date
+// baked in (the post-delivery return-window notice), a fresh distinct value
+// every day — listing each as its own pill blew up the filter toolbar in
+// production (1209 orders → dozens of giant pills). Anything over this
+// length is grouped into one "Khác" pill (STATUS_OTHER_VALUE) instead of
+// being listed individually.
+export const STATUS_OPTION_MAX_LENGTH = 30;
+export const STATUS_OTHER_VALUE = "__other__";
+
 // All multi-select: each holds zero or more of the values above (or, for
 // `status`, zero or more of whatever distinct Order.status strings actually
 // exist right now — that field is free text from the Shopee sheet, not a
@@ -102,10 +113,6 @@ export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput 
     ];
   }
 
-  if (filters.status.length > 0) {
-    where.status = { in: filters.status };
-  }
-
   const sendStatusCond = selectedOrNull<OrderSendStatus>(filters.sendStatus, "sendStatus");
   if (sendStatusCond) and.push(sendStatusCond);
 
@@ -124,6 +131,17 @@ export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput 
   if (and.length > 0) where.AND = and;
 
   return where;
+}
+
+// Like paymentMatch, this can't be a plain DB `{ in: [...] }` because the
+// "Khác" bucket isn't a literal status value — it means "status longer than
+// STATUS_OPTION_MAX_LENGTH", which Prisma has no operator for. Filtered here
+// in memory instead, same place paymentMatch is.
+export function matchesStatusFilter(rowStatus: string, filters: string[]): boolean {
+  if (filters.length === 0) return true;
+  return filters.some((filter) =>
+    filter === STATUS_OTHER_VALUE ? rowStatus.length > STATUS_OPTION_MAX_LENGTH : rowStatus === filter
+  );
 }
 
 export function matchesPaymentMatchFilter(
