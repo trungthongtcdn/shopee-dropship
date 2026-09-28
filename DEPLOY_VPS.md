@@ -73,7 +73,9 @@ Add to `.env.prod` (then redeploy — see below):
 ZALO_BRIDGE_URL=http://172.18.0.1:8788
 ZALO_BRIDGE_SECRET=<WEBHOOK_SECRET from the bridge's own .env>
 ```
-Use the bridge's public HTTPS URL instead if the internal one isn't reachable from this app's container. Then go to `/dashboard/zalo` in the browser and pick the group to watch.
+Use the bridge's public HTTPS URL instead if the internal one isn't reachable from this app's container. Then go to `/dashboard/zalo` in the browser — there are two independent groups to pick, one per section:
+- **Nhóm cập nhật đóng hàng** — waybill-PDF-link + "Đã in..." reply flow (see lib/zalo/poller.ts).
+- **Nhóm cập nhật đơn huỷ** — any message naming an order id and/or tracking code marks that order's cancel-receipt as received, dated to the message's own timestamp (see lib/zalo/cancelReceiptPoller.ts).
 
 ## Redeploying after a code change
 

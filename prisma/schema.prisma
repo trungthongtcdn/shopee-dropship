@@ -312,14 +312,16 @@ model ReconciliationResult {
   @@map("reconciliation_results")
 }
 
-// Singleton row (id is always 1) — which Zalo group the background poller
-// watches, plus its cursor/state. lastProcessedMsgId is the since_msg_id
-// cursor for the next /messages poll; pendingPdfUrl/pendingPdfMsgId track a
-// waybill-PDF link message seen but not yet confirmed by staff, since the
-// Zalo bridge has no reply-chain info — confirmation is matched to whichever
-// PDF link came most recently in the same thread, not a true threaded reply.
+// One row per independent thing the background poller watches a Zalo group
+// for — keyed by `purpose` (a fixed literal like "waybill_confirm" or
+// "cancel_receipt_confirm"), not a singleton anymore now that there's more
+// than one. lastProcessedMsgId is the since_msg_id cursor for that
+// purpose's next /messages poll; pendingPdfUrl/pendingPdfMsgId are specific
+// to "waybill_confirm" (see lib/zalo/poller.ts) — they track a waybill-PDF
+// link message seen but not yet confirmed by staff, since the Zalo bridge
+// has no reply-chain info. Left null and unused by every other purpose.
 model ZaloWatchConfig {
-  id                 Int      @id @default(1)
+  purpose            String   @id
   threadId           String   @map("thread_id")
   threadType         String   @map("thread_type")
   threadName         String   @map("thread_name")
@@ -331,8 +333,10 @@ model ZaloWatchConfig {
   @@map("zalo_watch_config")
 }
 
-// Audit trail: one row per "đã đóng" confirmation the poller acted on, so
-// Luân can verify what got auto-applied to orders and when.
+// Audit trail: one row per "đã đóng"/"Đã in ..." waybill confirmation the
+// poller acted on, so Luân can verify what got auto-applied to orders and
+// when. Purpose "waybill_confirm" only — see ZaloCancelReceiptLog for the
+// "cancel_receipt_confirm" group's own log.
 model ZaloConfirmationLog {
   id              Int      @id @default(autoincrement())
   threadId        String   @map("thread_id")
@@ -343,6 +347,23 @@ model ZaloConfirmationLog {
   confirmedAt     DateTime @default(now()) @map("confirmed_at")
 
   @@map("zalo_confirmation_logs")
+}
+
+// Audit trail for the "cancel_receipt_confirm" Zalo group (lib/zalo/
+// cancelReceiptPoller.ts) — any message in that group naming an order id
+// and/or tracking code means the returned goods were received, dated to
+// when the message itself was sent (not processing time), unlike the
+// waybill-confirm flow.
+model ZaloCancelReceiptLog {
+  id              Int      @id @default(autoincrement())
+  threadId        String   @map("thread_id")
+  messageContent  String   @map("message_content")
+  codes           Json
+  matchedCount    Int      @map("matched_count")
+  confirmedByName String?  @map("confirmed_by_name")
+  confirmedAt     DateTime @map("confirmed_at")
+
+  @@map("zalo_cancel_receipt_logs")
 }
 
 // Remembers the last-applied row hash per tracking code from the "ĐƠN HUỶ"

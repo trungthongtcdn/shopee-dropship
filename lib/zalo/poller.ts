@@ -3,6 +3,10 @@ import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
 import { downloadAndExtractOrders, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 
+// ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
+// for the other one ("cancel_receipt_confirm").
+export const WAYBILL_CONFIRM_PURPOSE = "waybill_confirm";
+
 export interface PollState {
   pendingPdfUrl: string | null;
   pendingPdfMsgId: string | null;
@@ -153,7 +157,7 @@ export async function applyWaybillConfirmation(
 }
 
 export async function runPollCycle(): Promise<PollCycleResult | null> {
-  const config = await prisma.zaloWatchConfig.findUnique({ where: { id: 1 } });
+  const config = await prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } });
   if (!config) return null;
 
   const messages = await fetchMessages(config.threadId, config.threadType as "user" | "group", config.lastProcessedMsgId);
@@ -186,7 +190,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
   }
 
   await prisma.zaloWatchConfig.update({
-    where: { id: 1 },
+    where: { purpose: WAYBILL_CONFIRM_PURPOSE },
     data: {
       lastProcessedMsgId: lastMsgId ?? config.lastProcessedMsgId,
       pendingPdfUrl: state.pendingPdfUrl,

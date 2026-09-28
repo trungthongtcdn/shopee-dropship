@@ -5,6 +5,7 @@
 // (because middleware.ts runs on Edge), and this poller's Node-only
 // dependencies (child_process/fs, for pdftotext) fail that build.
 import { runPollCycle } from "../lib/zalo/poller";
+import { runCancelReceiptPollCycle } from "../lib/zalo/cancelReceiptPoller";
 
 const POLL_INTERVAL_MS = 20_000;
 
@@ -18,11 +19,21 @@ async function main() {
     try {
       const result = await runPollCycle();
       if (result && (result.processed > 0 || result.confirmed > 0)) {
-        console.log(`[zalo-poller] processed ${result.processed} message(s), ${result.confirmed} confirmation(s)`);
+        console.log(`[zalo-poller] waybill: processed ${result.processed} message(s), ${result.confirmed} confirmation(s)`);
       }
     } catch (error) {
-      console.error("[zalo-poller] cycle failed:", error);
+      console.error("[zalo-poller] waybill cycle failed:", error);
     }
+
+    try {
+      const result = await runCancelReceiptPollCycle();
+      if (result && (result.processed > 0 || result.matched > 0)) {
+        console.log(`[zalo-poller] cancel-receipt: processed ${result.processed} message(s), ${result.matched} order(s) matched`);
+      }
+    } catch (error) {
+      console.error("[zalo-poller] cancel-receipt cycle failed:", error);
+    }
+
     await sleep(POLL_INTERVAL_MS);
   }
 }

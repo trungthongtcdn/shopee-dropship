@@ -8,7 +8,7 @@ interface Group {
   name: string;
 }
 
-export function ZaloWatchForm() {
+export function ZaloWatchForm({ purpose }: { purpose: string }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -40,7 +40,7 @@ export function ZaloWatchForm() {
     const response = await fetch("/api/zalo/watch", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ threadId: group.id, threadType: "group", threadName: group.name }),
+      body: JSON.stringify({ purpose, threadId: group.id, threadType: "group", threadName: group.name }),
     });
     if (response.ok) {
       setStatus(`Đã chọn theo dõi "${group.name}"`);
