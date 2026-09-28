@@ -93,4 +93,22 @@ describe("planFromMessages", () => {
     expect(result.lastMsgId).toBe("2");
     expect(result.confirmations).toEqual([]);
   });
+
+  // Same class of production bug as cancelReceiptPoller: a sticker/image/
+  // system-notice message has non-string content (the bridge passes raw
+  // Zalo payloads through uncoerced). Must skip it, not throw and abort
+  // the whole cycle.
+  it("skips a non-text message instead of crashing the whole batch", () => {
+    const messages = [
+      msg({ msg_id: "1", content: "https://example.com/waybill.pdf" }),
+      { ...msg({ msg_id: "2" }), content: { href: "sticker.png" } } as unknown as ZaloMessage,
+      msg({ msg_id: "3", content: "Đã in 3 đơn" }),
+    ];
+    const result = planFromMessages(messages, EMPTY_STATE);
+
+    expect(result.confirmations).toEqual([
+      { pdfUrl: "https://example.com/waybill.pdf", confirmedByName: "Đối tác", confirmedAt: 1 },
+    ]);
+    expect(result.lastMsgId).toBe("3");
+  });
 });

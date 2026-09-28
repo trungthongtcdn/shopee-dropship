@@ -67,6 +67,24 @@ describe("planCancelReceiptMessages", () => {
     expect(result.matches.map((m) => m.codes[0])).toEqual(["260621MB6WJXKM", "260920HNF4JUM6"]);
     expect(result.lastMsgId).toBe("3");
   });
+
+  // Production bug: a sticker/image/system-notice message comes through
+  // from the bridge with non-string content (an object, not text) since
+  // the bridge passes raw Zalo payloads through uncoerced. Before this was
+  // guarded, extractOrderCodes threw on .match() and crashed the whole
+  // cycle, so lastProcessedMsgId never advanced and every message stayed
+  // stuck unprocessed forever, including real order codes sent afterward.
+  it("skips a non-text message instead of crashing the whole batch", () => {
+    const messages = [
+      msg({ msg_id: "1", content: "260621MB6WJXKM" }),
+      { ...msg({ msg_id: "2" }), content: { href: "sticker.png" } } as unknown as ZaloMessage,
+      msg({ msg_id: "3", content: "260920HNF4JUM6" }),
+    ];
+    const result = planCancelReceiptMessages(messages);
+
+    expect(result.matches.map((m) => m.codes[0])).toEqual(["260621MB6WJXKM", "260920HNF4JUM6"]);
+    expect(result.lastMsgId).toBe("3");
+  });
 });
 
 describe("applyCancelReceiptCodes", () => {

@@ -46,6 +46,15 @@ export function planCancelReceiptMessages(messages: ZaloMessage[]): CancelReceip
   for (const message of messages) {
     lastMsgId = message.msg_id;
 
+    // Non-text messages (stickers, images, system notices) come through
+    // with non-string content — the bridge passes raw Zalo payloads
+    // through uncoerced. Skip rather than crash the whole cycle (this was
+    // the actual production bug: one non-text message in the batch threw
+    // and aborted the loop, so nothing after it — including real
+    // cancel-receipt confirmations — ever got applied, silently, forever,
+    // since lastProcessedMsgId also never advanced past it).
+    if (typeof message.content !== "string") continue;
+
     const codes = extractOrderCodes(message.content);
     if (codes.length === 0) continue;
 

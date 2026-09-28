@@ -49,6 +49,11 @@ export function planFromMessages(messages: ZaloMessage[], initialState: PollStat
   for (const message of messages) {
     lastMsgId = message.msg_id;
 
+    // Non-text messages (stickers, images, system notices like "đã ghim
+    // tin nhắn") come through with non-string content — the bridge passes
+    // raw Zalo payloads through uncoerced. Skip rather than crash the cycle.
+    if (typeof message.content !== "string") continue;
+
     const pdfUrl = findPdfUrl(message.content);
     if (pdfUrl) {
       state = { pendingPdfUrl: pdfUrl, pendingPdfMsgId: message.msg_id };
