@@ -20,7 +20,7 @@ export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[
   const [orders, products, payments] = await Promise.all([
     prisma.order.findMany({
       where: buildOrderWhere(filters),
-      orderBy: { shopeeOrderId: "asc" },
+      orderBy: { orderDate: "desc" },
     }),
     prisma.product.findMany({
       where: { isActive: true },

@@ -6,7 +6,7 @@ import { parseReportFilters, STATUS_OTHER_VALUE } from "@/lib/report/filters";
 async function seedOrder(
   shopeeOrderId: string,
   status: string,
-  extra: { trackingCode?: string | null; sendStatus?: "sent" | "cancelled" | null } = {}
+  extra: { trackingCode?: string | null; sendStatus?: "sent" | "cancelled" | null; orderDate?: Date | null } = {}
 ) {
   return prisma.order.create({
     data: {
@@ -17,6 +17,7 @@ async function seedOrder(
       sheetRowIndex: 1,
       trackingCode: extra.trackingCode ?? null,
       sendStatus: extra.sendStatus ?? null,
+      orderDate: extra.orderDate ?? null,
     },
   });
 }
@@ -88,6 +89,15 @@ describe("loadReportRows", () => {
 
     const rows = await loadReportRows(parseReportFilters({}));
     expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP001"]);
+  });
+
+  it("sorts by orderDate, newest first", async () => {
+    await seedOrder("OLD", "Hoàn thành", { orderDate: new Date("2026-09-01") });
+    await seedOrder("NEW", "Hoàn thành", { orderDate: new Date("2026-09-25") });
+    await seedOrder("MID", "Hoàn thành", { orderDate: new Date("2026-09-15") });
+
+    const rows = await loadReportRows(parseReportFilters({}));
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["NEW", "MID", "OLD"]);
   });
 
   afterAll(async () => {

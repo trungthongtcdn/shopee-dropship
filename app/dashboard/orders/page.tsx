@@ -43,6 +43,7 @@ export default async function OrdersPage({
         <table className="data-table">
           <thead>
             <tr>
+              <th>Ngày tạo đơn</th>
               <th>Mã đơn hàng</th>
               <th>Sản phẩm</th>
               <th>Phân loại</th>
@@ -57,6 +58,7 @@ export default async function OrdersPage({
           <tbody>
             {orders.map((order) => (
               <tr key={order.id}>
+                <td className="cell-muted">{order.orderDate?.toISOString().slice(0, 10) ?? "-"}</td>
                 <td>{order.shopeeOrderId}</td>
                 <td className="cell-truncate" title={order.productName ?? "-"}>
                   {order.productName ?? "-"}

@@ -5,6 +5,7 @@ function order(overrides: Partial<ReportOrderInput> = {}): ReportOrderInput {
   return {
     id: 1,
     shopeeOrderId: "SP001",
+    orderDate: null,
     status: "Hoàn thành",
     trackingCode: "SPXVN001",
     productName: "Product 1",
@@ -146,5 +147,11 @@ describe("buildReportRows", () => {
     expect(rows[0].cancelReceiptStatus).toBe("received_full");
     expect(rows[0].luanCheck).toBe(true);
     expect(rows[0].note).toBe("ghi chú");
+  });
+
+  it("passes through orderDate unchanged", () => {
+    const orderDate = new Date("2026-09-20T00:00:00Z");
+    const rows = buildReportRows([order({ orderDate })], [], []);
+    expect(rows[0].orderDate).toEqual(orderDate);
   });
 });

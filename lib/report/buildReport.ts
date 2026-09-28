@@ -1,6 +1,7 @@
 export interface ReportOrderInput {
   id: number;
   shopeeOrderId: string;
+  orderDate: Date | null;
   status: string;
   trackingCode: string | null;
   productName: string | null;
@@ -35,6 +36,7 @@ export type PaymentMatch = "matched" | "not_matched";
 export interface ReportRow {
   orderId: number;
   shopeeOrderId: string;
+  orderDate: Date | null;
   status: string;
   trackingCode: string | null;
   productName: string | null;
@@ -98,6 +100,7 @@ export function buildReportRows(
     return {
       orderId: order.id,
       shopeeOrderId: order.shopeeOrderId,
+      orderDate: order.orderDate,
       status: order.status,
       trackingCode: order.trackingCode,
       productName: order.productName,

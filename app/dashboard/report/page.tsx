@@ -78,6 +78,7 @@ export default async function ReportPage({
         <table className="data-table">
           <thead>
             <tr>
+              <th>Ngày tạo đơn</th>
               <th>Mã đơn hàng</th>
               <th>Mã vận đơn</th>
               <th>Tên sản phẩm</th>
@@ -105,6 +106,7 @@ export default async function ReportPage({
           <tbody>
             {rows.map((row) => (
               <tr key={row.orderId}>
+                <td className="cell-muted">{formatDate(row.orderDate)}</td>
                 <td>{row.shopeeOrderId}</td>
                 <td>{row.trackingCode ?? "-"}</td>
                 <td className="cell-truncate" title={row.productName ?? "-"}>
