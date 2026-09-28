@@ -24,7 +24,7 @@ export default async function OrdersPage({
   const [orders, totalCount] = await Promise.all([
     prisma.order.findMany({
       where: { isActive: true },
-      orderBy: { lastSyncedAt: "desc" },
+      orderBy: { orderDate: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
