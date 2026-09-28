@@ -33,9 +33,8 @@ export function FilterDropdown({
 
   return (
     <details ref={detailsRef} className="filter-dropdown">
-      <summary className="filter-dropdown-summary">
-        {label}
-        {count > 0 ? ` (${count})` : ""}
+      <summary className="filter-dropdown-summary" aria-label={label}>
+        {count > 0 ? `${count} đã chọn` : "Tất cả"}
       </summary>
       <div className="filter-dropdown-menu">
         {options.length === 0 ? (

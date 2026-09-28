@@ -213,10 +213,12 @@ function ReportFilterForm({
       </div>
 
       <div className="field">
+        <span className="field-label">Trạng thái đơn</span>
         <FilterDropdown name="status" label="Trạng thái đơn" options={orderStatusOptions} selected={filters.status} />
       </div>
 
       <div className="field">
+        <span className="field-label">Đối soát TT</span>
         <FilterDropdown
           name="paymentMatch"
           label="Đối soát TT"
@@ -226,6 +228,7 @@ function ReportFilterForm({
       </div>
 
       <div className="field">
+        <span className="field-label">Trạng thái đóng đơn</span>
         <FilterDropdown
           name="sendStatus"
           label="Trạng thái đóng đơn"
@@ -235,6 +238,7 @@ function ReportFilterForm({
       </div>
 
       <div className="field">
+        <span className="field-label">Trạng thái nhận huỷ</span>
         <FilterDropdown
           name="cancelReceiptStatus"
           label="Trạng thái nhận huỷ"
