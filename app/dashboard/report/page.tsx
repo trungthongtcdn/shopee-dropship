@@ -1,4 +1,5 @@
 import { RowEditor, LuanCheckToggle } from "./RowEditor";
+import { FilterDropdown } from "./FilterDropdown";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import {
   parseReportFilters,
@@ -168,33 +169,6 @@ export default async function ReportPage({
   );
 }
 
-function PillCheckboxGroup({
-  name,
-  options,
-  selected,
-}: {
-  name: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-}) {
-  return (
-    <div className="filter-pill-group">
-      {options.map((option) => (
-        <label key={option.value} className="filter-pill">
-          <input
-            className="filter-pill-input"
-            type="checkbox"
-            name={name}
-            value={option.value}
-            defaultChecked={selected.includes(option.value)}
-          />
-          {option.label}
-        </label>
-      ))}
-    </div>
-  );
-}
-
 const SEND_STATUS_LABELS: Record<(typeof SEND_STATUS_FILTER_OPTIONS)[number], string> = {
   sent: "Đã gửi",
   cancelled: "Huỷ",
@@ -237,32 +211,31 @@ function ReportFilterForm({
       </div>
 
       <div className="field">
-        <span className="field-label">Trạng thái đơn</span>
-        <PillCheckboxGroup name="status" options={orderStatusOptions} selected={filters.status} />
+        <FilterDropdown name="status" label="Trạng thái đơn" options={orderStatusOptions} selected={filters.status} />
       </div>
 
       <div className="field">
-        <span className="field-label">Đối soát TT</span>
-        <PillCheckboxGroup
+        <FilterDropdown
           name="paymentMatch"
+          label="Đối soát TT"
           options={PAYMENT_MATCH_FILTER_OPTIONS.map((value) => ({ value, label: PAYMENT_MATCH_LABELS[value] }))}
           selected={filters.paymentMatch}
         />
       </div>
 
       <div className="field">
-        <span className="field-label">Trạng thái đóng đơn</span>
-        <PillCheckboxGroup
+        <FilterDropdown
           name="sendStatus"
+          label="Trạng thái đóng đơn"
           options={SEND_STATUS_FILTER_OPTIONS.map((value) => ({ value, label: SEND_STATUS_LABELS[value] }))}
           selected={filters.sendStatus}
         />
       </div>
 
       <div className="field">
-        <span className="field-label">Trạng thái nhận huỷ</span>
-        <PillCheckboxGroup
+        <FilterDropdown
           name="cancelReceiptStatus"
+          label="Trạng thái nhận huỷ"
           options={CANCEL_RECEIPT_FILTER_OPTIONS.map((value) => ({ value, label: CANCEL_RECEIPT_LABELS[value] }))}
           selected={filters.cancelReceiptStatus}
         />

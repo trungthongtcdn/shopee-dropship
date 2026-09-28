@@ -515,6 +515,85 @@ label.filter-pill:has(.filter-pill-input:focus-visible) {
   outline-offset: 1px;
 }
 
+/* Multi-select filter as a closed-by-default dropdown (report page) —
+   checkboxes inside are real form inputs, see FilterDropdown.tsx. Native
+   <details>/<summary> so it works with zero JS beyond the open-count badge
+   and click-outside-to-close, both progressive enhancement. */
+.filter-dropdown {
+  position: relative;
+}
+
+.filter-dropdown-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-foreground);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.filter-dropdown-summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-dropdown-summary::after {
+  content: "▾";
+  font-size: 10px;
+  color: var(--color-muted-foreground);
+}
+
+.filter-dropdown[open] .filter-dropdown-summary {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.filter-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+}
+
+.filter-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-dropdown-item:hover {
+  background: var(--color-muted);
+}
+
+.filter-dropdown-item input {
+  cursor: pointer;
+}
+
+.filter-dropdown-empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-muted-foreground);
+}
+
 .summary-bar {
   display: flex;
   flex-wrap: wrap;
