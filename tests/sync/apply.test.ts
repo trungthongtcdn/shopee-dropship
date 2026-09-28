@@ -275,6 +275,47 @@ describe("applyOrdersPayload adopting a Zalo placeholder row", () => {
     expect(untouched?.status).toBe("Hoàn thành");
   });
 
+  // Production bug: a placeholder can outlive several sync cycles before
+  // the real order data ever appears in the sheet (confirmed: 2 days on
+  // one real order). Its categoryName ("") never matches a real sheet
+  // row's key, so the generic diff used to flag it as a stale "missing
+  // row" and soft-delete it on the very next unrelated sync — long before
+  // the real data arrived. Once soft-deleted, the later adoption lookup
+  // (isPlaceholder: true, isActive: true) found nothing, so the carry-
+  // forward silently never happened and the real row landed with
+  // sendStatus/sentAt back to null.
+  it("keeps a placeholder alive across an unrelated sync cycle, then still adopts it later", async () => {
+    const sentAt = new Date("2026-06-20T10:00:00.000Z");
+    const placeholder = await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP006",
+        categoryName: "",
+        trackingCode: "SPXVN006",
+        status: "Chưa đồng bộ",
+        sendStatus: "sent",
+        sentAt,
+        isPlaceholder: true,
+        rawRowHash: "zalo-placeholder",
+        sheetRowIndex: 0,
+      },
+    });
+
+    // A sync cycle happens before SP006's real data ever reaches the
+    // sheet — the batch only names some other order.
+    await applyOrdersPayload([orderRow(2, "hash-unrelated", "SP999", "D100")]);
+
+    const stillPending = await prisma.order.findUnique({ where: { id: placeholder.id } });
+    expect(stillPending?.isActive).toBe(true);
+    expect(stillPending?.isPlaceholder).toBe(true);
+
+    // The real data finally arrives on a later cycle.
+    await applyOrdersPayload([orderRow(3, "hash-real", "SP006", "D100")]);
+
+    const real = await prisma.order.findFirst({ where: { shopeeOrderId: "SP006", isPlaceholder: false } });
+    expect(real?.sendStatus).toBe("sent");
+    expect(real?.sentAt?.toISOString()).toBe(sentAt.toISOString());
+  });
+
   afterAll(async () => {
     await prisma.syncLog.deleteMany();
     await prisma.order.deleteMany();

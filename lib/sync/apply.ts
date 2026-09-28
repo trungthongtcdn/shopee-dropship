@@ -325,7 +325,19 @@ export async function applyOrdersPayload(rows: IncomingRow[]) {
     keyOfOrderRow,
     whereOfOrderRow,
     mapOrderRow,
-    rows
+    rows,
+    // Without this, a surviving placeholder (categoryName "" never matches
+    // a real sheet row's key) gets flagged as a stale "missing row" and
+    // soft-deleted by the very next sync cycle — regardless of whether the
+    // real order has synced in yet. If the real data takes longer than one
+    // sync cycle to appear (confirmed in production: 2 days), the carry-
+    // forward loop below finds nothing (isActive already false) and the
+    // real row silently gets sendStatus/sentAt etc. reset to null. Excluding
+    // placeholders from this diff's "existing rows" snapshot makes them
+    // invisible to the soft-delete pass — they only ever get removed by
+    // this function's own delete-and-carry-forward above, once the real
+    // order actually arrives.
+    { isPlaceholder: false }
   );
 
   for (const placeholder of placeholders) {
