@@ -22,6 +22,19 @@ describe("tsToDate", () => {
   it("scales up a 10-digit value as seconds", () => {
     expect(tsToDate(1_790_000_000).getTime()).toBe(1_790_000_000_000);
   });
+
+  // Production bug: the bridge sends ts as a numeric STRING (confirmed via
+  // a real crash — new Date("1790326992116") is Invalid Date, since the
+  // Date string constructor tries to parse it as a date string, not a
+  // numeric timestamp). Every cancel-receipt confirmation was failing
+  // Prisma validation on cancelReceivedAt until this was coerced.
+  it("coerces a numeric-string ts the same way as a number", () => {
+    expect(tsToDate("1790326992116").getTime()).toBe(1790326992116);
+  });
+
+  it("coerces a numeric-string seconds-scale ts too", () => {
+    expect(tsToDate("1790000000").getTime()).toBe(1_790_000_000_000);
+  });
 });
 
 describe("planCancelReceiptMessages", () => {

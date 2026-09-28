@@ -7,12 +7,18 @@ import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
 export const CANCEL_RECEIPT_CONFIRM_PURPOSE = "cancel_receipt_confirm";
 
 // Zalo's `ts` is epoch milliseconds per zca-js convention, but the bridge
-// doesn't document this explicitly. Guard against a seconds-scale value
-// slipping through instead of assuming blindly: ms timestamps for any real
-// date are always >= 10^12, second timestamps stay below 10^11 until the
-// year 2286, so this threshold cleanly tells the two apart.
-export function tsToDate(ts: number): Date {
-  const ms = ts < 10_000_000_000 ? ts * 1000 : ts;
+// doesn't document this explicitly, and in production sends it as a
+// numeric STRING rather than a number (e.g. "1790326992116") — confirmed
+// by a real crash: new Date("1790326992116") is Invalid Date, since Date's
+// string constructor parses that as a date string, not a numeric
+// timestamp, while new Date(1790326992116) (the number) works fine. Coerce
+// first, always. Guard against a seconds-scale value slipping through
+// instead of assuming blindly: ms timestamps for any real date are always
+// >= 10^12, second timestamps stay below 10^11 until the year 2286, so
+// this threshold cleanly tells the two apart.
+export function tsToDate(ts: number | string): Date {
+  const numeric = typeof ts === "number" ? ts : Number(ts);
+  const ms = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
   return new Date(ms);
 }
 

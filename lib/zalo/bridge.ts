@@ -4,7 +4,11 @@ export interface ZaloMessage {
   from_name: string;
   is_self: boolean;
   content: string;
-  ts: number;
+  // Observed in production as a numeric STRING (e.g. "1790326992116"), not
+  // a number — the bridge just forwards whatever zca-js gives it uncoerced.
+  // Any code doing arithmetic on this must coerce first (see tsToDate in
+  // cancelReceiptPoller.ts).
+  ts: number | string;
 }
 
 export interface ZaloGroup {

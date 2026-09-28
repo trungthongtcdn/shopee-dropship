@@ -15,7 +15,10 @@ export interface PollState {
 export interface ConfirmationEvent {
   pdfUrl: string;
   confirmedByName: string;
-  confirmedAt: number;
+  // Raw message.ts, kept for reference only — never turned into a Date
+  // here (see the comment above `const confirmedAt = new Date()` further
+  // down). Same number|string ambiguity as ZaloMessage.ts.
+  confirmedAt: number | string;
 }
 
 export interface PlanResult {
