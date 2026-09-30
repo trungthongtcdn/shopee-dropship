@@ -187,6 +187,24 @@ describe("applyCancelReceiptCodes", () => {
     expect(log?.matchedCount).toBe(0);
   });
 
+  it("uses the given cancelReceiptStatus instead of the received_full default", async () => {
+    await prisma.order.create({
+      data: { shopeeOrderId: "SP003", categoryName: "D100", status: "pending", rawRowHash: "h", sheetRowIndex: 1 },
+    });
+
+    await applyCancelReceiptCodes({
+      codes: ["SP003"],
+      messageContent: "SP003",
+      confirmedByName: "Quét mã thủ công",
+      confirmedAt: new Date(),
+      threadId: "manual-scan",
+      cancelReceiptStatus: "received_partial",
+    });
+
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP003" } });
+    expect(order?.cancelReceiptStatus).toBe("received_partial");
+  });
+
   afterAll(async () => {
     await prisma.zaloCancelReceiptLog.deleteMany();
     await prisma.order.deleteMany();

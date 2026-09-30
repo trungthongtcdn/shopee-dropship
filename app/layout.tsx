@@ -33,8 +33,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link className="nav-link" href="/dashboard/report">
                 Report (LUÂN CẦN)
               </Link>
-              <Link className="nav-link" href="/dashboard/zalo">
-                Zalo
+              <Link className="nav-link" href="/dashboard/dong-don">
+                Đóng đơn
+              </Link>
+              <Link className="nav-link" href="/dashboard/don-huy">
+                Đơn huỷ
               </Link>
             </nav>
           </div>

@@ -3,7 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 // Deliberately not applied to /api/sync/webhook — Apps Script authenticates
 // there with its own X-Sync-Secret header, checked inside the route handler.
 export const config = {
-  matcher: ["/", "/dashboard/:path*", "/api/reconcile/:path*", "/api/orders/:path*", "/api/zalo/:path*", "/api/report/:path*"],
+  matcher: [
+    "/",
+    "/dashboard/:path*",
+    "/api/reconcile/:path*",
+    "/api/orders/:path*",
+    "/api/zalo/:path*",
+    "/api/report/:path*",
+    "/api/don-huy/:path*",
+  ],
 };
 
 function timingSafeEqual(a: string, b: string): boolean {

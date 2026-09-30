@@ -1,3 +1,4 @@
+import { CancelReceiptStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
@@ -81,6 +82,11 @@ export interface ApplyCancelReceiptCodesParams {
   confirmedByName: string | null;
   confirmedAt: Date;
   threadId: string;
+  // Optional because every existing caller (the Zalo group flow) means one
+  // thing only: the group message itself IS the "received it" confirmation,
+  // always received_full. The manual barcode-scan entry point is the only
+  // caller that lets staff pick a different status (e.g. received_partial).
+  cancelReceiptStatus?: CancelReceiptStatus;
 }
 
 export interface ApplyCancelReceiptCodesResult {
@@ -98,14 +104,14 @@ export interface ApplyCancelReceiptCodesResult {
 export async function applyCancelReceiptCodes(
   params: ApplyCancelReceiptCodesParams
 ): Promise<ApplyCancelReceiptCodesResult> {
-  const { codes, messageContent, confirmedByName, confirmedAt, threadId } = params;
+  const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full" } = params;
 
   const result = await prisma.order.updateMany({
     where: {
       isActive: true,
       OR: [{ shopeeOrderId: { in: codes } }, { trackingCode: { in: codes } }],
     },
-    data: { cancelReceiptStatus: "received_full", cancelReceivedAt: confirmedAt },
+    data: { cancelReceiptStatus, cancelReceivedAt: confirmedAt },
   });
 
   await prisma.zaloCancelReceiptLog.create({

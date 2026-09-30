@@ -1,0 +1,229 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { IScannerControls } from "@zxing/browser";
+import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
+
+const CANCEL_RECEIPT_STATUS_OPTIONS = ["received_full", "received_partial", "not_received", "not_needed"] as const;
+const CANCEL_RECEIPT_STATUS_LABELS: Record<(typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number], string> = {
+  received_full: "ĐÃ NHẬN ĐỦ",
+  received_partial: "NHẬN THIẾU",
+  not_received: "CHƯA NHẬN",
+  not_needed: "KHÔNG CẦN NHẬN",
+};
+
+function toDatetimeLocalValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// Short two-tone beep on a successful scan — synthesized via Web Audio so
+// no external asset is needed, and it works the same on every device.
+function beep() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+    osc.onended = () => ctx.close();
+  } catch {
+    // Audio isn't essential to the feature — a browser that blocks
+    // AudioContext (autoplay policy, etc.) just scans silently.
+  }
+}
+
+export function BarcodeScanForm() {
+  const router = useRouter();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [codes, setCodes] = useState<string[]>([]);
+  const [manualInput, setManualInput] = useState("");
+  const [confirmedAt, setConfirmedAt] = useState(() => toDatetimeLocalValue(new Date()));
+  const [cancelReceiptStatus, setCancelReceiptStatus] =
+    useState<(typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number]>("received_full");
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  function addCode(raw: string) {
+    const [code] = extractOrderCodes(raw);
+    if (!code || codes.includes(code)) return false;
+    setCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+    return true;
+  }
+
+  useEffect(() => {
+    if (!cameraOn) return;
+
+    let cancelled = false;
+    setCameraError(null);
+
+    import("@zxing/browser").then(({ BrowserMultiFormatReader }) => {
+      if (cancelled || !videoRef.current) return;
+      const reader = new BrowserMultiFormatReader();
+      reader
+        .decodeFromConstraints({ video: { facingMode: "environment" } }, videoRef.current, (result) => {
+          if (!result) return;
+          if (addCode(result.getText())) beep();
+        })
+        .then((controls) => {
+          if (cancelled) {
+            controls.stop();
+            return;
+          }
+          controlsRef.current = controls;
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setCameraError(error instanceof Error ? error.message : "Không mở được camera");
+          setCameraOn(false);
+        });
+    });
+
+    return () => {
+      cancelled = true;
+      controlsRef.current?.stop();
+      controlsRef.current = null;
+    };
+  }, [cameraOn]);
+
+  function removeCode(code: string) {
+    setCodes((prev) => prev.filter((c) => c !== code));
+  }
+
+  function submitManualInput(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (addCode(manualInput)) {
+      setManualInput("");
+    } else {
+      setStatus(`"${manualInput}" không phải mã đơn hàng hoặc mã vận đơn hợp lệ`);
+    }
+  }
+
+  async function submitAll() {
+    setSubmitting(true);
+    setStatus("Đang xử lý...");
+    try {
+      const response = await fetch("/api/don-huy/manual-scan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          codes,
+          confirmedAt: new Date(confirmedAt).toISOString(),
+          cancelReceiptStatus,
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok) {
+        setStatus(`Đã khớp ${json.matchedCount}/${codes.length} mã`);
+        setCodes([]);
+        router.refresh();
+      } else {
+        setStatus(json?.error ?? `Lỗi (${response.status})`);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Lỗi khi gửi");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ alignItems: "flex-end" }}>
+        <form onSubmit={submitManualInput} className="field">
+          <span className="field-label">Nhập mã thủ công</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              className="input"
+              type="text"
+              placeholder="Mã đơn hàng / mã vận đơn"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              style={{ minWidth: 220 }}
+            />
+            <button type="submit" className="btn btn-secondary btn-sm">
+              Thêm
+            </button>
+          </div>
+        </form>
+
+        <div className="field" style={{ flexDirection: "row" }}>
+          <button
+            type="button"
+            className={cameraOn ? "btn btn-secondary btn-sm" : "btn btn-primary btn-sm"}
+            onClick={() => setCameraOn((on) => !on)}
+          >
+            {cameraOn ? "Tắt camera" : "Bật camera"}
+          </button>
+        </div>
+      </div>
+
+      {cameraError && <p className="editor-status">{cameraError}</p>}
+
+      {cameraOn ? (
+        <video ref={videoRef} style={{ width: "100%", maxWidth: 360, borderRadius: "var(--radius-md)", marginBottom: "var(--space-3)" }} />
+      ) : null}
+
+      <div className="filter-pill-group" style={{ marginBottom: "var(--space-3)" }}>
+        {codes.length === 0 ? (
+          <span className="cell-muted">Chưa quét/nhập mã nào.</span>
+        ) : (
+          codes.map((code) => (
+            <span key={code} className="filter-pill active" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {code}
+              <button
+                type="button"
+                onClick={() => removeCode(code)}
+                aria-label={`Xoá ${code}`}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      <div className="toolbar" style={{ alignItems: "flex-end" }}>
+        <div className="field">
+          <span className="field-label">Ngày giờ nhận huỷ</span>
+          <input
+            className="input"
+            type="datetime-local"
+            value={confirmedAt}
+            onChange={(e) => setConfirmedAt(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">Trạng thái nhận huỷ</span>
+          <select
+            className="select"
+            value={cancelReceiptStatus}
+            onChange={(e) => setCancelReceiptStatus(e.target.value as (typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number])}
+          >
+            {CANCEL_RECEIPT_STATUS_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {CANCEL_RECEIPT_STATUS_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field" style={{ flexDirection: "row" }}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={submitAll} disabled={submitting || codes.length === 0}>
+            {submitting ? "Đang xử lý..." : `Xác nhận (${codes.length})`}
+          </button>
+        </div>
+        {status && <span className="editor-status">{status}</span>}
+      </div>
+    </div>
+  );
+}

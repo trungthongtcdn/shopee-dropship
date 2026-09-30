@@ -8,7 +8,7 @@ interface Group {
   name: string;
 }
 
-export function ZaloWatchForm({ purpose }: { purpose: string }) {
+export function ZaloWatchForm({ purpose, onSelected }: { purpose: string; onSelected?: () => void }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -46,6 +46,7 @@ export function ZaloWatchForm({ purpose }: { purpose: string }) {
       setStatus(`Đã chọn theo dõi "${group.name}"`);
       setGroups(null);
       router.refresh();
+      onSelected?.();
     } else {
       const json = await response.json().catch(() => null);
       setStatus(json?.error ?? "Lỗi khi lưu");
