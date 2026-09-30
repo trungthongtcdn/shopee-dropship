@@ -5,8 +5,10 @@ import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/delive
 
 export const dynamic = "force-dynamic";
 
+// "cancelled" (4.1 Đơn hủy) isn't offered here — those orders are excluded
+// from this page entirely (see loadCancellationRows), so a filter option
+// that always returns zero rows would just be confusing.
 const TYPE_FILTER_OPTIONS = [
-  { value: "cancelled", label: "Đã huỷ" },
   { value: "delivery_failed", label: "Giao thất bại" },
   { value: "returned_refunded", label: "Trả hàng hoàn tiền" },
 ];
@@ -43,8 +45,8 @@ export default async function HoanHuyPage({
     <main className="page">
       <h1>Đơn hoàn huỷ</h1>
       <p className="page-description">
-        Gộp 3 loại đơn không giao thành công thật sự dù trạng thái sheet chính vẫn ghi "Hoàn thành": Đã huỷ (4.1 Đơn
-        hủy), Giao thất bại (4.2 Giao thất bại), Trả hàng hoàn tiền (5. Trả hàng/hoàn tiền).
+        Gộp các đơn không giao thành công thật sự dù trạng thái sheet chính vẫn ghi "Hoàn thành": Giao thất bại (4.2
+        Giao thất bại), Trả hàng hoàn tiền (5. Trả hàng/hoàn tiền). Đơn thuộc 4.1 Đơn hủy không hiển thị ở đây.
       </p>
 
       <form method="get" className="toolbar">

@@ -29,13 +29,15 @@ describe("loadCancellationRows", () => {
     await prisma.cancellation.deleteMany();
   });
 
-  it("returns every active row when no type filter is set", async () => {
+  // "cancelled" (4.1 Đơn hủy) is deliberately excluded from this page —
+  // per explicit feedback, Luân doesn't care about those.
+  it("excludes 'cancelled' rows even when no type filter is set", async () => {
     await seedCancellation("SP001", "cancelled");
     await seedCancellation("SP002", "delivery_failed");
     await seedCancellation("SP003", "returned_refunded");
 
     const rows = await loadCancellationRows({ types: [] });
-    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.shopeeOrderId).sort()).toEqual(["SP002", "SP003"]);
   });
 
   it("filters down to the selected types only", async () => {
@@ -43,12 +45,20 @@ describe("loadCancellationRows", () => {
     await seedCancellation("SP002", "delivery_failed");
     await seedCancellation("SP003", "returned_refunded");
 
-    const rows = await loadCancellationRows({ types: ["cancelled", "returned_refunded"] });
-    expect(rows.map((r) => r.shopeeOrderId).sort()).toEqual(["SP001", "SP003"]);
+    const rows = await loadCancellationRows({ types: ["returned_refunded"] });
+    expect(rows.map((r) => r.shopeeOrderId).sort()).toEqual(["SP003"]);
+  });
+
+  it("still excludes 'cancelled' even if hand-crafted into the type filter", async () => {
+    await seedCancellation("SP001", "cancelled");
+    await seedCancellation("SP002", "delivery_failed");
+
+    const rows = await loadCancellationRows({ types: ["cancelled", "delivery_failed"] });
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP002"]);
   });
 
   it("excludes soft-deleted rows", async () => {
-    const row = await seedCancellation("SP001", "cancelled");
+    const row = await seedCancellation("SP002", "delivery_failed");
     await prisma.cancellation.update({ where: { id: row.id }, data: { isActive: false } });
 
     const rows = await loadCancellationRows({ types: [] });
