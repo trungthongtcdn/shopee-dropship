@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
+import { deriveDeliveryResult, DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,12 @@ function statusBadgeClass(status: string) {
   if (s.includes("hủy") || s.includes("huỷ") || s.includes("thất bại")) return "badge badge-danger";
   if (s.includes("hoàn thành") || s.includes("đã giao")) return "badge badge-success";
   return "badge";
+}
+
+function deliveryResultBadgeClass(result: DeliveryResult) {
+  if (result === "delivered") return "badge badge-success";
+  if (result === "delivery_failed" || result === "cancelled") return "badge badge-danger";
+  return "badge badge-warning";
 }
 
 function formatDateTime(value: Date) {
@@ -31,6 +39,7 @@ export default async function OrdersPage({
     prisma.order.count({ where: { isActive: true } }),
   ]);
   const totalPages = totalPagesFor(totalCount);
+  const cancellationByOrderId = await loadCancellationSummaries([...new Set(orders.map((o) => o.shopeeOrderId))]);
 
   return (
     <main className="page">
@@ -49,6 +58,7 @@ export default async function OrdersPage({
               <th>Phân loại</th>
               <th>SL</th>
               <th>Trạng thái</th>
+              <th>Kết quả giao thực tế</th>
               <th>Mã vận đơn</th>
               <th>Đơn vị VC</th>
               <th>Giao dự kiến</th>
@@ -56,7 +66,9 @@ export default async function OrdersPage({
             </tr>
           </thead>
           <tbody>
-            {orders.map((order) => (
+            {orders.map((order) => {
+              const deliveryResult = deriveDeliveryResult(cancellationByOrderId.get(order.shopeeOrderId)?.types ?? []);
+              return (
               <tr key={order.id}>
                 <td className="cell-muted">{order.orderDate?.toISOString().slice(0, 10) ?? "-"}</td>
                 <td>{order.shopeeOrderId}</td>
@@ -68,12 +80,16 @@ export default async function OrdersPage({
                 <td className="cell-truncate" title={order.status}>
                   <span className={statusBadgeClass(order.status)}>{order.status}</span>
                 </td>
+                <td>
+                  <span className={deliveryResultBadgeClass(deliveryResult)}>{DELIVERY_RESULT_LABELS[deliveryResult]}</span>
+                </td>
                 <td>{order.trackingCode ?? "-"}</td>
                 <td className="cell-muted">{order.carrier ?? "-"}</td>
                 <td className="cell-muted">{order.expectedDeliveryDate?.toISOString().slice(0, 10) ?? "-"}</td>
                 <td className="cell-muted">{formatDateTime(order.lastSyncedAt)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
         {orders.length === 0 ? <p className="empty-state">Chưa có dữ liệu.</p> : null}

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildReportRows, type ReportRow } from "@/lib/report/buildReport";
+import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import {
   buildOrderWhere,
   isNoiseCancelledOrder,
@@ -28,8 +29,9 @@ export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[
     }),
     prisma.paymentRecord.findMany({ select: { shopeeOrderId: true, sku: true, amount: true } }),
   ]);
+  const cancellationByOrderId = await loadCancellationSummaries([...new Set(orders.map((o) => o.shopeeOrderId))]);
 
-  return buildReportRows(orders, products, payments).filter(
+  return buildReportRows(orders, products, payments, cancellationByOrderId).filter(
     (row) =>
       !isNoiseCancelledOrder(row) &&
       matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch) &&

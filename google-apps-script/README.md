@@ -132,11 +132,16 @@ tồn kho dự kiến`. Every one of these tabs carries a row-1 banner ("MII đi
 above the real header row, so `HEADER_ROW` in `Sync.gs` is `2`, not `1`, and
 data starts at row 3.
 
-Column headers for `4.1 Đơn hủy` and `5. Trả hàng/hoàn tiền` were not
-inspected directly — the field mapping in `lib/sync/apply.ts` assumes they
-share `4.2 Giao thất bại`'s column layout (same workbook, same template).
-Verify this once real data syncs from those two tabs, and adjust the header
-aliases in `apply.ts` if they differ.
+Column headers for `4.2 Giao thất bại` and `5. Trả hàng/hoàn tiền` are
+confirmed against a real report template ("mẫu báo cáo hoàn huỷ DROP MII"),
+including two easy-to-miss ones on 4.2 (`NCC note` and `Note` are separate
+columns — supplier's own note vs. Shopee/internal's, not two names for the
+same thing) and 5 (`Lí Do Khiếu Nại`, the complaint reason, is distinct from
+`Lí do Trả hàng/Hoàn tiền`, the return reason itself). `4.1 Đơn hủy`'s
+columns were NOT inspected directly — the field mapping in
+`lib/sync/apply.ts` still assumes it shares 4.2's layout. Verify this once
+real data syncs from that tab, and adjust the header aliases in `apply.ts`
+if it differs.
 
 The order sheet itself carries no per-order price or SKU (it only tracks
 shipping status) — `orders`/`delivered_orders` have no amount field, and

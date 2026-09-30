@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { parseReportFilters } from "@/lib/report/filters";
 import { loadReportRows } from "@/lib/report/loadReportRows";
+import { DELIVERY_RESULT_LABELS } from "@/lib/report/deliveryResult";
 
 const SINGLE_KEYS = ["q", "sentFrom", "sentTo", "cancelFrom", "cancelTo", "paidFrom", "paidTo"];
 const MULTI_KEYS = ["paymentMatch", "sendStatus", "cancelReceiptStatus", "status"];
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
   const data = rows.map((row) => ({
     "Mã đơn hàng": row.shopeeOrderId,
     "Trạng thái": row.status,
+    "Kết quả giao thực tế": DELIVERY_RESULT_LABELS[row.deliveryResult],
     "Mã vận đơn": row.trackingCode ?? "",
     "Tên sản phẩm": row.productName ?? "",
     "Tên phân loại": row.categoryName ?? "",
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
     "Ngày nhận đơn huỷ": formatDate(row.cancelReceivedAt),
     "% hỏng": formatPercent(row.defectRate),
     "Trạng thái nhận huỷ": row.cancelReceiptStatus ? (CANCEL_RECEIPT_LABEL[row.cancelReceiptStatus] ?? row.cancelReceiptStatus) : "",
+    "Mã vận đơn trả hàng": row.returnTrackingCode ?? "",
     "TT khiếu nại huỷ": row.cancelComplaintNote ?? "",
     "Ghi chú": row.note ?? "",
     "Luân check": row.luanCheck ? "Có" : "",

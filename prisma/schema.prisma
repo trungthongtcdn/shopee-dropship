@@ -129,8 +129,19 @@ model Cancellation {
   productName          String?          @map("product_name")
   warehouseName        String?          @map("warehouse_name")
   categoryName         String?          @map("category_name")
+  // Line quantity ("Số lượng") — distinct from returnedQuantity below
+  // ("Số lượng sản phẩm được hoàn trả" / "Số lượng Hoàn"), which is how many
+  // of that quantity actually came back.
+  lineQuantity         Int?             @map("line_quantity")
   returnedQuantity     Int?             @map("returned_quantity")
   returnRefundStatus   String?          @map("return_refund_status")
+  // "NCC note" (4.1/4.2) — the supplier/dropship partner's own note,
+  // distinct from "Note" (shopeeNote below) which is Shopee/internal's.
+  supplierNote         String?          @map("supplier_note")
+  // "Note" (4.1/4.2) — Shopee/internal's note, distinct from supplierNote
+  // above. Named to avoid colliding with Order.note, which is Luân's own
+  // manually-typed note and an unrelated concept.
+  shopeeNote           String?          @map("shopee_note")
   // "5. Trả hàng/hoàn tiền" only — its own complaint/refund workflow, not
   // present on the other two cancellation-family tabs. Synced now so it's
   // available once the dashboard needs it; no UI reads these yet.
@@ -142,6 +153,12 @@ model Cancellation {
   fullOrderReturn      String?          @map("full_order_return")
   returnMethod         String?          @map("return_method")
   returnReason         String?          @map("return_reason")
+  // "Lí Do Khiếu Nại" — the complaint reason, distinct from returnReason
+  // above ("Lí do Trả hàng/Hoàn tiền", the return reason itself).
+  complaintReason      String?          @map("complaint_reason")
+  // "Người Bán cần phản hồi trước" — the deadline for Luân to respond to
+  // the buyer's complaint.
+  respondByAt          DateTime?        @map("respond_by_at")
   refundAmount         Float?           @map("refund_amount")
   refundedAt           DateTime?        @map("refunded_at")
   returnCarrier        String?          @map("return_carrier")

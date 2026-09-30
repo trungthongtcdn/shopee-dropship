@@ -1,5 +1,5 @@
 import { RowEditor, LuanCheckToggle } from "./RowEditor";
-import { FilterDropdown } from "./FilterDropdown";
+import { FilterDropdown } from "../FilterDropdown";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import {
   parseReportFilters,
@@ -10,6 +10,7 @@ import {
   type ReportFilters,
 } from "@/lib/report/filters";
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
+import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,16 @@ function cancelReceiptStatusBadge(value: string | null) {
   if (value === "not_received") return <span className="badge badge-danger">chưa nhận</span>;
   if (value === "not_needed") return <span className="badge">không cần nhận</span>;
   return <span className="cell-muted">-</span>;
+}
+
+function deliveryResultBadge(result: DeliveryResult) {
+  const className =
+    result === "delivered"
+      ? "badge badge-success"
+      : result === "delivery_failed" || result === "cancelled"
+        ? "badge badge-danger"
+        : "badge badge-warning";
+  return <span className={className}>{DELIVERY_RESULT_LABELS[result]}</span>;
 }
 
 export default async function ReportPage({
@@ -89,6 +100,7 @@ export default async function ReportPage({
               <th>Số tiền thanh toán</th>
               <th>Chênh lệch %</th>
               <th>Trạng thái</th>
+              <th>Kết quả giao thực tế</th>
               <th>Đối soát TT</th>
               <th>Ngày gửi đơn</th>
               <th>Trạng thái đóng đơn</th>
@@ -96,6 +108,7 @@ export default async function ReportPage({
               <th>Ngày nhận đơn huỷ</th>
               <th>% hỏng</th>
               <th>Trạng thái nhận huỷ</th>
+              <th>Mã vận đơn trả hàng</th>
               <th>TT khiếu nại huỷ</th>
               <th>Ghi chú</th>
               <th>Luân check</th>
@@ -121,6 +134,7 @@ export default async function ReportPage({
                 <td className="cell-truncate" title={row.status}>
                   {row.status}
                 </td>
+                <td>{deliveryResultBadge(row.deliveryResult)}</td>
                 <td>
                   {row.paymentMatch === "matched" ? (
                     <span className="badge badge-success">khớp</span>
@@ -136,6 +150,7 @@ export default async function ReportPage({
                 <td className="cell-muted">{formatDate(row.cancelReceivedAt)}</td>
                 <td className="num">{formatPercent(row.defectRate)}</td>
                 <td>{cancelReceiptStatusBadge(row.cancelReceiptStatus)}</td>
+                <td>{row.returnTrackingCode ?? "-"}</td>
                 <td className="cell-muted cell-truncate" title={row.cancelComplaintNote ?? "-"}>
                   {row.cancelComplaintNote ?? "-"}
                 </td>

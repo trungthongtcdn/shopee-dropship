@@ -200,8 +200,14 @@ function mapCancellationRow(type: CancellationType) {
     // Tab 5 names this column "Phân loại hàng" (no "Tên" prefix), unlike
     // every other tab's "Tên phân loại hàng".
     categoryName: getString(row.data, "Tên phân loại hàng", "Phân loại hàng"),
+    lineQuantity: getInt(row.data, "Số lượng"),
     returnedQuantity: getInt(row.data, "Số lượng sản phẩm được hoàn trả", "Số lượng Hoàn"),
     returnRefundStatus: getString(row.data, "Trạng thái Trả hàng/Hoàn tiền"),
+    // "NCC note" and "Note" are two distinct columns on the same sheet (4.1/
+    // 4.2) — the supplier's own note vs. Shopee/internal's, not two names
+    // for the same thing. Do not merge these into one field.
+    supplierNote: getString(row.data, "NCC note"),
+    shopeeNote: getString(row.data, "Note"),
     // Everything below is specific to "5. Trả hàng/hoàn tiền" — its own
     // complaint/refund workflow, absent from 4.1/4.2. Synced now even though
     // no dashboard page reads these fields yet.
@@ -213,6 +219,10 @@ function mapCancellationRow(type: CancellationType) {
     fullOrderReturn: getString(row.data, "Trả hàng/Hoàn tiền toàn bộ Đơn Hàng?"),
     returnMethod: getString(row.data, "Phương án"),
     returnReason: getString(row.data, "Lí do Trả hàng/Hoàn tiền"),
+    // Distinct from returnReason above — this is why the buyer opened a
+    // complaint, not the reason category for the return/refund itself.
+    complaintReason: getString(row.data, "Lí Do Khiếu Nại"),
+    respondByAt: getDate(row.data, "Người Bán cần phản hồi trước"),
     refundAmount: getInt(row.data, "Tổng số tiền Hoàn trả"),
     refundedAt: getDate(row.data, "Thời gian hoàn tiền"),
     returnCarrier: getString(row.data, "Đơn vị vận chuyển trả hàng"),

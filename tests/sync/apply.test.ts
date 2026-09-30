@@ -376,6 +376,33 @@ describe("applyCancelledPayload / applyDeliveryFailedPayload", () => {
     expect(row?.isActive).toBe(false);
   });
 
+  // "NCC note" and "Note" are two distinct real columns on 4.1/4.2, not two
+  // names for the same field — see the schema comment on supplierNote.
+  it("maps lineQuantity, supplierNote, shopeeNote, complaintReason, and respondByAt from their real headers", async () => {
+    await applyCancelledPayload([
+      {
+        rowIndex: 2,
+        hash: "hash-1",
+        data: {
+          "Mã đơn hàng": "SP002",
+          "Trạng Thái Đơn Hàng": "Đã hủy",
+          "Số lượng": 3,
+          "NCC note": "nhà cung cấp ghi",
+          Note: "shopee ghi",
+          "Lí Do Khiếu Nại": "khiếu nại sai địa chỉ",
+          "Người Bán cần phản hồi trước": "2026-07-01",
+        },
+      },
+    ]);
+
+    const row = await prisma.cancellation.findFirst({ where: { shopeeOrderId: "SP002" } });
+    expect(row?.lineQuantity).toBe(3);
+    expect(row?.supplierNote).toBe("nhà cung cấp ghi");
+    expect(row?.shopeeNote).toBe("shopee ghi");
+    expect(row?.complaintReason).toBe("khiếu nại sai địa chỉ");
+    expect(row?.respondByAt?.toISOString().slice(0, 10)).toBe("2026-07-01");
+  });
+
   afterAll(async () => {
     await prisma.syncLog.deleteMany();
     await prisma.cancellation.deleteMany();

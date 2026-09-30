@@ -154,4 +154,25 @@ describe("buildReportRows", () => {
     const rows = buildReportRows([order({ orderDate })], [], []);
     expect(rows[0].orderDate).toEqual(orderDate);
   });
+
+  it("defaults deliveryResult to 'delivered' and returnTrackingCode to null when no cancellation map is given", () => {
+    const rows = buildReportRows([order()], [], []);
+    expect(rows[0].deliveryResult).toBe("delivered");
+    expect(rows[0].returnTrackingCode).toBeNull();
+  });
+
+  it("derives deliveryResult and returnTrackingCode from the cancellation map", () => {
+    const cancellationByOrderId = new Map([
+      ["SP001", { types: ["returned_refunded"], returnTrackingCode: "SPXVN0000001" }],
+    ]);
+    const rows = buildReportRows([order()], [], [], cancellationByOrderId);
+    expect(rows[0].deliveryResult).toBe("returned_refunded");
+    expect(rows[0].returnTrackingCode).toBe("SPXVN0000001");
+  });
+
+  it("leaves an unrelated order's deliveryResult as 'delivered'", () => {
+    const cancellationByOrderId = new Map([["SP999", { types: ["cancelled"], returnTrackingCode: null }]]);
+    const rows = buildReportRows([order({ shopeeOrderId: "SP001" })], [], [], cancellationByOrderId);
+    expect(rows[0].deliveryResult).toBe("delivered");
+  });
 });

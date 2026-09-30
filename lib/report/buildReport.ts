@@ -1,3 +1,6 @@
+import { deriveDeliveryResult, type DeliveryResult } from "./deliveryResult";
+import type { CancellationSummary } from "./cancellationLookup";
+
 export interface ReportOrderInput {
   id: number;
   shopeeOrderId: string;
@@ -38,6 +41,7 @@ export interface ReportRow {
   shopeeOrderId: string;
   orderDate: Date | null;
   status: string;
+  deliveryResult: DeliveryResult;
   trackingCode: string | null;
   productName: string | null;
   categoryName: string | null;
@@ -54,6 +58,10 @@ export interface ReportRow {
   paidAt: Date | null;
   defectRate: number | null;
   cancelReceiptStatus: string | null;
+  // From the returned_refunded Cancellation row, if any — Shopee's own
+  // return-shipment tracking code, distinct from the outbound trackingCode
+  // above. Shown next to "Trạng thái nhận huỷ" in the Report table.
+  returnTrackingCode: string | null;
   cancelComplaintNote: string | null;
   note: string | null;
   luanCheck: boolean;
@@ -77,7 +85,8 @@ function paymentKey(shopeeOrderId: string, sku: string) {
 export function buildReportRows(
   orders: ReportOrderInput[],
   products: ReportProductInput[],
-  payments: ReportPaymentInput[]
+  payments: ReportPaymentInput[],
+  cancellationByOrderId: Map<string, CancellationSummary> = new Map()
 ): ReportRow[] {
   const productByCategory = new Map(
     products.filter((product) => product.categoryName).map((product) => [normalizeCategoryName(product.categoryName!), product])
@@ -97,11 +106,14 @@ export function buildReportRows(
       paymentMatch = Math.abs(diffPercent) <= PAYMENT_MATCH_TOLERANCE ? "matched" : "not_matched";
     }
 
+    const cancellation = cancellationByOrderId.get(order.shopeeOrderId);
+
     return {
       orderId: order.id,
       shopeeOrderId: order.shopeeOrderId,
       orderDate: order.orderDate,
       status: order.status,
+      deliveryResult: deriveDeliveryResult(cancellation?.types ?? []),
       trackingCode: order.trackingCode,
       productName: order.productName,
       categoryName: order.categoryName,
@@ -118,6 +130,7 @@ export function buildReportRows(
       paidAt: order.paidAt,
       defectRate: order.defectRate,
       cancelReceiptStatus: order.cancelReceiptStatus,
+      returnTrackingCode: cancellation?.returnTrackingCode ?? null,
       cancelComplaintNote: order.cancelComplaintNote,
       note: order.note,
       luanCheck: order.luanCheck,
