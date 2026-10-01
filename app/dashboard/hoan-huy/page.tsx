@@ -34,7 +34,10 @@ export default async function HoanHuyPage({
 }) {
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
   const filters = parseCancellationFilters(searchParams);
-  const filterQuery = filters.types.map((t) => `type=${t}`).join("&");
+  const filterParams = new URLSearchParams();
+  if (filters.q) filterParams.set("q", filters.q);
+  for (const t of filters.types) filterParams.append("type", t);
+  const filterQuery = filterParams.toString();
   const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
 
   const allRows = await loadCancellationRows(filters);
@@ -49,8 +52,19 @@ export default async function HoanHuyPage({
         Giao thất bại), Trả hàng hoàn tiền (5. Trả hàng/hoàn tiền). Đơn thuộc 4.1 Đơn hủy không hiển thị ở đây.
       </p>
 
-      <form method="get" className="toolbar">
+      <form method="get" className="toolbar" style={{ alignItems: "flex-end" }}>
         <div className="field">
+          <span className="field-label">Tìm kiếm</span>
+          <input
+            className="input"
+            type="text"
+            name="q"
+            defaultValue={filters.q}
+            placeholder="Mã đơn hàng / mã vận đơn chiều đi / mã vận đơn hoàn"
+            style={{ minWidth: 280 }}
+          />
+        </div>
+        <div className="field" style={{ width: 170 }}>
           <span className="field-label">Loại</span>
           <FilterDropdown name="type" label="Loại" options={TYPE_FILTER_OPTIONS} selected={filters.types} />
         </div>

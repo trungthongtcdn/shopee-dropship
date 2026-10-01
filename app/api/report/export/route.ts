@@ -5,7 +5,7 @@ import { loadReportRows } from "@/lib/report/loadReportRows";
 import { DELIVERY_RESULT_LABELS } from "@/lib/report/deliveryResult";
 
 const SINGLE_KEYS = ["q", "sentFrom", "sentTo", "cancelFrom", "cancelTo", "paidFrom", "paidTo"];
-const MULTI_KEYS = ["paymentMatch", "sendStatus", "cancelReceiptStatus", "status"];
+const MULTI_KEYS = ["paymentMatch", "sendStatus", "cancelReceiptStatus", "status", "deliveryResult"];
 
 const SEND_STATUS_LABEL: Record<string, string> = { sent: "Đã gửi", cancelled: "Huỷ" };
 const CANCEL_RECEIPT_LABEL: Record<string, string> = {

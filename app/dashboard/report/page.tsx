@@ -10,7 +10,7 @@ import {
   type ReportFilters,
 } from "@/lib/report/filters";
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
-import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
+import { DELIVERY_RESULT_LABELS, DELIVERY_RESULT_VALUES, type DeliveryResult } from "@/lib/report/deliveryResult";
 
 export const dynamic = "force-dynamic";
 
@@ -224,7 +224,7 @@ function ReportFilterForm({
             type="text"
             name="q"
             defaultValue={filters.q}
-            placeholder="Mã đơn hàng / mã vận đơn"
+            placeholder="Mã đơn hàng / mã vận đơn / mã vận đơn hoàn"
             style={{ minWidth: 200 }}
           />
         </div>
@@ -261,6 +261,16 @@ function ReportFilterForm({
             label="Trạng thái nhận huỷ"
             options={CANCEL_RECEIPT_FILTER_OPTIONS.map((value) => ({ value, label: CANCEL_RECEIPT_LABELS[value] }))}
             selected={filters.cancelReceiptStatus}
+          />
+        </div>
+
+        <div className="field" style={dropdownFieldStyle}>
+          <span className="field-label">Kết quả giao thực tế</span>
+          <FilterDropdown
+            name="deliveryResult"
+            label="Kết quả giao thực tế"
+            options={DELIVERY_RESULT_VALUES.map((value) => ({ value, label: DELIVERY_RESULT_LABELS[value] }))}
+            selected={filters.deliveryResult}
           />
         </div>
       </div>

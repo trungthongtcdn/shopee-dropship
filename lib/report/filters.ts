@@ -32,6 +32,10 @@ export interface ReportFilters {
   sendStatus: string[];
   cancelReceiptStatus: string[];
   status: string[];
+  // "Kết quả giao thực tế" — derived from the Cancellation table (see
+  // deriveDeliveryResult), so like paymentMatch/status this is matched in
+  // memory, not pushed into the DB query. See matchesDeliveryResultFilter.
+  deliveryResult: string[];
   sentFrom: string;
   sentTo: string;
   cancelFrom: string;
@@ -61,6 +65,7 @@ export function parseReportFilters(raw: RawSearchParams): ReportFilters {
     sendStatus: strArray(raw, "sendStatus"),
     cancelReceiptStatus: strArray(raw, "cancelReceiptStatus"),
     status: strArray(raw, "status"),
+    deliveryResult: strArray(raw, "deliveryResult"),
     sentFrom: str(raw, "sentFrom"),
     sentTo: str(raw, "sentTo"),
     cancelFrom: str(raw, "cancelFrom"),
@@ -102,15 +107,28 @@ function selectedOrNull<T extends string>(
 // into the DB query. paymentMatch is computed after joining Product +
 // PaymentRecord (see buildReportRows) and is filtered separately, in memory,
 // after that join — see matchesPaymentMatchFilter below.
-export function buildOrderWhere(filters: ReportFilters): Prisma.OrderWhereInput {
+//
+// returnTrackingMatchedOrderIds: the search box also matches "Mã vận đơn
+// trả hàng" (returnTrackingCode), which lives on the Cancellation table, not
+// Order — can't be expressed in this Order-only where clause directly.
+// loadReportRows.ts resolves that match separately (a Cancellation query)
+// and passes the resulting shopeeOrderIds in here to fold into the same OR.
+export function buildOrderWhere(
+  filters: ReportFilters,
+  returnTrackingMatchedOrderIds: string[] = []
+): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = { isActive: true };
   const and: Prisma.OrderWhereInput[] = [];
 
   if (filters.q) {
-    where.OR = [
+    const orConditions: Prisma.OrderWhereInput[] = [
       { shopeeOrderId: { contains: filters.q, mode: "insensitive" } },
       { trackingCode: { contains: filters.q, mode: "insensitive" } },
     ];
+    if (returnTrackingMatchedOrderIds.length > 0) {
+      orConditions.push({ shopeeOrderId: { in: returnTrackingMatchedOrderIds } });
+    }
+    where.OR = orConditions;
   }
 
   const sendStatusCond = selectedOrNull<OrderSendStatus>(filters.sendStatus, "sendStatus");
@@ -167,6 +185,11 @@ export function matchesPaymentMatchFilter(
   return filters.some((filter) => (filter === "none" ? rowPaymentMatch === null : rowPaymentMatch === filter));
 }
 
+export function matchesDeliveryResultFilter(rowDeliveryResult: string, filters: string[]): boolean {
+  if (filters.length === 0) return true;
+  return filters.includes(rowDeliveryResult);
+}
+
 export function reportFiltersToSearchParams(filters: ReportFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.q) params.set("q", filters.q);
@@ -174,6 +197,7 @@ export function reportFiltersToSearchParams(filters: ReportFilters): URLSearchPa
   for (const v of filters.sendStatus) params.append("sendStatus", v);
   for (const v of filters.cancelReceiptStatus) params.append("cancelReceiptStatus", v);
   for (const v of filters.status) params.append("status", v);
+  for (const v of filters.deliveryResult) params.append("deliveryResult", v);
   if (filters.sentFrom) params.set("sentFrom", filters.sentFrom);
   if (filters.sentTo) params.set("sentTo", filters.sentTo);
   if (filters.cancelFrom) params.set("cancelFrom", filters.cancelFrom);

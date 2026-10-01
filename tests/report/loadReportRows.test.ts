@@ -74,6 +74,7 @@ describe("loadOrderStatusFilterOptions", () => {
 describe("loadReportRows", () => {
   beforeEach(async () => {
     await prisma.order.deleteMany();
+    await prisma.cancellation.deleteMany();
   });
 
   it("hides a cancelled order with no tracking code", async () => {
@@ -100,8 +101,37 @@ describe("loadReportRows", () => {
     expect(rows.map((r) => r.shopeeOrderId)).toEqual(["NEW", "MID", "OLD"]);
   });
 
+  it("finds an order by its return tracking code even though that field lives on Cancellation", async () => {
+    await seedOrder("SP001", "Hoàn thành");
+    await seedOrder("SP002", "Hoàn thành");
+    await prisma.cancellation.create({
+      data: {
+        shopeeOrderId: "SP002",
+        type: "returned_refunded",
+        returnTrackingCode: "SPXVN00000099",
+        rawRowHash: "seed",
+        sheetRowIndex: 1,
+      },
+    });
+
+    const rows = await loadReportRows(parseReportFilters({ q: "SPXVN00000099" }));
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP002"]);
+  });
+
+  it("filters by deliveryResult", async () => {
+    await seedOrder("SP001", "Hoàn thành");
+    await seedOrder("SP002", "Hoàn thành");
+    await prisma.cancellation.create({
+      data: { shopeeOrderId: "SP002", type: "delivery_failed", rawRowHash: "seed", sheetRowIndex: 1 },
+    });
+
+    const rows = await loadReportRows(parseReportFilters({ deliveryResult: ["delivery_failed"] }));
+    expect(rows.map((r) => r.shopeeOrderId)).toEqual(["SP002"]);
+  });
+
   afterAll(async () => {
     await prisma.order.deleteMany();
+    await prisma.cancellation.deleteMany();
     await prisma.$disconnect();
   });
 });

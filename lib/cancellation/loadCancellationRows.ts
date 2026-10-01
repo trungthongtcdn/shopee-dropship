@@ -4,15 +4,17 @@ import { CancellationType } from "@prisma/client";
 export interface CancellationFilters {
   // Empty = no filter (show every type).
   types: string[];
+  q: string;
 }
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
 export function parseCancellationFilters(raw: RawSearchParams): CancellationFilters {
   const value = raw.type;
-  if (value === undefined) return { types: [] };
-  const values = Array.isArray(value) ? value : [value];
-  return { types: values.map((v) => v.trim()).filter(Boolean) };
+  const types = value === undefined ? [] : (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
+  const qValue = raw.q;
+  const q = (Array.isArray(qValue) ? qValue[0] : qValue)?.trim() ?? "";
+  return { types, q };
 }
 
 // "cancelled" (4.1 Đơn hủy) is deliberately never shown on this page — Luân
@@ -25,6 +27,19 @@ export function loadCancellationRows(filters: CancellationFilters) {
     where: {
       isActive: true,
       type: selectedTypes.length > 0 ? { in: selectedTypes as CancellationType[] } : { not: "cancelled" },
+      // trackingCode (outbound) and returnTrackingCode both live on this
+      // same row, unlike the Report page where the equivalent search has
+      // to cross a join — search by mã đơn hàng / mã vận đơn chiều đi /
+      // mã vận đơn hoàn huỷ in one plain OR.
+      ...(filters.q
+        ? {
+            OR: [
+              { shopeeOrderId: { contains: filters.q, mode: "insensitive" as const } },
+              { trackingCode: { contains: filters.q, mode: "insensitive" as const } },
+              { returnTrackingCode: { contains: filters.q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
     },
     orderBy: { orderDate: "desc" },
   });

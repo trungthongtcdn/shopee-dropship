@@ -4,6 +4,7 @@ import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import {
   buildOrderWhere,
   isNoiseCancelledOrder,
+  matchesDeliveryResultFilter,
   matchesPaymentMatchFilter,
   matchesStatusFilter,
   STATUS_OPTION_MAX_LENGTH,
@@ -12,15 +13,27 @@ import {
 } from "@/lib/report/filters";
 
 // Shared by the Report page and the Excel export route so both apply
-// exactly the same filters — paymentMatch and status are both computed/
-// grouped in memory (see matchesPaymentMatchFilter, matchesStatusFilter)
-// rather than pushed fully into the DB query, so they're filtered here
-// after the fetch. isNoiseCancelledOrder is always applied (not a
-// togglable filter) — see its own comment in filters.ts.
+// exactly the same filters — paymentMatch, status, and deliveryResult are
+// all computed/grouped in memory (see matchesPaymentMatchFilter,
+// matchesStatusFilter, matchesDeliveryResultFilter) rather than pushed
+// fully into the DB query, so they're filtered here after the fetch.
+// isNoiseCancelledOrder is always applied (not a togglable filter) — see
+// its own comment in filters.ts.
 export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[]> {
+  // The search box also matches "Mã vận đơn trả hàng" (returnTrackingCode),
+  // which lives on Cancellation, not Order — resolve that match first so
+  // buildOrderWhere can fold the matching shopeeOrderIds into its OR.
+  const returnTrackingMatches = filters.q
+    ? await prisma.cancellation.findMany({
+        where: { isActive: true, returnTrackingCode: { contains: filters.q, mode: "insensitive" } },
+        select: { shopeeOrderId: true },
+      })
+    : [];
+  const returnTrackingMatchedOrderIds = [...new Set(returnTrackingMatches.map((c) => c.shopeeOrderId))];
+
   const [orders, products, payments] = await Promise.all([
     prisma.order.findMany({
-      where: buildOrderWhere(filters),
+      where: buildOrderWhere(filters, returnTrackingMatchedOrderIds),
       orderBy: { orderDate: "desc" },
     }),
     prisma.product.findMany({
@@ -35,7 +48,8 @@ export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[
     (row) =>
       !isNoiseCancelledOrder(row) &&
       matchesPaymentMatchFilter(row.paymentMatch, filters.paymentMatch) &&
-      matchesStatusFilter(row.status, filters.status)
+      matchesStatusFilter(row.status, filters.status) &&
+      matchesDeliveryResultFilter(row.deliveryResult, filters.deliveryResult)
   );
 }
 

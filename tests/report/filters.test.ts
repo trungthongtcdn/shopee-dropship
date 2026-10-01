@@ -3,6 +3,7 @@ import {
   parseReportFilters,
   buildOrderWhere,
   isNoiseCancelledOrder,
+  matchesDeliveryResultFilter,
   matchesPaymentMatchFilter,
   matchesStatusFilter,
   reportFiltersToSearchParams,
@@ -16,6 +17,7 @@ describe("parseReportFilters", () => {
     expect(filters.paymentMatch).toEqual([]);
     expect(filters.sendStatus).toEqual([]);
     expect(filters.status).toEqual([]);
+    expect(filters.deliveryResult).toEqual([]);
   });
 
   it("trims whitespace from the search query", () => {
@@ -46,6 +48,23 @@ describe("buildOrderWhere", () => {
       { shopeeOrderId: { contains: "spxvn001", mode: "insensitive" } },
       { trackingCode: { contains: "spxvn001", mode: "insensitive" } },
     ]);
+  });
+
+  // returnTrackingCode lives on Cancellation, not Order — loadReportRows.ts
+  // resolves that match separately and passes the matching shopeeOrderIds
+  // in here to fold into the same OR.
+  it("folds returnTrackingMatchedOrderIds into the search OR when given", () => {
+    const where = buildOrderWhere(parseReportFilters({ q: "spxvn999" }), ["SP001", "SP002"]);
+    expect(where.OR).toEqual([
+      { shopeeOrderId: { contains: "spxvn999", mode: "insensitive" } },
+      { trackingCode: { contains: "spxvn999", mode: "insensitive" } },
+      { shopeeOrderId: { in: ["SP001", "SP002"] } },
+    ]);
+  });
+
+  it("ignores returnTrackingMatchedOrderIds when q isn't set", () => {
+    const where = buildOrderWhere(parseReportFilters({}), ["SP001"]);
+    expect(where.OR).toBeUndefined();
   });
 
   // status isn't pushed into the DB where clause: the "Khác" bucket means
@@ -162,6 +181,23 @@ describe("matchesStatusFilter", () => {
   });
 });
 
+describe("matchesDeliveryResultFilter", () => {
+  it("matches everything when no filter is set", () => {
+    expect(matchesDeliveryResultFilter("delivered", [])).toBe(true);
+    expect(matchesDeliveryResultFilter("returned_refunded", [])).toBe(true);
+  });
+
+  it("matches only the selected values", () => {
+    expect(matchesDeliveryResultFilter("delivered", ["delivered"])).toBe(true);
+    expect(matchesDeliveryResultFilter("cancelled", ["delivered"])).toBe(false);
+  });
+
+  it("matches any one of several selected values", () => {
+    expect(matchesDeliveryResultFilter("delivery_failed", ["cancelled", "delivery_failed"])).toBe(true);
+    expect(matchesDeliveryResultFilter("delivered", ["cancelled", "delivery_failed"])).toBe(false);
+  });
+});
+
 describe("reportFiltersToSearchParams", () => {
   it("omits empty fields and keeps only set ones", () => {
     const params = reportFiltersToSearchParams(parseReportFilters({ q: "abc", sendStatus: "sent" }));
@@ -171,6 +207,11 @@ describe("reportFiltersToSearchParams", () => {
   it("repeats the key for each selected value in a multi-select field", () => {
     const params = reportFiltersToSearchParams(parseReportFilters({ sendStatus: ["sent", "cancelled"] }));
     expect(params.getAll("sendStatus")).toEqual(["sent", "cancelled"]);
+  });
+
+  it("round-trips deliveryResult the same way as the other multi-selects", () => {
+    const params = reportFiltersToSearchParams(parseReportFilters({ deliveryResult: ["delivered", "cancelled"] }));
+    expect(params.getAll("deliveryResult")).toEqual(["delivered", "cancelled"]);
   });
 
   it("produces an empty string when no filters are set", () => {
