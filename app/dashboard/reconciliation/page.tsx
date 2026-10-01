@@ -2,6 +2,7 @@ import { MatchStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { formatDateTimeVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -126,7 +127,7 @@ export default async function ReconciliationPage({
               <a className={`list-item-link${batch.id === selectedBatch?.id ? " active" : ""}`} href={`?batchId=${batch.id}`}>
                 <span>{batch.fileName}</span>
                 <span className="list-item-meta">
-                  {batch.uploadedAt.toLocaleString("vi-VN")} · {batch.status}
+                  {formatDateTimeVN(batch.uploadedAt)} · {batch.status}
                 </span>
               </a>
             </li>
@@ -213,7 +214,7 @@ export default async function ReconciliationPage({
                 href={`?paymentBatchId=${batch.id}`}
               >
                 <span>{batch.weekLabel}</span>
-                <span className="list-item-meta">đồng bộ lúc {batch.syncedAt.toLocaleString("vi-VN")}</span>
+                <span className="list-item-meta">đồng bộ lúc {formatDateTimeVN(batch.syncedAt)}</span>
               </a>
             </li>
           ))}

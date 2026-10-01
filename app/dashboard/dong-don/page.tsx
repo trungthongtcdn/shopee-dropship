@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { ManualConfirmForm } from "./ManualConfirmForm";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
+import { formatDateTimeVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function DongDonPage() {
       <ZaloGroupPicker
         purpose={WAYBILL_CONFIRM_PURPOSE}
         threadName={config?.threadName ?? null}
-        updatedAt={config ? config.updatedAt.toLocaleString("vi-VN") : null}
+        updatedAt={config ? formatDateTimeVN(config.updatedAt) : null}
         extra={
           config ? (
             config.pendingPdfUrl ? (
@@ -63,7 +64,7 @@ export default async function DongDonPage() {
                 const orderIds = Array.isArray(log.orderIds) ? (log.orderIds as string[]) : [];
                 return (
                   <tr key={log.id}>
-                    <td className="cell-muted">{log.confirmedAt.toLocaleString("vi-VN")}</td>
+                    <td className="cell-muted">{formatDateTimeVN(log.confirmedAt)}</td>
                     <td>{log.confirmedByName ?? "-"}</td>
                     <td className="num">{orderIds.length}</td>
                     <td className="num">{log.matchedCount}</td>

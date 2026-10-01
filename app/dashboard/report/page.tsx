@@ -11,6 +11,7 @@ import {
 } from "@/lib/report/filters";
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
 import { DELIVERY_RESULT_LABELS, DELIVERY_RESULT_VALUES, type DeliveryResult } from "@/lib/report/deliveryResult";
+import { formatDateVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +23,7 @@ function formatPercent(value: number | null) {
   return value === null ? "-" : `${(value * 100).toFixed(1)}%`;
 }
 
-function formatDate(value: Date | null) {
-  return value === null ? "-" : value.toISOString().slice(0, 10);
-}
+const formatDate = formatDateVN;
 
 function sendStatusBadge(value: string | null) {
   if (value === "sent") return <span className="badge badge-success">đã gửi</span>;

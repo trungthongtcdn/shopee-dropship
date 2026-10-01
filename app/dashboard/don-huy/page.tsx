@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { BarcodeScanForm } from "./BarcodeScanForm";
 import { CANCEL_RECEIPT_CONFIRM_PURPOSE } from "@/lib/zalo/cancelReceiptPoller";
+import { formatDateTimeVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function DonHuyPage() {
       <ZaloGroupPicker
         purpose={CANCEL_RECEIPT_CONFIRM_PURPOSE}
         threadName={config?.threadName ?? null}
-        updatedAt={config ? config.updatedAt.toLocaleString("vi-VN") : null}
+        updatedAt={config ? formatDateTimeVN(config.updatedAt) : null}
       />
 
       <div className="card">
@@ -54,7 +55,7 @@ export default async function DonHuyPage() {
                 const codes = Array.isArray(log.codes) ? (log.codes as string[]) : [];
                 return (
                   <tr key={log.id}>
-                    <td className="cell-muted">{log.confirmedAt.toLocaleString("vi-VN")}</td>
+                    <td className="cell-muted">{formatDateTimeVN(log.confirmedAt)}</td>
                     <td>{log.confirmedByName ?? "-"}</td>
                     <td className="cell-truncate" title={log.messageContent}>
                       {log.messageContent}

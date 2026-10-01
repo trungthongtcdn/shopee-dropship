@@ -16,8 +16,16 @@ const CANCEL_RECEIPT_LABEL: Record<string, string> = {
 };
 const PAYMENT_MATCH_LABEL: Record<string, string> = { matched: "Khớp", not_matched: "Không khớp" };
 
+// En-CA locale formats as yyyy-mm-dd; explicit timeZone avoids the server's
+// UTC clock shifting the calendar day near midnight VN time.
 function formatDate(value: Date | null): string {
-  return value ? value.toISOString().slice(0, 10) : "";
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
 }
 
 function formatPercent(value: number | null): number | string {
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
   XLSX.utils.book_append_sheet(workbook, worksheet, "Báo cáo");
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
-  const filename = `bao-cao-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const filename = `bao-cao-${formatDate(new Date())}.xlsx`;
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

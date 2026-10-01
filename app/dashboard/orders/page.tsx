@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import { deriveDeliveryResult, DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
+import { formatDateVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,14 @@ function deliveryResultBadge(result: DeliveryResult) {
 }
 
 function formatDateTime(value: Date) {
-  return value.toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return value.toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default async function OrdersPage({
@@ -71,7 +79,7 @@ export default async function OrdersPage({
               const deliveryResult = deriveDeliveryResult(cancellationByOrderId.get(order.shopeeOrderId)?.types ?? []);
               return (
               <tr key={order.id}>
-                <td className="cell-muted">{order.orderDate?.toISOString().slice(0, 10) ?? "-"}</td>
+                <td className="cell-muted">{formatDateVN(order.orderDate)}</td>
                 <td>{order.shopeeOrderId}</td>
                 <td className="cell-truncate" title={order.productName ?? "-"}>
                   {order.productName ?? "-"}
@@ -84,7 +92,7 @@ export default async function OrdersPage({
                 <td>{deliveryResultBadge(deliveryResult)}</td>
                 <td>{order.trackingCode ?? "-"}</td>
                 <td className="cell-muted">{order.carrier ?? "-"}</td>
-                <td className="cell-muted">{order.expectedDeliveryDate?.toISOString().slice(0, 10) ?? "-"}</td>
+                <td className="cell-muted">{formatDateVN(order.expectedDeliveryDate)}</td>
                 <td className="cell-muted">{formatDateTime(order.lastSyncedAt)}</td>
               </tr>
               );

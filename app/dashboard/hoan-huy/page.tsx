@@ -2,6 +2,7 @@ import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
 import { FilterDropdown } from "../FilterDropdown";
 import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
+import { formatDateVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,7 @@ function typeBadge(type: string) {
   return <span className={className}>{label}</span>;
 }
 
-function formatDate(value: Date | null) {
-  return value === null ? "-" : value.toISOString().slice(0, 10);
-}
+const formatDate = formatDateVN;
 
 function formatAmount(value: number | null) {
   return value === null ? "-" : value.toLocaleString("vi-VN");
