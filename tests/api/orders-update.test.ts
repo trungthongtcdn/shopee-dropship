@@ -50,6 +50,47 @@ describe("PATCH /api/orders/[id]", () => {
     expect(updated?.categoryName).toBe("D100");
   });
 
+  it("accepts paidAmountOverride and the not_needed cancelReceiptStatus value", async () => {
+    const order = await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP003",
+        categoryName: "D100",
+        status: "Hoàn thành",
+        rawRowHash: "h3",
+        sheetRowIndex: 4,
+      },
+    });
+
+    const response = await PATCH(
+      makeRequest({ paidAmountOverride: 1234.5, cancelReceiptStatus: "not_needed" }),
+      { params: { id: String(order.id) } }
+    );
+
+    expect(response.status).toBe(200);
+    const updated = await prisma.order.findUnique({ where: { id: order.id } });
+    expect(updated?.paidAmountOverride).toBe(1234.5);
+    expect(updated?.cancelReceiptStatus).toBe("not_needed");
+  });
+
+  it("clears paidAmountOverride when set back to null", async () => {
+    const order = await prisma.order.create({
+      data: {
+        shopeeOrderId: "SP004",
+        categoryName: "D100",
+        status: "Hoàn thành",
+        rawRowHash: "h4",
+        sheetRowIndex: 5,
+        paidAmountOverride: 999,
+      },
+    });
+
+    const response = await PATCH(makeRequest({ paidAmountOverride: null }), { params: { id: String(order.id) } });
+
+    expect(response.status).toBe(200);
+    const updated = await prisma.order.findUnique({ where: { id: order.id } });
+    expect(updated?.paidAmountOverride).toBeNull();
+  });
+
   it("rejects an unknown field", async () => {
     const order = await prisma.order.create({
       data: {

@@ -62,6 +62,15 @@ model Order {
   note                 String?
   luanCheck            Boolean              @default(false) @map("luan_check")
 
+  // Manual override for the auto-computed "amountPaid" (số tiền đối soát)
+  // used in Report's payment-match calculation — set via RowEditor when the
+  // PaymentRecord sync amount is wrong for this order/line. When set, this
+  // replaces the synced PaymentRecord amount in buildReportRows, so
+  // "trạng thái đối soát" (paymentMatch) is recomputed from this value
+  // against amountDue using the same ±2% rule, rather than being its own
+  // separately editable field.
+  paidAmountOverride   Float?               @map("paid_amount_override")
+
   @@unique([shopeeOrderId, categoryName])
   @@map("orders")
 }

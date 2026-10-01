@@ -10,10 +10,11 @@ const updateOrderSchema = z.object({
   paidAt: z.string().datetime().nullable().optional(),
   cancelReceivedAt: z.string().datetime().nullable().optional(),
   defectRate: z.number().min(0).max(1).nullable().optional(),
-  cancelReceiptStatus: z.enum(["received_full", "not_received", "received_partial"]).nullable().optional(),
+  cancelReceiptStatus: z.enum(["received_full", "not_received", "received_partial", "not_needed"]).nullable().optional(),
   cancelComplaintNote: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
   luanCheck: z.boolean().optional(),
+  paidAmountOverride: z.number().nullable().optional(),
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {

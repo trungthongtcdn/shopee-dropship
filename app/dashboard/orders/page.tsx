@@ -12,10 +12,11 @@ function statusBadgeClass(status: string) {
   return "badge";
 }
 
-function deliveryResultBadgeClass(result: DeliveryResult) {
-  if (result === "delivered") return "badge badge-success";
-  if (result === "delivery_failed" || result === "cancelled") return "badge badge-danger";
-  return "badge badge-warning";
+// Chỉ hiển thị badge cho "giao thất bại" và "trả hàng hoàn tiền" — còn lại để trống.
+function deliveryResultBadge(result: DeliveryResult) {
+  if (result !== "delivery_failed" && result !== "returned_refunded") return <span className="cell-muted">-</span>;
+  const className = result === "delivery_failed" ? "badge badge-danger" : "badge badge-warning";
+  return <span className={className}>{DELIVERY_RESULT_LABELS[result]}</span>;
 }
 
 function formatDateTime(value: Date) {
@@ -80,9 +81,7 @@ export default async function OrdersPage({
                 <td className="cell-truncate" title={order.status}>
                   <span className={statusBadgeClass(order.status)}>{order.status}</span>
                 </td>
-                <td>
-                  <span className={deliveryResultBadgeClass(deliveryResult)}>{DELIVERY_RESULT_LABELS[deliveryResult]}</span>
-                </td>
+                <td>{deliveryResultBadge(deliveryResult)}</td>
                 <td>{order.trackingCode ?? "-"}</td>
                 <td className="cell-muted">{order.carrier ?? "-"}</td>
                 <td className="cell-muted">{order.expectedDeliveryDate?.toISOString().slice(0, 10) ?? "-"}</td>

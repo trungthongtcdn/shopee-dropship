@@ -58,6 +58,7 @@ export interface RowEditorProps {
   cancelReceiptStatus: string | null;
   cancelComplaintNote: string | null;
   note: string | null;
+  paidAmountOverride: number | null;
 }
 
 // Only the fields synced in automatically from Google Drive files (plus the
@@ -76,6 +77,9 @@ export function RowEditor(props: RowEditorProps) {
   const [cancelReceiptStatus, setCancelReceiptStatus] = useState(props.cancelReceiptStatus ?? "");
   const [cancelComplaintNote, setCancelComplaintNote] = useState(props.cancelComplaintNote ?? "");
   const [note, setNote] = useState(props.note ?? "");
+  const [paidAmountOverride, setPaidAmountOverride] = useState(
+    props.paidAmountOverride === null ? "" : String(props.paidAmountOverride)
+  );
   const [status, setStatus] = useState<string | null>(null);
 
   async function save() {
@@ -94,6 +98,7 @@ export function RowEditor(props: RowEditorProps) {
         cancelReceiptStatus: cancelReceiptStatus || null,
         cancelComplaintNote: cancelComplaintNote || null,
         note: note || null,
+        paidAmountOverride: paidAmountOverride === "" ? null : Number(paidAmountOverride),
       }),
     });
 
@@ -139,6 +144,16 @@ export function RowEditor(props: RowEditorProps) {
             <div className="field">
               <span className="field-label">Ngày đối soát</span>
               <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+            </div>
+            <div className="field">
+              <span className="field-label">Số tiền đối soát</span>
+              <input
+                className="input"
+                type="number"
+                step="1"
+                value={paidAmountOverride}
+                onChange={(e) => setPaidAmountOverride(e.target.value)}
+              />
             </div>
             <div className="field">
               <span className="field-label">Ngày nhận đơn huỷ</span>

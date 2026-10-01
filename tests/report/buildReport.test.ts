@@ -20,6 +20,7 @@ function order(overrides: Partial<ReportOrderInput> = {}): ReportOrderInput {
     cancelComplaintNote: null,
     note: null,
     luanCheck: false,
+    paidAmountOverride: null,
     ...overrides,
   };
 }
@@ -174,5 +175,24 @@ describe("buildReportRows", () => {
     const cancellationByOrderId = new Map([["SP999", { types: ["cancelled"], returnTrackingCode: null }]]);
     const rows = buildReportRows([order({ shopeeOrderId: "SP001" })], [], [], cancellationByOrderId);
     expect(rows[0].deliveryResult).toBe("delivered");
+  });
+
+  it("uses paidAmountOverride instead of the synced payment amount when set", () => {
+    const rows = buildReportRows(
+      [order({ paidAmountOverride: 1000 })],
+      [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 500 }]
+    );
+    expect(rows[0].amountPaid).toBe(1000);
+    expect(rows[0].paymentMatch).toBe("matched");
+  });
+
+  it("falls back to the synced payment amount when paidAmountOverride is null", () => {
+    const rows = buildReportRows(
+      [order({ paidAmountOverride: null })],
+      [{ categoryName: "D100", sku: "SKU1", kiotCode: null, collectPrice: 1000 }],
+      [{ shopeeOrderId: "SP001", sku: "SKU1", amount: 500 }]
+    );
+    expect(rows[0].amountPaid).toBe(500);
   });
 });

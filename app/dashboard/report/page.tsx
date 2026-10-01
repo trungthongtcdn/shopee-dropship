@@ -40,13 +40,11 @@ function cancelReceiptStatusBadge(value: string | null) {
   return <span className="cell-muted">-</span>;
 }
 
+// Only "giao thất bại" và "trả hàng hoàn tiền" count as a real outcome worth
+// flagging here — "delivered" và "cancelled" đều để trống theo yêu cầu.
 function deliveryResultBadge(result: DeliveryResult) {
-  const className =
-    result === "delivered"
-      ? "badge badge-success"
-      : result === "delivery_failed" || result === "cancelled"
-        ? "badge badge-danger"
-        : "badge badge-warning";
+  if (result !== "delivery_failed" && result !== "returned_refunded") return <span className="cell-muted">-</span>;
+  const className = result === "delivery_failed" ? "badge badge-danger" : "badge badge-warning";
   return <span className={className}>{DELIVERY_RESULT_LABELS[result]}</span>;
 }
 
@@ -171,6 +169,7 @@ export default async function ReportPage({
                     cancelReceiptStatus={row.cancelReceiptStatus}
                     cancelComplaintNote={row.cancelComplaintNote}
                     note={row.note}
+                    paidAmountOverride={row.paidAmountOverride}
                   />
                 </td>
               </tr>

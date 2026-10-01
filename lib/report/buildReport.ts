@@ -19,6 +19,7 @@ export interface ReportOrderInput {
   cancelComplaintNote: string | null;
   note: string | null;
   luanCheck: boolean;
+  paidAmountOverride: number | null;
 }
 
 export interface ReportProductInput {
@@ -65,6 +66,7 @@ export interface ReportRow {
   cancelComplaintNote: string | null;
   note: string | null;
   luanCheck: boolean;
+  paidAmountOverride: number | null;
 }
 
 // Confirmed business rule: >2% difference in EITHER direction is a mismatch.
@@ -97,7 +99,8 @@ export function buildReportRows(
     const product = order.categoryName ? productByCategory.get(normalizeCategoryName(order.categoryName)) : undefined;
     const quantity = order.lineQuantity ?? 1;
     const amountDue = product?.collectPrice != null ? product.collectPrice * quantity : null;
-    const amountPaid = product ? (paymentByKey.get(paymentKey(order.shopeeOrderId, product.sku)) ?? null) : null;
+    const syncedAmountPaid = product ? (paymentByKey.get(paymentKey(order.shopeeOrderId, product.sku)) ?? null) : null;
+    const amountPaid = order.paidAmountOverride ?? syncedAmountPaid;
 
     let diffPercent: number | null = null;
     let paymentMatch: PaymentMatch | null = null;
@@ -134,6 +137,7 @@ export function buildReportRows(
       cancelComplaintNote: order.cancelComplaintNote,
       note: order.note,
       luanCheck: order.luanCheck,
+      paidAmountOverride: order.paidAmountOverride,
     };
   });
 }
