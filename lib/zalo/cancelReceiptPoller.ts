@@ -101,15 +101,33 @@ export interface ApplyCancelReceiptCodesResult {
 // ever supplies a tracking code, so a collision is silent; here staff can
 // (and are told to) include the order id too, and matching by either code
 // directly is unambiguous per code.
+//
+// For a "trả hàng hoàn tiền" order, the physical package staff actually
+// receives is labeled with Cancellation.returnTrackingCode, NOT the
+// order's own (outbound) trackingCode — those are two different codes. A
+// scan/message naming only the return code would otherwise match zero
+// orders (confirmed in production: SPXVN060152102809 never matched order
+// 260918CPKS97XC). Resolve it to a shopeeOrderId first, same cross-table
+// pattern as loadReportRows.ts's return-tracking-code search.
 export async function applyCancelReceiptCodes(
   params: ApplyCancelReceiptCodesParams
 ): Promise<ApplyCancelReceiptCodesResult> {
   const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full" } = params;
 
+  const returnTrackingMatches = await prisma.cancellation.findMany({
+    where: { isActive: true, returnTrackingCode: { in: codes } },
+    select: { shopeeOrderId: true },
+  });
+  const returnMatchedOrderIds = [...new Set(returnTrackingMatches.map((c) => c.shopeeOrderId))];
+
   const result = await prisma.order.updateMany({
     where: {
       isActive: true,
-      OR: [{ shopeeOrderId: { in: codes } }, { trackingCode: { in: codes } }],
+      OR: [
+        { shopeeOrderId: { in: codes } },
+        { trackingCode: { in: codes } },
+        ...(returnMatchedOrderIds.length > 0 ? [{ shopeeOrderId: { in: returnMatchedOrderIds } }] : []),
+      ],
     },
     data: { cancelReceiptStatus, cancelReceivedAt: confirmedAt },
   });

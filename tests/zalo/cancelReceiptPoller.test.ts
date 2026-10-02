@@ -104,6 +104,7 @@ describe("applyCancelReceiptCodes", () => {
   beforeEach(async () => {
     await prisma.zaloCancelReceiptLog.deleteMany();
     await prisma.order.deleteMany();
+    await prisma.cancellation.deleteMany();
   });
 
   it("matches by shopeeOrderId and sets received_full + the message's own date", async () => {
@@ -173,6 +174,67 @@ describe("applyCancelReceiptCodes", () => {
     expect(result.matchedCount).toBe(2);
   });
 
+  it("matches a returned_refunded order by its Cancellation.returnTrackingCode, not just the order's own trackingCode", async () => {
+    await prisma.order.create({
+      data: {
+        shopeeOrderId: "260918CPKS97XC",
+        categoryName: "D100",
+        status: "Hoàn thành",
+        trackingCode: "SPXVN069555812389",
+        rawRowHash: "h",
+        sheetRowIndex: 1,
+      },
+    });
+    await prisma.cancellation.create({
+      data: {
+        shopeeOrderId: "260918CPKS97XC",
+        type: "returned_refunded",
+        trackingCode: "SPXVN069555812389",
+        returnTrackingCode: "SPXVN060152102809",
+        rawRowHash: "h",
+        sheetRowIndex: 1,
+      },
+    });
+
+    const result = await applyCancelReceiptCodes({
+      codes: ["SPXVN060152102809"],
+      messageContent: "SPXVN060152102809 nhận hàng hoàn rồi",
+      confirmedByName: "Luân",
+      confirmedAt: new Date(),
+      threadId: "group-1",
+    });
+
+    expect(result.matchedCount).toBe(1);
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "260918CPKS97XC" } });
+    expect(order?.cancelReceiptStatus).toBe("received_full");
+  });
+
+  it("ignores a soft-deleted cancellation's returnTrackingCode", async () => {
+    await prisma.order.create({
+      data: { shopeeOrderId: "SP004", categoryName: "D100", status: "Hoàn thành", rawRowHash: "h", sheetRowIndex: 1 },
+    });
+    await prisma.cancellation.create({
+      data: {
+        shopeeOrderId: "SP004",
+        type: "returned_refunded",
+        returnTrackingCode: "SPXVN099999999999",
+        isActive: false,
+        rawRowHash: "h",
+        sheetRowIndex: 1,
+      },
+    });
+
+    const result = await applyCancelReceiptCodes({
+      codes: ["SPXVN099999999999"],
+      messageContent: "SPXVN099999999999",
+      confirmedByName: null,
+      confirmedAt: new Date(),
+      threadId: "group-1",
+    });
+
+    expect(result.matchedCount).toBe(0);
+  });
+
   it("still logs the message even when no order matches", async () => {
     const result = await applyCancelReceiptCodes({
       codes: ["SP-UNKNOWN"],
@@ -208,6 +270,7 @@ describe("applyCancelReceiptCodes", () => {
   afterAll(async () => {
     await prisma.zaloCancelReceiptLog.deleteMany();
     await prisma.order.deleteMany();
+    await prisma.cancellation.deleteMany();
     await prisma.$disconnect();
   });
 });
