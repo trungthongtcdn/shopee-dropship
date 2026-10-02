@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { LuanCheckToggle, RowEditorModal, type RowEditorProps } from "./RowEditor";
 
 export interface ReportRowDisplay {
@@ -40,6 +41,12 @@ export function ReportTableRow({
   editable: RowEditorProps;
 }) {
   const [open, setOpen] = useState(false);
+  // A <tr> can only have <td>/<th> children — the modal's <div> overlay
+  // must render outside the table via a portal, not inline here. The portal
+  // target (document.body) only exists client-side, so wait for mount
+  // before rendering it (SSR renders nothing for the modal, same as before).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <>
@@ -105,15 +112,20 @@ export function ReportTableRow({
           </div>
         </td>
       </tr>
-      <RowEditorModal
-        {...editable}
-        open={open}
-        onClose={() => setOpen(false)}
-        shopeeOrderId={display.shopeeOrderId}
-        productMeta={`${display.productName} · ${display.categoryMeta}`}
-        amountSummary={`Cần thu ${display.amountDueLabel} · Drive ${display.amountPaidLabel}`}
-        paymentMatchBadge={display.paymentMatchBadge}
-      />
+      {mounted
+        ? createPortal(
+            <RowEditorModal
+              {...editable}
+              open={open}
+              onClose={() => setOpen(false)}
+              shopeeOrderId={display.shopeeOrderId}
+              productMeta={`${display.productName} · ${display.categoryMeta}`}
+              amountSummary={`Cần thu ${display.amountDueLabel} · Drive ${display.amountPaidLabel}`}
+              paymentMatchBadge={display.paymentMatchBadge}
+            />,
+            document.body
+          )
+        : null}
     </>
   );
 }
