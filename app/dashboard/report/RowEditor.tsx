@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-const SEND_STATUS_OPTIONS = ["sent", "cancelled"] as const;
+const SEND_STATUS_BUTTON_OPTIONS = [
+  { value: "", label: "Chưa gửi" },
+  { value: "sent", label: "Đã gửi" },
+  { value: "cancelled", label: "Huỷ" },
+] as const;
 const CANCEL_RECEIPT_OPTIONS = ["received_full", "not_received", "received_partial", "not_needed"] as const;
 
 function toDateInputValue(iso: string | null) {
@@ -59,6 +63,13 @@ export interface RowEditorProps {
   cancelComplaintNote: string | null;
   note: string | null;
   paidAmountOverride: number | null;
+  // Read-only header info (design: "Đầu popup: mã đơn, tên SP · phân loại ·
+  // SL, dòng Cần thu … · Drive … · badge khớp") — all pre-formatted by the
+  // caller, which already has the formatters/badge renderers from the table.
+  shopeeOrderId: string;
+  productMeta: string;
+  amountSummary: string;
+  paymentMatchBadge: ReactNode;
 }
 
 // Only the fields synced in automatically from Google Drive files (plus the
@@ -66,9 +77,13 @@ export interface RowEditorProps {
 // on the report row is read-only display in the table itself. Luân check
 // is intentionally NOT part of this popup: it saves instantly from its own
 // checkbox in the table (see LuanCheckToggle above), no popup needed.
-export function RowEditor(props: RowEditorProps) {
+//
+// `open`/`onClose` are controlled by the caller (ReportTableRow) — clicking
+// anywhere on the row opens this, not a dedicated "Sửa" button, so the
+// open/close state has to live one level up, above the row's own click
+// handler.
+export function RowEditorModal(props: RowEditorProps & { open: boolean; onClose: () => void }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [sentAt, setSentAt] = useState(toDateInputValue(props.sentAt));
   const [sendStatus, setSendStatus] = useState(props.sendStatus ?? "");
   const [paidAt, setPaidAt] = useState(toDateInputValue(props.paidAt));
@@ -104,121 +119,138 @@ export function RowEditor(props: RowEditorProps) {
 
     if (response.ok) {
       setStatus(null);
-      setOpen(false);
+      props.onClose();
       router.refresh();
     } else {
       setStatus("Lỗi khi lưu");
     }
   }
 
+  if (!props.open) return null;
+
   return (
-    <>
-      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}>
-        Sửa
-      </button>
-      {open ? (
-        <div className="modal-overlay" onClick={() => setOpen(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span>Sửa thông tin đơn</span>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Đóng">
-                ×
-              </button>
-            </div>
+    <div className="modal-overlay" onClick={props.onClose}>
+      <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 580 }}>
+        <div className="modal-header">
+          <span>Cập nhật đơn</span>
+          <button type="button" className="modal-close" onClick={props.onClose} aria-label="Đóng">
+            ×
+          </button>
+        </div>
 
-            <div className="field">
-              <span className="field-label">Ngày gửi đơn</span>
-              <input className="input" type="date" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />
-            </div>
-            <div className="field">
-              <span className="field-label">Trạng thái đóng đơn</span>
-              <select className="select" value={sendStatus} onChange={(e) => setSendStatus(e.target.value)}>
-                <option value="">-</option>
-                {SEND_STATUS_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value === "sent" ? "ĐÃ GỬI" : "HUỶ"}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <span className="field-label">Ngày đối soát</span>
-              <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
-            </div>
-            <div className="field">
-              <span className="field-label">Số tiền đối soát</span>
-              <input
-                className="input"
-                type="number"
-                step="1"
-                value={paidAmountOverride}
-                onChange={(e) => setPaidAmountOverride(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <span className="field-label">Ngày nhận đơn huỷ</span>
-              <input
-                className="input"
-                type="date"
-                value={cancelReceivedAt}
-                onChange={(e) => setCancelReceivedAt(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <span className="field-label">% hỏng</span>
-              <input
-                className="input"
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={defectRatePercent}
-                onChange={(e) => setDefectRatePercent(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <span className="field-label">Trạng thái nhận huỷ</span>
-              <select className="select" value={cancelReceiptStatus} onChange={(e) => setCancelReceiptStatus(e.target.value)}>
-                <option value="">-</option>
-                {CANCEL_RECEIPT_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value === "received_full"
-                      ? "ĐÃ NHẬN ĐỦ"
-                      : value === "not_received"
-                        ? "CHƯA NHẬN"
-                        : value === "received_partial"
-                          ? "NHẬN THIẾU"
-                          : "KHÔNG CẦN NHẬN"}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <span className="field-label">TT khiếu nại huỷ</span>
-              <input
-                className="input"
-                type="text"
-                value={cancelComplaintNote}
-                onChange={(e) => setCancelComplaintNote(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <span className="field-label">Ghi chú</span>
-              <input className="input" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
-            </div>
+        <div className="cell-stack" style={{ marginBottom: "var(--space-3)" }}>
+          <strong>{props.shopeeOrderId}</strong>
+          <span className="cell-sub">{props.productMeta}</span>
+          <span className="cell-sub">
+            {props.amountSummary} · {props.paymentMatchBadge}
+          </span>
+        </div>
 
-            <div className="modal-actions">
-              <button type="button" className="btn btn-primary btn-sm" onClick={save}>
-                Lưu
+        <h3 style={{ marginTop: 0 }}>Thanh toán</h3>
+        <div className="field">
+          <span className="field-label">Ngày đối soát</span>
+          <input className="input" type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+        </div>
+        <div className="field">
+          <span className="field-label">Số tiền đối soát (trống = theo Drive)</span>
+          <input
+            className="input"
+            type="number"
+            step="1"
+            value={paidAmountOverride}
+            onChange={(e) => setPaidAmountOverride(e.target.value)}
+          />
+        </div>
+
+        <h3>Đóng đơn</h3>
+        <div className="field">
+          <span className="field-label">Ngày gửi đơn</span>
+          <input className="input" type="date" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />
+        </div>
+        <div className="field">
+          <span className="field-label">Trạng thái đóng đơn</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {SEND_STATUS_BUTTON_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`filter-pill${sendStatus === opt.value ? " active" : ""}`}
+                onClick={() => setSendStatus(opt.value)}
+              >
+                {opt.label}
               </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>
-                Huỷ
-              </button>
-              {status && <span className="editor-status">{status}</span>}
-            </div>
+            ))}
           </div>
         </div>
-      ) : null}
-    </>
+
+        <h3>Huỷ / hoàn</h3>
+        <div className="field">
+          <span className="field-label">Ngày nhận đơn huỷ</span>
+          <input
+            className="input"
+            type="date"
+            value={cancelReceivedAt}
+            onChange={(e) => setCancelReceivedAt(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">Trạng thái nhận huỷ</span>
+          <select className="select" value={cancelReceiptStatus} onChange={(e) => setCancelReceiptStatus(e.target.value)}>
+            <option value="">-</option>
+            {CANCEL_RECEIPT_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {value === "received_full"
+                  ? "ĐÃ NHẬN ĐỦ"
+                  : value === "not_received"
+                    ? "CHƯA NHẬN"
+                    : value === "received_partial"
+                      ? "NHẬN THIẾU"
+                      : "KHÔNG CẦN NHẬN"}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <span className="field-label">Tỷ lệ hỏng (%)</span>
+          <input
+            className="input"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={defectRatePercent}
+            onChange={(e) => setDefectRatePercent(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <span className="field-label">TT khiếu nại huỷ</span>
+          <input
+            className="input"
+            type="text"
+            value={cancelComplaintNote}
+            onChange={(e) => setCancelComplaintNote(e.target.value)}
+          />
+        </div>
+
+        <h3>Ghi chú</h3>
+        <div className="field">
+          <input className="input" type="text" value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+
+        <p className="cell-sub" style={{ margin: "var(--space-2) 0" }}>
+          Thông tin đồng bộ từ Sheet/Drive chỉ xem.
+        </p>
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-primary btn-sm" onClick={save}>
+            Lưu
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={props.onClose}>
+            Huỷ
+          </button>
+          {status && <span className="editor-status">{status}</span>}
+        </div>
+      </div>
+    </div>
   );
 }

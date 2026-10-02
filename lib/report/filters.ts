@@ -204,6 +204,7 @@ export function reportFiltersToSearchParams(filters: ReportFilters): URLSearchPa
   for (const v of filters.cancelReceiptStatus) params.append("cancelReceiptStatus", v);
   for (const v of filters.status) params.append("status", v);
   for (const v of filters.deliveryResult) params.append("deliveryResult", v);
+  if (filters.luanCheck) params.set("luanCheck", "true");
   if (filters.sentFrom) params.set("sentFrom", filters.sentFrom);
   if (filters.sentTo) params.set("sentTo", filters.sentTo);
   if (filters.cancelFrom) params.set("cancelFrom", filters.cancelFrom);

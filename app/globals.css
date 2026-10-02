@@ -292,6 +292,46 @@ a:hover {
   border-bottom: none;
 }
 
+.data-table tbody tr.row-clickable {
+  cursor: pointer;
+}
+
+/* Two-line cell content (primary value + a muted sub-line) — used wherever
+   a column was merged from two source columns in the redesign. */
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell-stack .cell-sub {
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+}
+
+/* Columns hideable via the "Cột hiển thị" menu (client-side, see
+   ColumnVisibilityMenu) — one rule per column key, toggled by writing a
+   space-separated list of hidden keys into documentElement's dataset. */
+html[data-hide-col~="product"] .col-product,
+html[data-hide-col~="sku"] .col-sku,
+html[data-hide-col~="amount"] .col-amount,
+html[data-hide-col~="match"] .col-match,
+html[data-hide-col~="paidAt"] .col-paidAt,
+html[data-hide-col~="status"] .col-status,
+html[data-hide-col~="send"] .col-send,
+html[data-hide-col~="cancel"] .col-cancel,
+html[data-hide-col~="defect"] .col-defect,
+html[data-hide-col~="note"] .col-note {
+  display: none;
+}
+
+@media (max-width: 1440px) {
+  .col-sku,
+  .col-paidAt {
+    display: none;
+  }
+}
+
 .num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

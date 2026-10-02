@@ -229,4 +229,14 @@ describe("reportFiltersToSearchParams", () => {
     const params = reportFiltersToSearchParams(parseReportFilters({}));
     expect(params.toString()).toBe("");
   });
+
+  it("round-trips luanCheck so pagination/quick-filter links keep it", () => {
+    const params = reportFiltersToSearchParams(parseReportFilters({ luanCheck: "true" }));
+    expect(params.get("luanCheck")).toBe("true");
+  });
+
+  it("omits luanCheck when false", () => {
+    const params = reportFiltersToSearchParams(parseReportFilters({}));
+    expect(params.has("luanCheck")).toBe(false);
+  });
 });
