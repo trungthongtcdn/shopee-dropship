@@ -18,6 +18,7 @@ describe("parseReportFilters", () => {
     expect(filters.sendStatus).toEqual([]);
     expect(filters.status).toEqual([]);
     expect(filters.deliveryResult).toEqual([]);
+    expect(filters.luanCheck).toBe(false);
   });
 
   it("trims whitespace from the search query", () => {
@@ -111,6 +112,16 @@ describe("buildOrderWhere", () => {
   it("omits paidAt entirely when neither paidFrom nor paidTo is set", () => {
     const where = buildOrderWhere(parseReportFilters({}));
     expect(where.paidAt).toBeUndefined();
+  });
+
+  it("filters to only rows Luân hasn't checked when luanCheck=true", () => {
+    const where = buildOrderWhere(parseReportFilters({ luanCheck: "true" }));
+    expect(where.AND).toContainEqual({ luanCheck: false });
+  });
+
+  it("doesn't filter by luanCheck when absent", () => {
+    const where = buildOrderWhere(parseReportFilters({}));
+    expect(where.AND ?? []).not.toContainEqual({ luanCheck: false });
   });
 });
 
