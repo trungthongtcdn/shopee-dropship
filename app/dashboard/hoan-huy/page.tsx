@@ -1,4 +1,4 @@
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
 import { FilterDropdown } from "../FilterDropdown";
 import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
@@ -32,16 +32,20 @@ export default async function HoanHuyPage({
   searchParams: { page?: string } & Record<string, string | string[] | undefined>;
 }) {
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
+  const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseCancellationFilters(searchParams);
   const filterParams = new URLSearchParams();
   if (filters.q) filterParams.set("q", filters.q);
   for (const t of filters.types) filterParams.append("type", t);
   const filterQuery = filterParams.toString();
-  const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
+  const buildHref = (p: number) =>
+    filterQuery ? `?${filterQuery}&pageSize=${pageSize}&page=${p}` : `?pageSize=${pageSize}&page=${p}`;
+  const onPageSizeHref = (size: number) =>
+    filterQuery ? `?${filterQuery}&pageSize=${size}&page=1` : `?pageSize=${size}&page=1`;
 
   const allRows = await loadCancellationRows(filters);
-  const totalPages = totalPagesFor(allRows.length);
-  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = totalPagesFor(allRows.length, pageSize);
+  const rows = allRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <main className="page">
@@ -81,7 +85,14 @@ export default async function HoanHuyPage({
         <p className="cell-muted" style={{ margin: 0 }}>
           {allRows.length} đơn
         </p>
-        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          buildHref={buildHref}
+          pageSize={pageSize}
+          totalCount={allRows.length}
+          onPageSizeHref={onPageSizeHref}
+        />
       </div>
 
       <div className="table-wrap">
@@ -158,7 +169,14 @@ export default async function HoanHuyPage({
         {rows.length === 0 ? <p className="empty-state">Không có đơn nào.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={buildHref}
+        pageSize={pageSize}
+        totalCount={allRows.length}
+        onPageSizeHref={onPageSizeHref}
+      />
     </main>
   );
 }

@@ -1,7 +1,7 @@
 import { MatchStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
 import { formatDateTimeVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +27,18 @@ function matchStatusBadgeClass(status: MatchStatus) {
 export default async function ReconciliationPage({
   searchParams,
 }: {
-  searchParams: { status?: string; batchId?: string; page?: string; paymentBatchId?: string; pbPage?: string };
+  searchParams: {
+    status?: string;
+    batchId?: string;
+    page?: string;
+    pageSize?: string;
+    paymentBatchId?: string;
+    pbPage?: string;
+    pbPageSize?: string;
+  };
 }) {
   const page = parsePage(searchParams.page);
+  const pageSize = parsePageSize(searchParams.pageSize);
   const batches = await prisma.reconciliationBatch.findMany({
     orderBy: { uploadedAt: "desc" },
     take: 20,
@@ -68,20 +77,31 @@ export default async function ReconciliationPage({
   const filteredResults = statusFilter
     ? batchResults.filter((result) => result.matchStatus === statusFilter)
     : batchResults;
-  const totalPages = totalPagesFor(filteredResults.length);
-  const results = filteredResults.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = totalPagesFor(filteredResults.length, pageSize);
+  const results = filteredResults.slice((page - 1) * pageSize, page * pageSize);
 
   const buildPageHref = (p: number) => {
     const params = new URLSearchParams();
     if (selectedBatch) params.set("batchId", String(selectedBatch.id));
     if (statusFilter) params.set("status", statusFilter);
+    params.set("pageSize", String(pageSize));
     params.set("page", String(p));
+    return `?${params.toString()}`;
+  };
+
+  const onPageSizeHref = (size: number) => {
+    const params = new URLSearchParams();
+    if (selectedBatch) params.set("batchId", String(selectedBatch.id));
+    if (statusFilter) params.set("status", statusFilter);
+    params.set("pageSize", String(size));
+    params.set("page", "1");
     return `?${params.toString()}`;
   };
 
   // Weekly payment batches synced from Drive — independent of the manual
   // upload batches above (see PaymentSync.gs's syncPaymentBatches).
   const pbPage = parsePage(searchParams.pbPage);
+  const pbPageSize = parsePageSize(searchParams.pbPageSize);
   const paymentBatches = await prisma.paymentBatch.findMany({ orderBy: { syncedAt: "desc" } });
 
   const requestedPaymentBatchId = Number(searchParams.paymentBatchId);
@@ -92,20 +112,29 @@ export default async function ReconciliationPage({
   const paymentBatchLineTotal = selectedPaymentBatch
     ? await prisma.paymentBatchLine.count({ where: { batchId: selectedPaymentBatch.id } })
     : 0;
-  const paymentBatchTotalPages = totalPagesFor(paymentBatchLineTotal);
+  const paymentBatchTotalPages = totalPagesFor(paymentBatchLineTotal, pbPageSize);
   const paymentBatchLines = selectedPaymentBatch
     ? await prisma.paymentBatchLine.findMany({
         where: { batchId: selectedPaymentBatch.id },
         orderBy: { sheetRowIndex: "asc" },
-        skip: (pbPage - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
+        skip: (pbPage - 1) * pbPageSize,
+        take: pbPageSize,
       })
     : [];
 
   const buildPaymentBatchPageHref = (p: number) => {
     const params = new URLSearchParams();
     if (selectedPaymentBatch) params.set("paymentBatchId", String(selectedPaymentBatch.id));
+    params.set("pbPageSize", String(pbPageSize));
     params.set("pbPage", String(p));
+    return `?${params.toString()}`;
+  };
+
+  const onPbPageSizeHref = (size: number) => {
+    const params = new URLSearchParams();
+    if (selectedPaymentBatch) params.set("paymentBatchId", String(selectedPaymentBatch.id));
+    params.set("pbPageSize", String(size));
+    params.set("pbPage", "1");
     return `?${params.toString()}`;
   };
 
@@ -170,7 +199,14 @@ export default async function ReconciliationPage({
             </span>
           </div>
 
-          <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            buildHref={buildPageHref}
+            pageSize={pageSize}
+            totalCount={filteredResults.length}
+            onPageSizeHref={onPageSizeHref}
+          />
 
           <div className="table-wrap">
             <table className="data-table">
@@ -197,7 +233,14 @@ export default async function ReconciliationPage({
             </table>
             {results.length === 0 ? <p className="empty-state">Không có kết quả cho bộ lọc này.</p> : null}
           </div>
-          <Pagination page={page} totalPages={totalPages} buildHref={buildPageHref} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            buildHref={buildPageHref}
+            pageSize={pageSize}
+            totalCount={filteredResults.length}
+            onPageSizeHref={onPageSizeHref}
+          />
         </>
       ) : null}
 
@@ -230,7 +273,14 @@ export default async function ReconciliationPage({
             </span>
           </div>
 
-          <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
+          <Pagination
+            page={pbPage}
+            totalPages={paymentBatchTotalPages}
+            buildHref={buildPaymentBatchPageHref}
+            pageSize={pbPageSize}
+            totalCount={paymentBatchLineTotal}
+            onPageSizeHref={onPbPageSizeHref}
+          />
 
           <div className="table-wrap">
             <table className="data-table">
@@ -263,7 +313,14 @@ export default async function ReconciliationPage({
             </table>
           </div>
 
-          <Pagination page={pbPage} totalPages={paymentBatchTotalPages} buildHref={buildPaymentBatchPageHref} />
+          <Pagination
+            page={pbPage}
+            totalPages={paymentBatchTotalPages}
+            buildHref={buildPaymentBatchPageHref}
+            pageSize={pbPageSize}
+            totalCount={paymentBatchLineTotal}
+            onPageSizeHref={onPbPageSizeHref}
+          />
         </>
       ) : null}
     </main>

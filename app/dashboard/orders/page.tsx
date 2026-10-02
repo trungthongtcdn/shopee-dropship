@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
 import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import { deriveDeliveryResult, DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN } from "@/lib/format/datetime";
@@ -34,20 +34,23 @@ function formatDateTime(value: Date) {
 export default async function OrdersPage({
   searchParams,
 }: {
-  searchParams: { page?: string };
+  searchParams: { page?: string; pageSize?: string };
 }) {
   const page = parsePage(searchParams.page);
+  const pageSize = parsePageSize(searchParams.pageSize);
 
   const [orders, totalCount] = await Promise.all([
     prisma.order.findMany({
       where: { isActive: true },
       orderBy: { orderDate: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
     prisma.order.count({ where: { isActive: true } }),
   ]);
-  const totalPages = totalPagesFor(totalCount);
+  const totalPages = totalPagesFor(totalCount, pageSize);
+  const buildHref = (p: number) => `?pageSize=${pageSize}&page=${p}`;
+  const onPageSizeHref = (size: number) => `?pageSize=${size}&page=1`;
   const cancellationByOrderId = await loadCancellationSummaries([...new Set(orders.map((o) => o.shopeeOrderId))]);
 
   return (
@@ -55,7 +58,14 @@ export default async function OrdersPage({
       <h1>Orders</h1>
       <p className="page-description">Mỗi dòng là 1 sản phẩm trong đơn — 1 mã đơn hàng có thể xuất hiện nhiều dòng.</p>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={buildHref}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        onPageSizeHref={onPageSizeHref}
+      />
 
       <div className="table-wrap">
         <table className="data-table">
@@ -102,7 +112,14 @@ export default async function OrdersPage({
         {orders.length === 0 ? <p className="empty-state">Chưa có dữ liệu.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={(p) => `?page=${p}`} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={buildHref}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        onPageSizeHref={onPageSizeHref}
+      />
     </main>
   );
 }

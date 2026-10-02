@@ -1,6 +1,6 @@
 import { RowEditor, LuanCheckToggle } from "./RowEditor";
 import { FilterDropdown } from "../FilterDropdown";
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
 import {
   parseReportFilters,
   reportFiltersToSearchParams,
@@ -53,14 +53,18 @@ export default async function ReportPage({
   searchParams: { page?: string } & Record<string, string | string[] | undefined>;
 }) {
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
+  const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseReportFilters(searchParams);
   const filterQuery = reportFiltersToSearchParams(filters).toString();
-  const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
+  const buildHref = (p: number) =>
+    filterQuery ? `?${filterQuery}&pageSize=${pageSize}&page=${p}` : `?pageSize=${pageSize}&page=${p}`;
+  const onPageSizeHref = (size: number) =>
+    filterQuery ? `?${filterQuery}&pageSize=${size}&page=1` : `?pageSize=${size}&page=1`;
   const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
 
   const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadOrderStatusFilterOptions()]);
-  const totalPages = totalPagesFor(allRows.length);
-  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = totalPagesFor(allRows.length, pageSize);
+  const rows = allRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <main className="page">
@@ -75,7 +79,14 @@ export default async function ReportPage({
         <p className="cell-muted" style={{ margin: 0 }}>
           {allRows.length} đơn
         </p>
-        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          buildHref={buildHref}
+          pageSize={pageSize}
+          totalCount={allRows.length}
+          onPageSizeHref={onPageSizeHref}
+        />
         <a className="btn btn-secondary btn-sm" href={exportHref}>
           Xuất Excel
         </a>
@@ -178,7 +189,14 @@ export default async function ReportPage({
         {rows.length === 0 ? <p className="empty-state">Không có đơn nào khớp bộ lọc.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={buildHref}
+        pageSize={pageSize}
+        totalCount={allRows.length}
+        onPageSizeHref={onPageSizeHref}
+      />
     </main>
   );
 }
