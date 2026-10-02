@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import { deriveDeliveryResult, DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN } from "@/lib/format/datetime";
@@ -49,8 +50,6 @@ export default async function OrdersPage({
     prisma.order.count({ where: { isActive: true } }),
   ]);
   const totalPages = totalPagesFor(totalCount, pageSize);
-  const buildHref = (p: number) => `?pageSize=${pageSize}&page=${p}`;
-  const onPageSizeHref = (size: number) => `?pageSize=${size}&page=1`;
   const cancellationByOrderId = await loadCancellationSummaries([...new Set(orders.map((o) => o.shopeeOrderId))]);
 
   return (
@@ -61,10 +60,8 @@ export default async function OrdersPage({
       <Pagination
         page={page}
         totalPages={totalPages}
-        buildHref={buildHref}
         pageSize={pageSize}
         totalCount={totalCount}
-        onPageSizeHref={onPageSizeHref}
       />
 
       <div className="table-wrap">
@@ -115,10 +112,8 @@ export default async function OrdersPage({
       <Pagination
         page={page}
         totalPages={totalPages}
-        buildHref={buildHref}
         pageSize={pageSize}
         totalCount={totalCount}
-        onPageSizeHref={onPageSizeHref}
       />
     </main>
   );

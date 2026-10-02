@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePageSize, totalPagesFor, DEFAULT_PAGE_SIZE } from "@/app/dashboard/Pagination";
+import { parsePageSize, totalPagesFor, DEFAULT_PAGE_SIZE } from "@/app/dashboard/pageSize";
 
 describe("parsePageSize", () => {
   it("defaults to 20 when absent", () => {

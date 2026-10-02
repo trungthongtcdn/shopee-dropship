@@ -1,4 +1,5 @@
-import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { FilterDropdown } from "../FilterDropdown";
 import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
@@ -38,10 +39,6 @@ export default async function HoanHuyPage({
   if (filters.q) filterParams.set("q", filters.q);
   for (const t of filters.types) filterParams.append("type", t);
   const filterQuery = filterParams.toString();
-  const buildHref = (p: number) =>
-    filterQuery ? `?${filterQuery}&pageSize=${pageSize}&page=${p}` : `?pageSize=${pageSize}&page=${p}`;
-  const onPageSizeHref = (size: number) =>
-    filterQuery ? `?${filterQuery}&pageSize=${size}&page=1` : `?pageSize=${size}&page=1`;
 
   const allRows = await loadCancellationRows(filters);
   const totalPages = totalPagesFor(allRows.length, pageSize);
@@ -88,10 +85,9 @@ export default async function HoanHuyPage({
         <Pagination
           page={page}
           totalPages={totalPages}
-          buildHref={buildHref}
           pageSize={pageSize}
           totalCount={allRows.length}
-          onPageSizeHref={onPageSizeHref}
+          baseQuery={filterQuery}
         />
       </div>
 
@@ -172,10 +168,9 @@ export default async function HoanHuyPage({
       <Pagination
         page={page}
         totalPages={totalPages}
-        buildHref={buildHref}
         pageSize={pageSize}
         totalCount={allRows.length}
-        onPageSizeHref={onPageSizeHref}
+        baseQuery={filterQuery}
       />
     </main>
   );

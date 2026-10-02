@@ -1,7 +1,8 @@
 import { MatchStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { UploadForm } from "./UploadForm";
-import { Pagination, parsePage, parsePageSize, totalPagesFor } from "../Pagination";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { formatDateTimeVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
@@ -80,23 +81,9 @@ export default async function ReconciliationPage({
   const totalPages = totalPagesFor(filteredResults.length, pageSize);
   const results = filteredResults.slice((page - 1) * pageSize, page * pageSize);
 
-  const buildPageHref = (p: number) => {
-    const params = new URLSearchParams();
-    if (selectedBatch) params.set("batchId", String(selectedBatch.id));
-    if (statusFilter) params.set("status", statusFilter);
-    params.set("pageSize", String(pageSize));
-    params.set("page", String(p));
-    return `?${params.toString()}`;
-  };
-
-  const onPageSizeHref = (size: number) => {
-    const params = new URLSearchParams();
-    if (selectedBatch) params.set("batchId", String(selectedBatch.id));
-    if (statusFilter) params.set("status", statusFilter);
-    params.set("pageSize", String(size));
-    params.set("page", "1");
-    return `?${params.toString()}`;
-  };
+  const batchQuery = new URLSearchParams();
+  if (selectedBatch) batchQuery.set("batchId", String(selectedBatch.id));
+  if (statusFilter) batchQuery.set("status", statusFilter);
 
   // Weekly payment batches synced from Drive — independent of the manual
   // upload batches above (see PaymentSync.gs's syncPaymentBatches).
@@ -122,21 +109,8 @@ export default async function ReconciliationPage({
       })
     : [];
 
-  const buildPaymentBatchPageHref = (p: number) => {
-    const params = new URLSearchParams();
-    if (selectedPaymentBatch) params.set("paymentBatchId", String(selectedPaymentBatch.id));
-    params.set("pbPageSize", String(pbPageSize));
-    params.set("pbPage", String(p));
-    return `?${params.toString()}`;
-  };
-
-  const onPbPageSizeHref = (size: number) => {
-    const params = new URLSearchParams();
-    if (selectedPaymentBatch) params.set("paymentBatchId", String(selectedPaymentBatch.id));
-    params.set("pbPageSize", String(size));
-    params.set("pbPage", "1");
-    return `?${params.toString()}`;
-  };
+  const paymentBatchQuery = new URLSearchParams();
+  if (selectedPaymentBatch) paymentBatchQuery.set("paymentBatchId", String(selectedPaymentBatch.id));
 
   return (
     <main className="page">
@@ -202,10 +176,9 @@ export default async function ReconciliationPage({
           <Pagination
             page={page}
             totalPages={totalPages}
-            buildHref={buildPageHref}
             pageSize={pageSize}
             totalCount={filteredResults.length}
-            onPageSizeHref={onPageSizeHref}
+            baseQuery={batchQuery.toString()}
           />
 
           <div className="table-wrap">
@@ -236,10 +209,9 @@ export default async function ReconciliationPage({
           <Pagination
             page={page}
             totalPages={totalPages}
-            buildHref={buildPageHref}
             pageSize={pageSize}
             totalCount={filteredResults.length}
-            onPageSizeHref={onPageSizeHref}
+            baseQuery={batchQuery.toString()}
           />
         </>
       ) : null}
@@ -276,10 +248,11 @@ export default async function ReconciliationPage({
           <Pagination
             page={pbPage}
             totalPages={paymentBatchTotalPages}
-            buildHref={buildPaymentBatchPageHref}
             pageSize={pbPageSize}
             totalCount={paymentBatchLineTotal}
-            onPageSizeHref={onPbPageSizeHref}
+            baseQuery={paymentBatchQuery.toString()}
+            pageParam="pbPage"
+            pageSizeParam="pbPageSize"
           />
 
           <div className="table-wrap">
@@ -316,10 +289,11 @@ export default async function ReconciliationPage({
           <Pagination
             page={pbPage}
             totalPages={paymentBatchTotalPages}
-            buildHref={buildPaymentBatchPageHref}
             pageSize={pbPageSize}
             totalCount={paymentBatchLineTotal}
-            onPageSizeHref={onPbPageSizeHref}
+            baseQuery={paymentBatchQuery.toString()}
+            pageParam="pbPage"
+            pageSizeParam="pbPageSize"
           />
         </>
       ) : null}
