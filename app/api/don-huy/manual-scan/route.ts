@@ -13,6 +13,7 @@ const scanSchema = z.object({
   codes: z.array(z.string().min(1)).min(1),
   confirmedAt: z.string().datetime(),
   cancelReceiptStatus: z.nativeEnum(CancelReceiptStatus),
+  defectRate: z.number().min(0).max(1).nullable().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
     confirmedAt,
     threadId: MANUAL_SCAN_THREAD_ID,
     cancelReceiptStatus: parsed.data.cancelReceiptStatus,
+    defectRate: parsed.data.defectRate,
   });
 
   return NextResponse.json({ codes, matchedCount });

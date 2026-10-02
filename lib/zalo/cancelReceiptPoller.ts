@@ -87,6 +87,10 @@ export interface ApplyCancelReceiptCodesParams {
   // always received_full. The manual barcode-scan entry point is the only
   // caller that lets staff pick a different status (e.g. received_partial).
   cancelReceiptStatus?: CancelReceiptStatus;
+  // Optional for the same reason: only the manual barcode-scan flow lets
+  // staff record a "% hỏng" alongside the receipt confirmation. Omitted
+  // entirely by the Zalo group flow, which must never touch this column.
+  defectRate?: number | null;
 }
 
 export interface ApplyCancelReceiptCodesResult {
@@ -112,7 +116,7 @@ export interface ApplyCancelReceiptCodesResult {
 export async function applyCancelReceiptCodes(
   params: ApplyCancelReceiptCodesParams
 ): Promise<ApplyCancelReceiptCodesResult> {
-  const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full" } = params;
+  const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full", defectRate } = params;
 
   const returnTrackingMatches = await prisma.cancellation.findMany({
     where: { isActive: true, returnTrackingCode: { in: codes } },
@@ -129,7 +133,11 @@ export async function applyCancelReceiptCodes(
         ...(returnMatchedOrderIds.length > 0 ? [{ shopeeOrderId: { in: returnMatchedOrderIds } }] : []),
       ],
     },
-    data: { cancelReceiptStatus, cancelReceivedAt: confirmedAt },
+    data: {
+      cancelReceiptStatus,
+      cancelReceivedAt: confirmedAt,
+      ...(defectRate !== undefined ? { defectRate } : {}),
+    },
   });
 
   await prisma.zaloCancelReceiptLog.create({
