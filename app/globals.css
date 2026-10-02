@@ -748,6 +748,30 @@ label.filter-pill:has(.filter-pill-input:focus-visible) {
   text-align: center;
 }
 
+/* ---------- Ratio bar (matched / total) ---------- */
+
+.ratio-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ratio-bar {
+  position: relative;
+  width: 100px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-neutral-bg);
+  overflow: hidden;
+}
+
+.ratio-bar-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-success);
+  border-radius: 999px;
+}
+
 /* ---------- Pagination ---------- */
 
 .pagination {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 export function ManualConfirmForm() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [tab, setTab] = useState<"link" | "file">("link");
   const [pdfUrl, setPdfUrl] = useState("");
   const [sentAt, setSentAt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -49,32 +50,53 @@ export function ManualConfirmForm() {
   }
 
   return (
-    <form onSubmit={submit} className="toolbar">
-      <div className="field">
-        <span className="field-label">Link PDF</span>
-        <input
-          className="input"
-          type="text"
-          placeholder="https://..."
-          value={pdfUrl}
-          onChange={(e) => setPdfUrl(e.target.value)}
-          style={{ minWidth: 260 }}
-        />
+    <form onSubmit={submit} className="toolbar" style={{ flexDirection: "column", alignItems: "stretch" }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          className={`filter-pill${tab === "link" ? " active" : ""}`}
+          onClick={() => setTab("link")}
+        >
+          Dán link
+        </button>
+        <button
+          type="button"
+          className={`filter-pill${tab === "file" ? " active" : ""}`}
+          onClick={() => setTab("file")}
+        >
+          Tải file PDF
+        </button>
       </div>
-      <div className="field">
-        <span className="field-label">Hoặc chọn file PDF</span>
-        <input className="input" type="file" accept="application/pdf" ref={fileInputRef} />
-      </div>
+
+      {tab === "link" ? (
+        <div className="field">
+          <span className="field-label">Link PDF</span>
+          <input
+            className="input"
+            type="text"
+            placeholder="https://..."
+            value={pdfUrl}
+            onChange={(e) => setPdfUrl(e.target.value)}
+            style={{ minWidth: 260 }}
+          />
+        </div>
+      ) : (
+        <div className="field">
+          <span className="field-label">Chọn file PDF</span>
+          <input className="input" type="file" accept="application/pdf" ref={fileInputRef} />
+        </div>
+      )}
+
       <div className="field">
         <span className="field-label">Ngày, giờ gửi</span>
         <input className="input" type="datetime-local" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />
       </div>
-      <div className="field" style={{ flexDirection: "row", alignItems: "flex-end" }}>
+      <div className="field" style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-2)" }}>
         <button type="submit" className="btn btn-primary btn-sm" disabled={submitting}>
           {submitting ? "Đang xử lý..." : "Xác nhận"}
         </button>
+        {status && <span className="editor-status">{status}</span>}
       </div>
-      {status && <span className="editor-status">{status}</span>}
     </form>
   );
 }
