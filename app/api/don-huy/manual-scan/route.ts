@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { CancelReceiptStatus } from "@prisma/client";
 import { applyCancelReceiptCodes } from "@/lib/zalo/cancelReceiptPoller";
-import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
 
 // Fallback/primary entry point for staff physically scanning returned
 // packages with a phone camera (see BarcodeScanForm.tsx) — same effect as
@@ -23,10 +22,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid payload", issues: parsed.error.issues }, { status: 400 });
   }
 
-  // Re-run every scanned value through the same extraction/validation used
-  // for free-text Zalo messages — never trust the client, and this also
-  // normalizes casing and drops accidental duplicates in one pass.
-  const codes = [...new Set(parsed.data.codes.flatMap((code) => extractOrderCodes(code)))];
+  // Each entry here is a discrete scan/typed code, not free text to parse
+  // out of — unlike the Zalo message parser, there's no order-id/SPXVN
+  // shape to filter by (a real trackingCode can be a different carrier's
+  // format entirely, e.g. "GYYXUFHV"). Just normalize and dedupe; the DB
+  // match in applyCancelReceiptCodes is what actually decides validity.
+  const codes = [...new Set(parsed.data.codes.map((code) => code.trim().toUpperCase()).filter(Boolean))];
   if (codes.length === 0) {
     return NextResponse.json({ error: "không có mã hợp lệ nào trong danh sách" }, { status: 422 });
   }

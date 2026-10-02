@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { IScannerControls } from "@zxing/browser";
-import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
 
 const CANCEL_RECEIPT_STATUS_OPTIONS = ["received_full", "received_partial", "not_received", "not_needed"] as const;
 const CANCEL_RECEIPT_STATUS_LABELS: Record<(typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number], string> = {
@@ -53,8 +52,15 @@ export function BarcodeScanForm() {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  // Every call site here is a single discrete scan/typed entry, never free
+  // text — unlike the Zalo message parser (extractOrderCodes), there's no
+  // prose to pull a code out of, so don't filter by its order-id/SPXVN
+  // shape. A real trackingCode can be a different carrier's format entirely
+  // (confirmed in production: "GYYXUFHV", 8 letters, not SPXVN-prefixed,
+  // was silently rejected here before matching was even attempted). Trust
+  // whatever was scanned/typed and let the DB match decide.
   function addCode(raw: string) {
-    const [code] = extractOrderCodes(raw);
+    const code = raw.trim().toUpperCase();
     if (!code || codes.includes(code)) return false;
     setCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
     return true;
@@ -104,7 +110,7 @@ export function BarcodeScanForm() {
     if (addCode(manualInput)) {
       setManualInput("");
     } else {
-      setStatus(`"${manualInput}" không phải mã đơn hàng hoặc mã vận đơn hợp lệ`);
+      setStatus(manualInput.trim() ? `"${manualInput.trim()}" đã có trong danh sách` : "Nhập mã trước khi thêm");
     }
   }
 

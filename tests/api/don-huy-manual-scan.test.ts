@@ -50,7 +50,7 @@ describe("POST /api/don-huy/manual-scan", () => {
     expect(order?.cancelReceiptStatus).toBe("not_needed");
   });
 
-  it("extracts and dedupes codes found inside noisy scanned text", async () => {
+  it("trims whitespace, uppercases, and dedupes scanned codes", async () => {
     await prisma.order.create({
       data: { shopeeOrderId: "260625BBBBBBBB", categoryName: "D100", status: "pending", rawRowHash: "h", sheetRowIndex: 1 },
     });
@@ -64,6 +64,30 @@ describe("POST /api/don-huy/manual-scan", () => {
     );
     const json = await response.json();
     expect(json.codes).toEqual(["260625BBBBBBBB"]);
+    expect(json.matchedCount).toBe(1);
+  });
+
+  // Regression test: a real trackingCode isn't always a 14-char order-id or
+  // SPXVN-prefixed shape (production counter-example: "GYYXUFHV", a
+  // different carrier's 8-letter code) — this path must not pre-filter by
+  // shape like the Zalo free-text parser does, or a legitimate scan never
+  // even reaches the DB match.
+  it("matches a trackingCode that doesn't look like an order id or SPXVN code", async () => {
+    await prisma.order.create({
+      data: {
+        shopeeOrderId: "260912TP5AFJXV",
+        categoryName: "D100",
+        status: "Hoàn thành",
+        trackingCode: "GYYXUFHV",
+        rawRowHash: "h",
+        sheetRowIndex: 1,
+      },
+    });
+
+    const response = await POST(
+      makeRequest({ codes: ["GYYXUFHV"], confirmedAt: "2026-06-25T10:00:00.000Z", cancelReceiptStatus: "received_full" })
+    );
+    const json = await response.json();
     expect(json.matchedCount).toBe(1);
   });
 
@@ -84,9 +108,21 @@ describe("POST /api/don-huy/manual-scan", () => {
     expect(response.status).toBe(400);
   });
 
-  it("returns 422 when none of the given codes look like a real order/tracking code", async () => {
+  // No more shape-based rejection (see the regression test above) — a code
+  // that just doesn't match any order is a normal 200 with matchedCount 0,
+  // same as the Zalo auto-poller's behavior for an unrecognized code.
+  it("returns 200 with matchedCount 0 when a code matches no order, instead of rejecting it", async () => {
     const response = await POST(
-      makeRequest({ codes: ["not a code at all"], confirmedAt: "2026-06-25T10:00:00.000Z", cancelReceiptStatus: "received_full" })
+      makeRequest({ codes: ["NOT-A-REAL-CODE"], confirmedAt: "2026-06-25T10:00:00.000Z", cancelReceiptStatus: "received_full" })
+    );
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.matchedCount).toBe(0);
+  });
+
+  it("returns 422 when every given code is blank after trimming", async () => {
+    const response = await POST(
+      makeRequest({ codes: ["   "], confirmedAt: "2026-06-25T10:00:00.000Z", cancelReceiptStatus: "received_full" })
     );
     expect(response.status).toBe(422);
   });
