@@ -15,11 +15,6 @@ export default async function DonHuyPage() {
   return (
     <main className="page">
       <h1>Đơn huỷ</h1>
-      <p className="page-description">
-        Chọn nhóm Zalo báo đơn huỷ. Bất kỳ tin nhắn nào trong nhóm này có nhắc mã đơn hàng và/hoặc mã vận đơn đều được
-        hiểu là đơn đó đã nhận huỷ thành công — hệ thống tự đặt "Trạng thái nhận huỷ" = "Đã nhận đủ" và "Ngày nhận đơn
-        huỷ" = đúng ngày giờ tin nhắn được gửi. Hoặc quét mã / nhập tay bên dưới khi kiểm hàng thực tế.
-      </p>
 
       <ZaloGroupPicker
         purpose={CANCEL_RECEIPT_CONFIRM_PURPOSE}
@@ -29,9 +24,6 @@ export default async function DonHuyPage() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Quét mã đơn huỷ</h3>
-        <p className="cell-muted" style={{ marginTop: 0 }}>
-          Quét barcode bằng camera hoặc nhập tay mã đơn hàng/mã vận đơn, gom thành danh sách rồi xác nhận 1 lần.
-        </p>
         <BarcodeScanForm />
       </div>
 
