@@ -267,6 +267,42 @@ describe("applyCancelReceiptCodes", () => {
     expect(order?.cancelReceiptStatus).toBe("received_partial");
   });
 
+  it("writes defectRate when given", async () => {
+    await prisma.order.create({
+      data: { shopeeOrderId: "SP010", categoryName: "D100", status: "Hoàn thành", rawRowHash: "h", sheetRowIndex: 1 },
+    });
+
+    await applyCancelReceiptCodes({
+      codes: ["SP010"],
+      messageContent: "SP010",
+      confirmedByName: "Quét mã thủ công",
+      confirmedAt: new Date(),
+      threadId: "manual-scan",
+      cancelReceiptStatus: "received_partial",
+      defectRate: 0.05,
+    });
+
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP010" } });
+    expect(order?.defectRate).toBe(0.05);
+  });
+
+  it("leaves defectRate untouched when not given", async () => {
+    await prisma.order.create({
+      data: { shopeeOrderId: "SP011", categoryName: "D100", status: "Hoàn thành", rawRowHash: "h", sheetRowIndex: 1, defectRate: 0.2 },
+    });
+
+    await applyCancelReceiptCodes({
+      codes: ["SP011"],
+      messageContent: "SP011",
+      confirmedByName: null,
+      confirmedAt: new Date(),
+      threadId: "group-1",
+    });
+
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "SP011" } });
+    expect(order?.defectRate).toBe(0.2);
+  });
+
   afterAll(async () => {
     await prisma.zaloCancelReceiptLog.deleteMany();
     await prisma.order.deleteMany();
