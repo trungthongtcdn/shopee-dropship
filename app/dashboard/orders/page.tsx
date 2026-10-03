@@ -4,7 +4,7 @@ import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
 import { deriveDeliveryResult, DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN } from "@/lib/format/datetime";
-import type { Order } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -33,28 +33,6 @@ function formatDateTime(value: Date) {
   });
 }
 
-// One entry per distinct shopeeOrderId — `extraLineCount` is how many other
-// product lines that same order has, shown as "+n sản phẩm cùng đơn"
-// instead of rendering every line as its own row.
-interface OrderGroup {
-  shopeeOrderId: string;
-  firstLine: Order;
-  extraLineCount: number;
-}
-
-function groupByOrder(orders: Order[]): OrderGroup[] {
-  const groups = new Map<string, OrderGroup>();
-  for (const order of orders) {
-    const existing = groups.get(order.shopeeOrderId);
-    if (existing) {
-      existing.extraLineCount += 1;
-    } else {
-      groups.set(order.shopeeOrderId, { shopeeOrderId: order.shopeeOrderId, firstLine: order, extraLineCount: 0 });
-    }
-  }
-  return [...groups.values()];
-}
-
 export default async function OrdersPage({
   searchParams,
 }: {
@@ -64,26 +42,30 @@ export default async function OrdersPage({
   const pageSize = parsePageSize(searchParams.pageSize);
   const q = searchParams.q?.trim() ?? "";
 
-  // Fetched in full (same convention as the Report/Đơn hoàn huỷ pages) —
-  // grouping by shopeeOrderId has to happen before pagination, otherwise a
-  // multi-line order could get split across two pages.
-  const orders = await prisma.order.findMany({
-    where: q
-      ? {
-          isActive: true,
-          OR: [
-            { shopeeOrderId: { contains: q, mode: "insensitive" } },
-            { trackingCode: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : { isActive: true },
-    orderBy: [{ orderDate: "desc" }, { id: "asc" }],
-  });
+  // One row per product line (same as before this redesign) — DB-level
+  // skip/take keeps this page O(pageSize) regardless of table size, instead
+  // of fetching every active order to group multi-line orders in memory.
+  const where: Prisma.OrderWhereInput = q
+    ? {
+        isActive: true,
+        OR: [
+          { shopeeOrderId: { contains: q, mode: "insensitive" } },
+          { trackingCode: { contains: q, mode: "insensitive" } },
+        ],
+      }
+    : { isActive: true };
 
-  const groups = groupByOrder(orders);
-  const totalPages = totalPagesFor(groups.length, pageSize);
-  const pageGroups = groups.slice((page - 1) * pageSize, page * pageSize);
-  const cancellationByOrderId = await loadCancellationSummaries(pageGroups.map((g) => g.shopeeOrderId));
+  const [orders, totalCount] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy: [{ orderDate: "desc" }, { id: "asc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.order.count({ where }),
+  ]);
+  const totalPages = totalPagesFor(totalCount, pageSize);
+  const cancellationByOrderId = await loadCancellationSummaries([...new Set(orders.map((o) => o.shopeeOrderId))]);
 
   return (
     <main className="page">
@@ -111,7 +93,7 @@ export default async function OrdersPage({
         </div>
       </form>
 
-      <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={groups.length} baseQuery={q ? `q=${encodeURIComponent(q)}` : ""} />
+      <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={totalCount} baseQuery={q ? `q=${encodeURIComponent(q)}` : ""} />
 
       <div className="table-wrap">
         <table className="data-table">
@@ -129,11 +111,10 @@ export default async function OrdersPage({
             </tr>
           </thead>
           <tbody>
-            {pageGroups.map((group) => {
-              const order = group.firstLine;
+            {orders.map((order) => {
               const deliveryResult = deriveDeliveryResult(cancellationByOrderId.get(order.shopeeOrderId)?.types ?? []);
               return (
-                <tr key={order.shopeeOrderId}>
+                <tr key={order.id}>
                   <td className="cell-muted">{formatDateVN(order.orderDate)}</td>
                   <td>
                     <div className="cell-stack">
@@ -144,12 +125,7 @@ export default async function OrdersPage({
                     </div>
                   </td>
                   <td className="cell-truncate" title={order.productName ?? "-"}>
-                    <div className="cell-stack">
-                      <span>{order.productName ?? "-"}</span>
-                      {group.extraLineCount > 0 ? (
-                        <span className="cell-sub">+{group.extraLineCount} sản phẩm cùng đơn</span>
-                      ) : null}
-                    </div>
+                    {order.productName ?? "-"}
                   </td>
                   <td className="cell-muted">{order.categoryName || "-"}</td>
                   <td className="num">{order.lineQuantity ?? "-"}</td>
@@ -164,10 +140,10 @@ export default async function OrdersPage({
             })}
           </tbody>
         </table>
-        {pageGroups.length === 0 ? <p className="empty-state">Chưa có dữ liệu.</p> : null}
+        {orders.length === 0 ? <p className="empty-state">Chưa có dữ liệu.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={groups.length} baseQuery={q ? `q=${encodeURIComponent(q)}` : ""} />
+      <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={totalCount} baseQuery={q ? `q=${encodeURIComponent(q)}` : ""} />
     </main>
   );
 }
