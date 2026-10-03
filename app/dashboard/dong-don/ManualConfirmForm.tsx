@@ -69,7 +69,7 @@ export function ManualConfirmForm() {
       </div>
 
       {tab === "link" ? (
-        <div className="field">
+        <div className="field" key="link">
           <span className="field-label">Link PDF</span>
           <input
             className="input"
@@ -81,7 +81,7 @@ export function ManualConfirmForm() {
           />
         </div>
       ) : (
-        <div className="field">
+        <div className="field" key="file">
           <span className="field-label">Chọn file PDF</span>
           <input className="input" type="file" accept="application/pdf" ref={fileInputRef} />
         </div>
