@@ -292,10 +292,6 @@ a:hover {
   border-bottom: none;
 }
 
-.data-table tbody tr.row-clickable {
-  cursor: pointer;
-}
-
 /* Two-line cell content (primary value + a muted sub-line) — used wherever
    a column was merged from two source columns in the redesign. */
 .cell-stack {

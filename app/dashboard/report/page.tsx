@@ -164,6 +164,7 @@ export default async function ReportPage({
               <th className="col-cancel">Nhận huỷ · VĐ trả hàng</th>
               <th className="col-defect">% hỏng</th>
               <th className="col-note">Ghi chú · Khiếu nại huỷ</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>

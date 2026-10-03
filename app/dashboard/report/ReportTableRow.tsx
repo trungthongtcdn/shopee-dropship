@@ -28,9 +28,10 @@ export interface ReportRowDisplay {
   cancelComplaintNote: string;
 }
 
-// Owns the "click row to open the Cập nhật đơn popup" interaction (design
-// replaces the old per-row "Sửa" button with this) — the Luân check cell
-// stops propagation so ticking it doesn't also open the popup.
+// Owns the "Sửa" button that opens the Cập nhật đơn popup. The design
+// originally wanted the whole row clickable, but that makes shopeeOrderId/
+// trackingCode unselectable (any click anywhere on the row opens the
+// popup instead of placing a text cursor) — a dedicated button avoids that.
 export function ReportTableRow({
   luanCheck,
   display,
@@ -50,8 +51,8 @@ export function ReportTableRow({
 
   return (
     <>
-      <tr className="row-clickable" onClick={() => setOpen(true)}>
-        <td onClick={(e) => e.stopPropagation()}>
+      <tr>
+        <td>
           <LuanCheckToggle orderId={editable.orderId} luanCheck={luanCheck} />
         </td>
         <td className="col-order">
@@ -110,6 +111,11 @@ export function ReportTableRow({
             <span>{display.note}</span>
             <span className="cell-sub">{display.cancelComplaintNote}</span>
           </div>
+        </td>
+        <td>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}>
+            Sửa
+          </button>
         </td>
       </tr>
       {mounted
