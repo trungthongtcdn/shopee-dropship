@@ -15,33 +15,27 @@ export default async function DongDonPage() {
   return (
     <main className="page">
       <h1>Đóng đơn</h1>
-      <p className="page-description">
-        Chọn nhóm Zalo cần theo dõi. Khi đối tác gửi link phiếu giao hàng (PDF) và nhân viên reply "Đã in..." (phần sau
-        không quan trọng) trong nhóm đó, hệ thống tự cập nhật trạng thái đóng hàng + ngày gửi cho các đơn trong file.
-      </p>
 
-      <ZaloGroupPicker
-        purpose={WAYBILL_CONFIRM_PURPOSE}
-        threadName={config?.threadName ?? null}
-        updatedAt={config ? formatDateTimeVN(config.updatedAt) : null}
-        extra={
-          config ? (
-            config.pendingPdfUrl ? (
-              <span className="badge badge-warning">có link chờ xác nhận</span>
-            ) : (
-              <span className="badge">không có link chờ</span>
-            )
-          ) : null
-        }
-      />
+      <div style={{ display: "flex", gap: "var(--space-4)", alignItems: "stretch", flexWrap: "wrap" }}>
+        <div className="card" style={{ flex: 1, minWidth: 320, marginBottom: 0 }}>
+          <h3 style={{ marginTop: 0 }}>Nhóm Zalo</h3>
+          <ZaloGroupPicker
+            purpose={WAYBILL_CONFIRM_PURPOSE}
+            threadName={config?.threadName ?? null}
+            updatedAt={config ? formatDateTimeVN(config.updatedAt) : null}
+            extra={
+              <>
+                {config?.threadName ? <span className="badge badge-success">Đang theo dõi</span> : null}
+                {config?.pendingPdfUrl ? <span className="badge badge-warning">1 link PDF đang chờ</span> : null}
+              </>
+            }
+          />
+        </div>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Nhập thủ công</h3>
-        <p className="cell-muted" style={{ marginTop: 0 }}>
-          Dùng khi Zalo không tự bắt được tin nhắn — dán link hoặc chọn file PDF phiếu vận đơn, chọn đúng ngày giờ đã
-          gửi, xử lý y hệt như khi đồng bộ tự động từ Zalo.
-        </p>
-        <ManualConfirmForm />
+        <div className="card" style={{ flex: 1, minWidth: 320, marginBottom: 0 }}>
+          <h3 style={{ marginTop: 0 }}>Xác nhận thủ công</h3>
+          <ManualConfirmForm />
+        </div>
       </div>
 
       <h3>Lịch sử xác nhận đóng hàng</h3>
@@ -54,20 +48,28 @@ export default async function DongDonPage() {
               <tr>
                 <th>Thời gian</th>
                 <th>Người xác nhận</th>
-                <th>Số đơn trong file</th>
-                <th>Số đơn khớp cập nhật</th>
+                <th>Khớp / trong file</th>
                 <th>File</th>
               </tr>
             </thead>
             <tbody>
               {logs.map((log) => {
                 const orderIds = Array.isArray(log.orderIds) ? (log.orderIds as string[]) : [];
+                const pct = orderIds.length > 0 ? Math.round((log.matchedCount / orderIds.length) * 100) : 0;
                 return (
                   <tr key={log.id}>
                     <td className="cell-muted">{formatDateTimeVN(log.confirmedAt)}</td>
                     <td>{log.confirmedByName ?? "-"}</td>
-                    <td className="num">{orderIds.length}</td>
-                    <td className="num">{log.matchedCount}</td>
+                    <td>
+                      <div className="ratio-bar-wrap">
+                        <div className="ratio-bar">
+                          <div className="ratio-bar-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="cell-muted">
+                          {log.matchedCount} / {orderIds.length}
+                        </span>
+                      </div>
+                    </td>
                     <td>
                       {log.pdfUrl.startsWith("http") ? (
                         <a href={log.pdfUrl} target="_blank" rel="noreferrer">

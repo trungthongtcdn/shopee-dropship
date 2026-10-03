@@ -1,24 +1,27 @@
 :root {
-  --color-primary: #1e40af;
+  --color-primary: #c2410c;
   --color-on-primary: #ffffff;
-  --color-secondary: #3b82f6;
-  --color-accent: #d97706;
+  --color-secondary: #9a3412;
+  --color-accent: #c2410c;
   --color-on-accent: #ffffff;
-  --color-background: #f8fafc;
+  --color-background: #f6f7f9;
   --color-foreground: #0f172a;
-  --color-heading: #1e3a8a;
+  --color-heading: #1f2937;
   --color-card: #ffffff;
-  --color-muted: #eef2f8;
-  --color-muted-foreground: #475569;
-  --color-border: #dbe4f3;
-  --color-destructive: #dc2626;
+  --color-muted: #f6f7f9;
+  --color-muted-foreground: #4b5260;
+  --color-border: #e6e8ec;
+  --color-destructive: #a8231a;
   --color-on-destructive: #ffffff;
-  --color-success: #16a34a;
-  --color-success-bg: #dcfce7;
-  --color-danger-bg: #fee2e2;
-  --color-warning-bg: #fef3c7;
-  --color-neutral-bg: #eef2f8;
-  --color-ring: #1e40af;
+  --color-success: #14692f;
+  --color-success-bg: #e8f6ee;
+  --color-danger-bg: #fdecea;
+  --color-warning-bg: #fff4db;
+  --color-warning-foreground: #8a4b00;
+  --color-info: #1d4fb8;
+  --color-info-bg: #eaf1ff;
+  --color-neutral-bg: #f2f3f5;
+  --color-ring: #c2410c;
 
   --font-sans: var(--font-fira-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-fira-code), ui-monospace, "SFMono-Regular", monospace;
@@ -32,7 +35,7 @@
 
   --radius-sm: 4px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 14px;
 
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
@@ -42,14 +45,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-primary: #60a5fa;
-    --color-on-primary: #0b1220;
-    --color-secondary: #38bdf8;
-    --color-accent: #f59e0b;
-    --color-on-accent: #1c1300;
+    --color-primary: #fb923c;
+    --color-on-primary: #1c0a00;
+    --color-secondary: #fdba74;
+    --color-accent: #fb923c;
+    --color-on-accent: #1c0a00;
     --color-background: #0b1220;
     --color-foreground: #e2e8f0;
-    --color-heading: #93c5fd;
+    --color-heading: #e5e7eb;
     --color-card: #111a2e;
     --color-muted: #182338;
     --color-muted-foreground: #94a3b8;
@@ -60,8 +63,11 @@
     --color-success-bg: #0f2e1c;
     --color-danger-bg: #3a1414;
     --color-warning-bg: #3a2a05;
+    --color-warning-foreground: #fbbf24;
+    --color-info: #60a5fa;
+    --color-info-bg: #0f2347;
     --color-neutral-bg: #182338;
-    --color-ring: #60a5fa;
+    --color-ring: #fb923c;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
@@ -138,15 +144,21 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 10;
+  height: 60px;
   background: var(--color-card);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
+  transition: transform var(--transition);
+}
+
+.app-header-hidden {
+  transform: translateY(-100%);
 }
 
 .app-header-inner {
-  max-width: 1280px;
+  height: 60px;
   margin: 0 auto;
-  padding: var(--space-3) var(--space-5);
+  padding: 0 24px;
   display: flex;
   align-items: center;
   gap: var(--space-5);
@@ -161,8 +173,21 @@ a:hover {
 
 .app-nav {
   display: flex;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
   flex-wrap: wrap;
+}
+
+.app-nav-group {
+  display: flex;
+  gap: var(--space-1);
+  padding-right: var(--space-4);
+  border-right: 1px solid var(--color-border);
+}
+
+.app-nav-group:last-child {
+  border-right: none;
 }
 
 .nav-link {
@@ -181,12 +206,18 @@ a:hover {
   text-decoration: none;
 }
 
+.nav-link.active {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--color-primary);
+  text-underline-offset: 4px;
+}
+
 /* ---------- Page shell ---------- */
 
 .page {
-  max-width: 1280px;
   margin: 0 auto;
-  padding: var(--space-5);
+  padding: 20px 24px;
 }
 
 .page-description {
@@ -205,12 +236,18 @@ a:hover {
 /* ---------- Tables ---------- */
 
 .table-wrap {
-  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-card);
   box-shadow: var(--shadow-sm);
   margin-bottom: var(--space-4);
+  overflow: clip;
+}
+
+@media (max-width: 768px) {
+  .table-wrap {
+    overflow-x: auto;
+  }
 }
 
 .data-table {
@@ -222,7 +259,7 @@ a:hover {
 
 .data-table thead th {
   position: sticky;
-  top: 0;
+  top: var(--header-offset, 60px);
   background: var(--color-muted);
   color: var(--color-muted-foreground);
   text-align: left;
@@ -253,6 +290,46 @@ a:hover {
 
 .data-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.data-table tbody tr.row-clickable {
+  cursor: pointer;
+}
+
+/* Two-line cell content (primary value + a muted sub-line) — used wherever
+   a column was merged from two source columns in the redesign. */
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cell-stack .cell-sub {
+  font-size: 11px;
+  color: var(--color-muted-foreground);
+}
+
+/* Columns hideable via the "Cột hiển thị" menu (client-side, see
+   ColumnVisibilityMenu) — one rule per column key, toggled by writing a
+   space-separated list of hidden keys into documentElement's dataset. */
+html[data-hide-col~="product"] .col-product,
+html[data-hide-col~="sku"] .col-sku,
+html[data-hide-col~="amount"] .col-amount,
+html[data-hide-col~="match"] .col-match,
+html[data-hide-col~="paidAt"] .col-paidAt,
+html[data-hide-col~="status"] .col-status,
+html[data-hide-col~="send"] .col-send,
+html[data-hide-col~="cancel"] .col-cancel,
+html[data-hide-col~="defect"] .col-defect,
+html[data-hide-col~="note"] .col-note {
+  display: none;
+}
+
+@media (max-width: 1440px) {
+  .col-sku,
+  .col-paidAt {
+    display: none;
+  }
 }
 
 .num {
@@ -302,7 +379,12 @@ a:hover {
 
 .badge-warning {
   background: var(--color-warning-bg);
-  color: var(--color-accent);
+  color: var(--color-warning-foreground);
+}
+
+.badge-info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 /* ---------- Buttons / forms ---------- */
@@ -664,6 +746,156 @@ label.filter-pill:has(.filter-pill-input:focus-visible) {
   font-size: 13px;
   padding: var(--space-4);
   text-align: center;
+}
+
+/* ---------- Two-column layout (Nhận đơn huỷ) ---------- */
+
+.two-col-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .two-col-layout {
+    grid-template-columns: 1fr;
+  }
+
+  /* "nút xác nhận dính đáy" — sticks the confirm row to the viewport
+     bottom on mobile only; desktop keeps it inline with the rest of the
+     form. */
+  .two-col-layout .sticky-mobile-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--color-card);
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--color-border);
+    margin: 0 calc(-1 * var(--space-4));
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
+
+/* ---------- Stat cards (clickable count tiles, Reconciliation) ---------- */
+
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.stat-card {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition), background var(--transition);
+  cursor: pointer;
+}
+
+a.stat-card:hover {
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+
+.stat-card.active {
+  border-color: var(--color-primary);
+  background: var(--color-muted);
+}
+
+.stat-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-heading);
+}
+
+.stat-card-label {
+  font-size: 12px;
+  color: var(--color-muted-foreground);
+  margin-top: 2px;
+}
+
+/* ---------- Drop zone (file upload, Reconciliation) ---------- */
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-muted);
+  text-align: center;
+  transition: border-color var(--transition), background var(--transition);
+  cursor: pointer;
+}
+
+.drop-zone.drag-active {
+  border-color: var(--color-primary);
+  background: var(--color-info-bg);
+}
+
+.drop-zone input[type="file"] {
+  display: none;
+}
+
+/* ---------- Tabs (Đối soát thanh toán) ---------- */
+
+.tab-bar {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-4);
+}
+
+.tab-bar a {
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-muted-foreground);
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-bar a:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tab-bar a.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+/* ---------- Ratio bar (matched / total) ---------- */
+
+.ratio-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ratio-bar {
+  position: relative;
+  width: 100px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-neutral-bg);
+  overflow: hidden;
+}
+
+.ratio-bar-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-success);
+  border-radius: 999px;
 }
 
 /* ---------- Pagination ---------- */

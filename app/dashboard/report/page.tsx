@@ -1,16 +1,22 @@
-import { RowEditor, LuanCheckToggle } from "./RowEditor";
+import { ReportTableRow, type ReportRowDisplay } from "./ReportTableRow";
+import type { RowEditorProps } from "./RowEditor";
+import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
 import { FilterDropdown } from "../FilterDropdown";
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
+import { DateRangeDropdown } from "../DateRangeDropdown";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import {
   parseReportFilters,
   reportFiltersToSearchParams,
   SEND_STATUS_FILTER_OPTIONS,
   CANCEL_RECEIPT_FILTER_OPTIONS,
   PAYMENT_MATCH_FILTER_OPTIONS,
+  STATUS_OTHER_VALUE,
   type ReportFilters,
 } from "@/lib/report/filters";
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
 import { DELIVERY_RESULT_LABELS, DELIVERY_RESULT_VALUES, type DeliveryResult } from "@/lib/report/deliveryResult";
+import type { ReportRow } from "@/lib/report/buildReport";
 import { formatDateVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
@@ -39,12 +45,67 @@ function cancelReceiptStatusBadge(value: string | null) {
   return <span className="cell-muted">-</span>;
 }
 
+function paymentMatchBadge(value: ReportRow["paymentMatch"]) {
+  if (value === "matched") return <span className="badge badge-success">khớp</span>;
+  if (value === "not_matched") return <span className="badge badge-danger">không khớp</span>;
+  return <span className="cell-muted">-</span>;
+}
+
 // Only "giao thất bại" và "trả hàng hoàn tiền" count as a real outcome worth
 // flagging here — "delivered" và "cancelled" đều để trống theo yêu cầu.
-function deliveryResultBadge(result: DeliveryResult) {
-  if (result !== "delivery_failed" && result !== "returned_refunded") return <span className="cell-muted">-</span>;
+function deliveryResultLine(result: DeliveryResult) {
+  if (result !== "delivery_failed" && result !== "returned_refunded") return null;
   const className = result === "delivery_failed" ? "badge badge-danger" : "badge badge-warning";
-  return <span className={className}>{DELIVERY_RESULT_LABELS[result]}</span>;
+  return (
+    <span className="cell-sub">
+      Thực tế: <span className={className}>{DELIVERY_RESULT_LABELS[result]}</span>
+    </span>
+  );
+}
+
+function toReportRowDisplay(row: ReportRow): ReportRowDisplay {
+  return {
+    shopeeOrderId: row.shopeeOrderId,
+    orderMeta: `${formatDate(row.orderDate)} · ${row.trackingCode ?? "-"}`,
+    productName: row.productName ?? "-",
+    categoryMeta: `${row.categoryName ?? "-"} · SL ${row.quantity ?? "-"}`,
+    sku: row.sku ?? "-",
+    kiotCode: row.kiotCode ?? "-",
+    amountDueLabel: formatAmount(row.amountDue),
+    amountPaidLabel: formatAmount(row.amountPaid),
+    paymentMatchBadge: paymentMatchBadge(row.paymentMatch),
+    diffPercentLabel: formatPercent(row.diffPercent),
+    paidAtLabel: formatDate(row.paidAt),
+    status: row.status,
+    deliveryResultLine: deliveryResultLine(row.deliveryResult),
+    sendStatusBadge: sendStatusBadge(row.sendStatus),
+    sentAtLabel: formatDate(row.sentAt),
+    cancelReceiptStatusBadge: cancelReceiptStatusBadge(row.cancelReceiptStatus),
+    cancelReceivedAtLabel: formatDate(row.cancelReceivedAt),
+    returnTrackingCode: row.returnTrackingCode ?? "-",
+    defectRateLabel: formatPercent(row.defectRate),
+    note: row.note ?? "-",
+    cancelComplaintNote: row.cancelComplaintNote ?? "-",
+  };
+}
+
+function toEditableProps(row: ReportRow): RowEditorProps {
+  return {
+    orderId: row.orderId,
+    sentAt: row.sentAt?.toISOString() ?? null,
+    sendStatus: row.sendStatus,
+    paidAt: row.paidAt?.toISOString() ?? null,
+    cancelReceivedAt: row.cancelReceivedAt?.toISOString() ?? null,
+    defectRate: row.defectRate,
+    cancelReceiptStatus: row.cancelReceiptStatus,
+    cancelComplaintNote: row.cancelComplaintNote,
+    note: row.note,
+    paidAmountOverride: row.paidAmountOverride,
+    shopeeOrderId: row.shopeeOrderId,
+    productMeta: "",
+    amountSummary: "",
+    paymentMatchBadge: null,
+  };
 }
 
 export default async function ReportPage({
@@ -53,21 +114,21 @@ export default async function ReportPage({
   searchParams: { page?: string } & Record<string, string | string[] | undefined>;
 }) {
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
+  const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseReportFilters(searchParams);
   const filterQuery = reportFiltersToSearchParams(filters).toString();
-  const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
   const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
 
   const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadOrderStatusFilterOptions()]);
-  const totalPages = totalPagesFor(allRows.length);
-  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = totalPagesFor(allRows.length, pageSize);
+  const rows = allRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <main className="page">
       <h1>Report (LUÂN CẦN)</h1>
-      <p className="page-description">
-        Số tiền thanh toán đồng bộ tự động từ file thanh toán Shopee trên Drive. Chênh lệch quá 2% (cả 2 chiều) tính là không khớp.
-      </p>
+
+      <QuickFilterBar filters={filters} pageSize={pageSize} />
+      <ActiveFilterChips filters={filters} pageSize={pageSize} orderStatusOptions={orderStatusOptions} />
 
       <ReportFilterForm filters={filters} orderStatusOptions={orderStatusOptions} />
 
@@ -75,7 +136,13 @@ export default async function ReportPage({
         <p className="cell-muted" style={{ margin: 0 }}>
           {allRows.length} đơn
         </p>
-        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalCount={allRows.length}
+          baseQuery={filterQuery}
+        />
         <a className="btn btn-secondary btn-sm" href={exportHref}>
           Xuất Excel
         </a>
@@ -85,100 +152,41 @@ export default async function ReportPage({
         <table className="data-table">
           <thead>
             <tr>
-              <th>Ngày tạo đơn</th>
-              <th>Mã đơn hàng</th>
-              <th>Mã vận đơn</th>
-              <th>Tên sản phẩm</th>
-              <th>Tên phân loại</th>
-              <th>SL</th>
-              <th>SKU</th>
-              <th>Mã Kiot</th>
-              <th>Giá cần thu về</th>
-              <th>Số tiền thanh toán</th>
-              <th>Chênh lệch %</th>
-              <th>Trạng thái</th>
-              <th>Kết quả giao thực tế</th>
-              <th>Đối soát TT</th>
-              <th>Ngày gửi đơn</th>
-              <th>Trạng thái đóng đơn</th>
-              <th>Ngày đối soát</th>
-              <th>Ngày nhận đơn huỷ</th>
-              <th>% hỏng</th>
-              <th>Trạng thái nhận huỷ</th>
-              <th>Mã vận đơn trả hàng</th>
-              <th>TT khiếu nại huỷ</th>
-              <th>Ghi chú</th>
               <th>Luân check</th>
-              <th>Sửa</th>
+              <th className="col-order">Đơn hàng</th>
+              <th className="col-product">Sản phẩm</th>
+              <th className="col-sku">SKU · Mã Kiot</th>
+              <th className="col-amount">Cần thu / Đã TT</th>
+              <th className="col-match">Đối soát TT</th>
+              <th className="col-paidAt">Ngày đối soát</th>
+              <th className="col-status">Trạng thái đơn</th>
+              <th className="col-send">Đóng đơn</th>
+              <th className="col-cancel">Nhận huỷ · VĐ trả hàng</th>
+              <th className="col-defect">% hỏng</th>
+              <th className="col-note">Ghi chú · Khiếu nại huỷ</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.orderId}>
-                <td className="cell-muted">{formatDate(row.orderDate)}</td>
-                <td>{row.shopeeOrderId}</td>
-                <td>{row.trackingCode ?? "-"}</td>
-                <td className="cell-truncate" title={row.productName ?? "-"}>
-                  {row.productName ?? "-"}
-                </td>
-                <td className="cell-muted">{row.categoryName ?? "-"}</td>
-                <td className="num">{row.quantity ?? "-"}</td>
-                <td>{row.sku ?? "-"}</td>
-                <td className="cell-muted">{row.kiotCode ?? "-"}</td>
-                <td className="num">{formatAmount(row.amountDue)}</td>
-                <td className="num">{formatAmount(row.amountPaid)}</td>
-                <td className="num">{formatPercent(row.diffPercent)}</td>
-                <td className="cell-truncate" title={row.status}>
-                  {row.status}
-                </td>
-                <td>{deliveryResultBadge(row.deliveryResult)}</td>
-                <td>
-                  {row.paymentMatch === "matched" ? (
-                    <span className="badge badge-success">khớp</span>
-                  ) : row.paymentMatch === "not_matched" ? (
-                    <span className="badge badge-danger">không khớp</span>
-                  ) : (
-                    <span className="cell-muted">-</span>
-                  )}
-                </td>
-                <td className="cell-muted">{formatDate(row.sentAt)}</td>
-                <td>{sendStatusBadge(row.sendStatus)}</td>
-                <td className="cell-muted">{formatDate(row.paidAt)}</td>
-                <td className="cell-muted">{formatDate(row.cancelReceivedAt)}</td>
-                <td className="num">{formatPercent(row.defectRate)}</td>
-                <td>{cancelReceiptStatusBadge(row.cancelReceiptStatus)}</td>
-                <td>{row.returnTrackingCode ?? "-"}</td>
-                <td className="cell-muted cell-truncate" title={row.cancelComplaintNote ?? "-"}>
-                  {row.cancelComplaintNote ?? "-"}
-                </td>
-                <td className="cell-muted cell-truncate" title={row.note ?? "-"}>
-                  {row.note ?? "-"}
-                </td>
-                <td>
-                  <LuanCheckToggle orderId={row.orderId} luanCheck={row.luanCheck} />
-                </td>
-                <td>
-                  <RowEditor
-                    orderId={row.orderId}
-                    sentAt={row.sentAt?.toISOString() ?? null}
-                    sendStatus={row.sendStatus}
-                    paidAt={row.paidAt?.toISOString() ?? null}
-                    cancelReceivedAt={row.cancelReceivedAt?.toISOString() ?? null}
-                    defectRate={row.defectRate}
-                    cancelReceiptStatus={row.cancelReceiptStatus}
-                    cancelComplaintNote={row.cancelComplaintNote}
-                    note={row.note}
-                    paidAmountOverride={row.paidAmountOverride}
-                  />
-                </td>
-              </tr>
+              <ReportTableRow
+                key={row.orderId}
+                luanCheck={row.luanCheck}
+                display={toReportRowDisplay(row)}
+                editable={toEditableProps(row)}
+              />
             ))}
           </tbody>
         </table>
         {rows.length === 0 ? <p className="empty-state">Không có đơn nào khớp bộ lọc.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalCount={allRows.length}
+        baseQuery={filterQuery}
+      />
     </main>
   );
 }
@@ -203,6 +211,165 @@ const PAYMENT_MATCH_LABELS: Record<(typeof PAYMENT_MATCH_FILTER_OPTIONS)[number]
   none: "Chưa đối soát",
 };
 
+// The 5 quick-filter cards each control only these 4 dimensions, leaving
+// search/status-dropdown/date-ranges untouched — they're a shortcut layered
+// on top of the detailed filter bar below, not a full reset of it.
+function quickFilterHref(
+  filters: ReportFilters,
+  pageSize: number,
+  overrides: Partial<Pick<ReportFilters, "paymentMatch" | "sendStatus" | "cancelReceiptStatus" | "luanCheck">>
+) {
+  const next: ReportFilters = {
+    ...filters,
+    paymentMatch: [],
+    sendStatus: [],
+    cancelReceiptStatus: [],
+    luanCheck: false,
+    ...overrides,
+  };
+  const qs = reportFiltersToSearchParams(next).toString();
+  return qs ? `?${qs}&pageSize=${pageSize}` : `?pageSize=${pageSize}`;
+}
+
+function QuickFilterBar({ filters, pageSize }: { filters: ReportFilters; pageSize: number }) {
+  const quickClear = filters.paymentMatch.length === 0 && filters.sendStatus.length === 0 && filters.cancelReceiptStatus.length === 0;
+  const cards = [
+    { label: "Tất cả đơn", active: quickClear && !filters.luanCheck, href: quickFilterHref(filters, pageSize, {}) },
+    {
+      label: "Không khớp thanh toán",
+      active: quickClear === false && filters.paymentMatch.length === 1 && filters.paymentMatch[0] === "not_matched",
+      href: quickFilterHref(filters, pageSize, { paymentMatch: ["not_matched"] }),
+    },
+    {
+      label: "Chưa đóng đơn",
+      active: filters.sendStatus.length === 1 && filters.sendStatus[0] === "none",
+      href: quickFilterHref(filters, pageSize, { sendStatus: ["none"] }),
+    },
+    {
+      label: "Chờ nhận hàng huỷ",
+      active: filters.cancelReceiptStatus.length === 1 && filters.cancelReceiptStatus[0] === "not_received",
+      href: quickFilterHref(filters, pageSize, { cancelReceiptStatus: ["not_received"] }),
+    },
+    {
+      label: "Chưa Luân check",
+      active: filters.luanCheck,
+      href: quickFilterHref(filters, pageSize, { luanCheck: true }),
+    },
+  ];
+
+  return (
+    <div className="toolbar">
+      {cards.map((card) => (
+        <a key={card.label} className={`filter-pill${card.active ? " active" : ""}`} href={card.href}>
+          {card.label}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+interface Chip {
+  key: string;
+  label: string;
+  href: string;
+}
+
+function ActiveFilterChips({
+  filters,
+  pageSize,
+  orderStatusOptions,
+}: {
+  filters: ReportFilters;
+  pageSize: number;
+  orderStatusOptions: StatusFilterOption[];
+}) {
+  const hrefFor = (patch: Partial<ReportFilters>) => {
+    const qs = reportFiltersToSearchParams({ ...filters, ...patch }).toString();
+    return qs ? `?${qs}&pageSize=${pageSize}` : `?pageSize=${pageSize}`;
+  };
+  const statusLabel = (value: string) =>
+    value === STATUS_OTHER_VALUE ? "Khác" : orderStatusOptions.find((o) => o.value === value)?.label ?? value;
+
+  const chips: Chip[] = [];
+
+  if (filters.q) chips.push({ key: "q", label: `Tìm: "${filters.q}"`, href: hrefFor({ q: "" }) });
+
+  for (const value of filters.status) {
+    chips.push({
+      key: `status-${value}`,
+      label: `Trạng thái: ${statusLabel(value)}`,
+      href: hrefFor({ status: filters.status.filter((v) => v !== value) }),
+    });
+  }
+  for (const value of filters.paymentMatch) {
+    chips.push({
+      key: `paymentMatch-${value}`,
+      label: `Đối soát TT: ${PAYMENT_MATCH_LABELS[value as keyof typeof PAYMENT_MATCH_LABELS]}`,
+      href: hrefFor({ paymentMatch: filters.paymentMatch.filter((v) => v !== value) }),
+    });
+  }
+  for (const value of filters.sendStatus) {
+    chips.push({
+      key: `sendStatus-${value}`,
+      label: `Đóng đơn: ${SEND_STATUS_LABELS[value as keyof typeof SEND_STATUS_LABELS]}`,
+      href: hrefFor({ sendStatus: filters.sendStatus.filter((v) => v !== value) }),
+    });
+  }
+  for (const value of filters.cancelReceiptStatus) {
+    chips.push({
+      key: `cancelReceiptStatus-${value}`,
+      label: `Nhận huỷ: ${CANCEL_RECEIPT_LABELS[value as keyof typeof CANCEL_RECEIPT_LABELS]}`,
+      href: hrefFor({ cancelReceiptStatus: filters.cancelReceiptStatus.filter((v) => v !== value) }),
+    });
+  }
+  for (const value of filters.deliveryResult) {
+    chips.push({
+      key: `deliveryResult-${value}`,
+      label: `Kết quả giao: ${DELIVERY_RESULT_LABELS[value as DeliveryResult]}`,
+      href: hrefFor({ deliveryResult: filters.deliveryResult.filter((v) => v !== value) }),
+    });
+  }
+  if (filters.luanCheck) {
+    chips.push({ key: "luanCheck", label: "Chưa Luân check", href: hrefFor({ luanCheck: false }) });
+  }
+  if (filters.sentFrom || filters.sentTo) {
+    chips.push({
+      key: "sent-range",
+      label: `Ngày gửi: ${filters.sentFrom || "…"} – ${filters.sentTo || "…"}`,
+      href: hrefFor({ sentFrom: "", sentTo: "" }),
+    });
+  }
+  if (filters.cancelFrom || filters.cancelTo) {
+    chips.push({
+      key: "cancel-range",
+      label: `Ngày nhận huỷ: ${filters.cancelFrom || "…"} – ${filters.cancelTo || "…"}`,
+      href: hrefFor({ cancelFrom: "", cancelTo: "" }),
+    });
+  }
+  if (filters.paidFrom || filters.paidTo) {
+    chips.push({
+      key: "paid-range",
+      label: `Ngày đối soát: ${filters.paidFrom || "…"} – ${filters.paidTo || "…"}`,
+      href: hrefFor({ paidFrom: "", paidTo: "" }),
+    });
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="toolbar">
+      {chips.map((chip) => (
+        <a key={chip.key} className="filter-pill active" href={chip.href}>
+          {chip.label} ×
+        </a>
+      ))}
+      <a href="/dashboard/report" className="filter-pill">
+        Xoá tất cả
+      </a>
+    </div>
+  );
+}
+
 function ReportFilterForm({
   filters,
   orderStatusOptions,
@@ -211,6 +378,9 @@ function ReportFilterForm({
   orderStatusOptions: StatusFilterOption[];
 }) {
   const dropdownFieldStyle = { width: 170 };
+  const sentCount = filters.sentFrom || filters.sentTo ? 1 : 0;
+  const cancelCount = filters.cancelFrom || filters.cancelTo ? 1 : 0;
+  const paidCount = filters.paidFrom || filters.paidTo ? 1 : 0;
 
   return (
     <form method="get">
@@ -271,31 +441,32 @@ function ReportFilterForm({
             selected={filters.deliveryResult}
           />
         </div>
-      </div>
-
-      <div className="toolbar" style={{ alignItems: "flex-end" }}>
-        <div className="field">
-          <span className="field-label">Ngày gửi đơn</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            <input className="input" type="date" name="sentFrom" defaultValue={filters.sentFrom} />
-            <input className="input" type="date" name="sentTo" defaultValue={filters.sentTo} />
-          </div>
-        </div>
 
         <div className="field">
-          <span className="field-label">Ngày nhận đơn huỷ</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            <input className="input" type="date" name="cancelFrom" defaultValue={filters.cancelFrom} />
-            <input className="input" type="date" name="cancelTo" defaultValue={filters.cancelTo} />
-          </div>
-        </div>
-
-        <div className="field">
-          <span className="field-label">Ngày đối soát</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
-            <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />
-          </div>
+          <span className="field-label">Khoảng ngày</span>
+          <DateRangeDropdown label="Khoảng ngày" count={sentCount + cancelCount + paidCount}>
+            <div className="field">
+              <span className="field-label">Ngày gửi đơn</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input className="input" type="date" name="sentFrom" defaultValue={filters.sentFrom} />
+                <input className="input" type="date" name="sentTo" defaultValue={filters.sentTo} />
+              </div>
+            </div>
+            <div className="field">
+              <span className="field-label">Ngày nhận đơn huỷ</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input className="input" type="date" name="cancelFrom" defaultValue={filters.cancelFrom} />
+                <input className="input" type="date" name="cancelTo" defaultValue={filters.cancelTo} />
+              </div>
+            </div>
+            <div className="field">
+              <span className="field-label">Ngày đối soát</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input className="input" type="date" name="paidFrom" defaultValue={filters.paidFrom} />
+                <input className="input" type="date" name="paidTo" defaultValue={filters.paidTo} />
+              </div>
+            </div>
+          </DateRangeDropdown>
         </div>
 
         <div className="field" style={{ flexDirection: "row", gap: "var(--space-2)" }}>
@@ -305,6 +476,7 @@ function ReportFilterForm({
           <a href="/dashboard/report" className="btn btn-secondary btn-sm">
             Xoá lọc
           </a>
+          <ColumnVisibilityMenu />
         </div>
       </div>
     </form>

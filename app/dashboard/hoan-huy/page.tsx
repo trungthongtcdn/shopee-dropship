@@ -1,29 +1,65 @@
-import { PAGE_SIZE, Pagination, parsePage, totalPagesFor } from "../Pagination";
-import { FilterDropdown } from "../FilterDropdown";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
+import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
 import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN } from "@/lib/format/datetime";
+import type { Cancellation } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
-
-// "cancelled" (4.1 Đơn hủy) isn't offered here — those orders are excluded
-// from this page entirely (see loadCancellationRows), so a filter option
-// that always returns zero rows would just be confusing.
-const TYPE_FILTER_OPTIONS = [
-  { value: "delivery_failed", label: "Giao thất bại" },
-  { value: "returned_refunded", label: "Trả hàng hoàn tiền" },
-];
-
-function typeBadge(type: string) {
-  const label = DELIVERY_RESULT_LABELS[type as DeliveryResult] ?? type;
-  const className = type === "returned_refunded" ? "badge badge-warning" : "badge badge-danger";
-  return <span className={className}>{label}</span>;
-}
 
 const formatDate = formatDateVN;
 
 function formatAmount(value: number | null) {
   return value === null ? "-" : value.toLocaleString("vi-VN");
+}
+
+function typeLabel(type: string) {
+  return DELIVERY_RESULT_LABELS[type as DeliveryResult] ?? type;
+}
+
+function typeClassName(type: string) {
+  return type === "returned_refunded" ? "badge badge-warning" : "badge badge-danger";
+}
+
+// "Phản hồi trước" deadline: đỏ nếu còn dưới 24h, vàng nếu còn dưới 48h,
+// còn lại hiện như text thường (không phải cảnh báo gấp).
+function respondByClassName(respondByAt: Date | null): string {
+  if (!respondByAt) return "cell-muted";
+  const hoursLeft = (respondByAt.getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursLeft < 24) return "badge badge-danger";
+  if (hoursLeft < 48) return "badge badge-warning";
+  return "cell-muted";
+}
+
+function toSummary(row: Cancellation): HoanHuySummary {
+  return {
+    id: row.id,
+    typeLabel: typeLabel(row.type),
+    typeClassName: typeClassName(row.type),
+    shopeeOrderId: row.shopeeOrderId,
+    trackingCode: row.trackingCode ?? "-",
+    productName: row.productName ?? "-",
+    quantityMeta: `SL ${row.lineQuantity ?? "-"} · Hoàn ${row.returnedQuantity ?? "-"}`,
+    returnTrackingCode: row.returnTrackingCode ?? "-",
+    returnMeta: `${row.returnStatus ?? "-"} · ${formatDate(row.returnCompletedAt)}`,
+    refundAmountLabel: formatAmount(row.refundAmount),
+    complaintReason: row.complaintReason ?? "-",
+    complaintStatus: row.complaintStatus ?? "-",
+    respondByLabel: formatDate(row.respondByAt),
+    respondByClassName: respondByClassName(row.respondByAt),
+  };
+}
+
+function toDetails(row: Cancellation): HoanHuyDetails {
+  return {
+    returnReason: row.returnReason ?? "-",
+    buyerNote: row.buyerNote ?? "-",
+    shopeeNote: row.shopeeNote ?? "-",
+    supplierNote: row.supplierNote ?? "-",
+    complaintAtLabel: formatDate(row.complaintAt),
+    cancelledAtLabel: formatDate(row.cancelledAt),
+  };
 }
 
 export default async function HoanHuyPage({
@@ -32,26 +68,52 @@ export default async function HoanHuyPage({
   searchParams: { page?: string } & Record<string, string | string[] | undefined>;
 }) {
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
+  const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseCancellationFilters(searchParams);
+  const activeType = filters.types[0];
+
+  // Loaded once, unfiltered by type — the tab counts need every type's
+  // count regardless of which tab is active, and the active tab's rows are
+  // just a slice of this same set (in-memory, same convention as the other
+  // computed-filter fields on the Report page).
+  const allRows = await loadCancellationRows({ q: filters.q, types: [] });
+  const countDeliveryFailed = allRows.filter((r) => r.type === "delivery_failed").length;
+  const countReturned = allRows.filter((r) => r.type === "returned_refunded").length;
+  const filteredRows = activeType ? allRows.filter((r) => r.type === activeType) : allRows;
+
   const filterParams = new URLSearchParams();
   if (filters.q) filterParams.set("q", filters.q);
-  for (const t of filters.types) filterParams.append("type", t);
   const filterQuery = filterParams.toString();
-  const buildHref = (p: number) => (filterQuery ? `?${filterQuery}&page=${p}` : `?page=${p}`);
+  const tabHref = (type: string | undefined) => {
+    const params = new URLSearchParams(filterQuery);
+    if (type) params.set("type", type);
+    return `?${params.toString()}`;
+  };
 
-  const allRows = await loadCancellationRows(filters);
-  const totalPages = totalPagesFor(allRows.length);
-  const rows = allRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = totalPagesFor(filteredRows.length, pageSize);
+  const rows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  const baseQueryParams = new URLSearchParams(filterQuery);
+  if (activeType) baseQueryParams.set("type", activeType);
+  const baseQuery = baseQueryParams.toString();
 
   return (
     <main className="page">
       <h1>Đơn hoàn huỷ</h1>
-      <p className="page-description">
-        Gộp các đơn không giao thành công thật sự dù trạng thái sheet chính vẫn ghi "Hoàn thành": Giao thất bại (4.2
-        Giao thất bại), Trả hàng hoàn tiền (5. Trả hàng/hoàn tiền). Đơn thuộc 4.1 Đơn hủy không hiển thị ở đây.
-      </p>
+
+      <div className="toolbar">
+        <a className={`filter-pill${!activeType ? " active" : ""}`} href={tabHref(undefined)}>
+          Tất cả ({allRows.length})
+        </a>
+        <a className={`filter-pill${activeType === "delivery_failed" ? " active" : ""}`} href={tabHref("delivery_failed")}>
+          Giao thất bại ({countDeliveryFailed})
+        </a>
+        <a className={`filter-pill${activeType === "returned_refunded" ? " active" : ""}`} href={tabHref("returned_refunded")}>
+          Trả hàng hoàn tiền ({countReturned})
+        </a>
+      </div>
 
       <form method="get" className="toolbar" style={{ alignItems: "flex-end" }}>
+        {activeType ? <input type="hidden" name="type" value={activeType} /> : null}
         <div className="field">
           <span className="field-label">Tìm kiếm</span>
           <input
@@ -62,10 +124,6 @@ export default async function HoanHuyPage({
             placeholder="Mã đơn hàng / mã vận đơn chiều đi / mã vận đơn hoàn"
             style={{ minWidth: 280 }}
           />
-        </div>
-        <div className="field" style={{ width: 170 }}>
-          <span className="field-label">Loại</span>
-          <FilterDropdown name="type" label="Loại" options={TYPE_FILTER_OPTIONS} selected={filters.types} />
         </div>
         <div className="field" style={{ flexDirection: "row" }}>
           <button type="submit" className="btn btn-primary btn-sm">
@@ -79,9 +137,15 @@ export default async function HoanHuyPage({
 
       <div className="toolbar" style={{ justifyContent: "space-between" }}>
         <p className="cell-muted" style={{ margin: 0 }}>
-          {allRows.length} đơn
+          {filteredRows.length} đơn
         </p>
-        <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalCount={filteredRows.length}
+          baseQuery={baseQuery}
+        />
       </div>
 
       <div className="table-wrap">
@@ -89,76 +153,31 @@ export default async function HoanHuyPage({
           <thead>
             <tr>
               <th>Loại</th>
-              <th>Ngày đặt hàng</th>
-              <th>Mã đơn hàng</th>
-              <th>Mã vận đơn</th>
-              <th>Tên sản phẩm</th>
-              <th>Tên phân loại</th>
-              <th>SL</th>
-              <th>SL hoàn</th>
-              <th>Trạng thái</th>
-              <th>Ngày huỷ thành công</th>
-              <th>Thời gian khiếu nại</th>
-              <th>Mã vận đơn trả hàng</th>
-              <th>Trạng thái trả hàng</th>
-              <th>Ngày hoàn trả thành công</th>
+              <th>Đơn hàng</th>
+              <th>Sản phẩm</th>
+              <th>Trả hàng</th>
               <th>Số tiền hoàn</th>
-              <th>Lí do khiếu nại</th>
-              <th>Lí do trả hàng</th>
-              <th>Cần phản hồi trước</th>
-              <th>Trạng thái xử lý khiếu nại</th>
-              <th>Ghi chú NCC</th>
-              <th>Ghi chú Shopee</th>
-              <th>Ghi chú người mua</th>
+              <th>Khiếu nại</th>
+              <th>Phản hồi trước</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id}>
-                <td>{typeBadge(row.type)}</td>
-                <td className="cell-muted">{formatDate(row.orderDate)}</td>
-                <td>{row.shopeeOrderId}</td>
-                <td>{row.trackingCode ?? "-"}</td>
-                <td className="cell-truncate" title={row.productName ?? "-"}>
-                  {row.productName ?? "-"}
-                </td>
-                <td className="cell-muted">{row.categoryName ?? "-"}</td>
-                <td className="num">{row.lineQuantity ?? "-"}</td>
-                <td className="num">{row.returnedQuantity ?? "-"}</td>
-                <td className="cell-truncate" title={row.status ?? row.returnRefundStatus ?? "-"}>
-                  {row.status ?? row.returnRefundStatus ?? "-"}
-                </td>
-                <td className="cell-muted">{formatDate(row.cancelledAt)}</td>
-                <td className="cell-muted">{formatDate(row.complaintAt)}</td>
-                <td>{row.returnTrackingCode ?? "-"}</td>
-                <td className="cell-muted">{row.returnStatus ?? "-"}</td>
-                <td className="cell-muted">{formatDate(row.returnCompletedAt)}</td>
-                <td className="num">{formatAmount(row.refundAmount)}</td>
-                <td className="cell-muted cell-truncate" title={row.complaintReason ?? "-"}>
-                  {row.complaintReason ?? "-"}
-                </td>
-                <td className="cell-muted cell-truncate" title={row.returnReason ?? "-"}>
-                  {row.returnReason ?? "-"}
-                </td>
-                <td className="cell-muted">{formatDate(row.respondByAt)}</td>
-                <td className="cell-muted">{row.complaintStatus ?? "-"}</td>
-                <td className="cell-muted cell-truncate" title={row.supplierNote ?? "-"}>
-                  {row.supplierNote ?? "-"}
-                </td>
-                <td className="cell-muted cell-truncate" title={row.shopeeNote ?? "-"}>
-                  {row.shopeeNote ?? "-"}
-                </td>
-                <td className="cell-muted cell-truncate" title={row.buyerNote ?? "-"}>
-                  {row.buyerNote ?? "-"}
-                </td>
-              </tr>
+              <HoanHuyRow key={row.id} summary={toSummary(row)} details={toDetails(row)} />
             ))}
           </tbody>
         </table>
         {rows.length === 0 ? <p className="empty-state">Không có đơn nào.</p> : null}
       </div>
 
-      <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalCount={filteredRows.length}
+        baseQuery={baseQuery}
+      />
     </main>
   );
 }

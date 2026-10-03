@@ -36,6 +36,7 @@ export interface ReportFilters {
   // deriveDeliveryResult), so like paymentMatch/status this is matched in
   // memory, not pushed into the DB query. See matchesDeliveryResultFilter.
   deliveryResult: string[];
+  luanCheck: boolean;
   sentFrom: string;
   sentTo: string;
   cancelFrom: string;
@@ -66,6 +67,7 @@ export function parseReportFilters(raw: RawSearchParams): ReportFilters {
     cancelReceiptStatus: strArray(raw, "cancelReceiptStatus"),
     status: strArray(raw, "status"),
     deliveryResult: strArray(raw, "deliveryResult"),
+    luanCheck: str(raw, "luanCheck") === "true",
     sentFrom: str(raw, "sentFrom"),
     sentTo: str(raw, "sentTo"),
     cancelFrom: str(raw, "cancelFrom"),
@@ -137,6 +139,10 @@ export function buildOrderWhere(
   const cancelReceiptCond = selectedOrNull<CancelReceiptStatus>(filters.cancelReceiptStatus, "cancelReceiptStatus");
   if (cancelReceiptCond) and.push(cancelReceiptCond);
 
+  if (filters.luanCheck) {
+    and.push({ luanCheck: false });
+  }
+
   const sentAt = dateRange(filters.sentFrom, filters.sentTo);
   if (sentAt) where.sentAt = sentAt;
 
@@ -198,6 +204,7 @@ export function reportFiltersToSearchParams(filters: ReportFilters): URLSearchPa
   for (const v of filters.cancelReceiptStatus) params.append("cancelReceiptStatus", v);
   for (const v of filters.status) params.append("status", v);
   for (const v of filters.deliveryResult) params.append("deliveryResult", v);
+  if (filters.luanCheck) params.set("luanCheck", "true");
   if (filters.sentFrom) params.set("sentFrom", filters.sentFrom);
   if (filters.sentTo) params.set("sentTo", filters.sentTo);
   if (filters.cancelFrom) params.set("cancelFrom", filters.cancelFrom);

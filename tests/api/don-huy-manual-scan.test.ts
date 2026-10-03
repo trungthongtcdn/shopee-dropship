@@ -127,6 +127,24 @@ describe("POST /api/don-huy/manual-scan", () => {
     expect(response.status).toBe(422);
   });
 
+  it("writes defectRate when given in the request body", async () => {
+    await prisma.order.create({
+      data: { shopeeOrderId: "260625CCCCCCCC", categoryName: "D100", status: "pending", rawRowHash: "h", sheetRowIndex: 1 },
+    });
+
+    await POST(
+      makeRequest({
+        codes: ["260625CCCCCCCC"],
+        confirmedAt: "2026-06-25T10:00:00.000Z",
+        cancelReceiptStatus: "received_full",
+        defectRate: 0.1,
+      })
+    );
+
+    const order = await prisma.order.findFirst({ where: { shopeeOrderId: "260625CCCCCCCC" } });
+    expect(order?.defectRate).toBe(0.1);
+  });
+
   afterAll(async () => {
     await prisma.zaloCancelReceiptLog.deleteMany();
     await prisma.order.deleteMany();

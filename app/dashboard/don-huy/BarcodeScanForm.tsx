@@ -6,10 +6,10 @@ import type { IScannerControls } from "@zxing/browser";
 
 const CANCEL_RECEIPT_STATUS_OPTIONS = ["received_full", "received_partial", "not_received", "not_needed"] as const;
 const CANCEL_RECEIPT_STATUS_LABELS: Record<(typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number], string> = {
-  received_full: "ĐÃ NHẬN ĐỦ",
-  received_partial: "NHẬN THIẾU",
-  not_received: "CHƯA NHẬN",
-  not_needed: "KHÔNG CẦN NHẬN",
+  received_full: "Đã nhận đủ",
+  received_partial: "Nhận thiếu",
+  not_received: "Chưa nhận",
+  not_needed: "Không cần nhận",
 };
 
 function toDatetimeLocalValue(date: Date) {
@@ -49,6 +49,7 @@ export function BarcodeScanForm() {
   const [confirmedAt, setConfirmedAt] = useState(() => toDatetimeLocalValue(new Date()));
   const [cancelReceiptStatus, setCancelReceiptStatus] =
     useState<(typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number]>("received_full");
+  const [defectRatePercent, setDefectRatePercent] = useState("0");
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -118,6 +119,7 @@ export function BarcodeScanForm() {
     setSubmitting(true);
     setStatus("Đang xử lý...");
     try {
+      const defectRate = defectRatePercent === "" ? null : Number(defectRatePercent) / 100;
       const response = await fetch("/api/don-huy/manual-scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -125,12 +127,14 @@ export function BarcodeScanForm() {
           codes,
           confirmedAt: new Date(confirmedAt).toISOString(),
           cancelReceiptStatus,
+          defectRate,
         }),
       });
       const json = await response.json().catch(() => null);
       if (response.ok) {
         setStatus(`Đã khớp ${json.matchedCount}/${codes.length} mã`);
         setCodes([]);
+        setDefectRatePercent("0");
         router.refresh();
       } else {
         setStatus(json?.error ?? `Lỗi (${response.status})`);
@@ -143,8 +147,24 @@ export function BarcodeScanForm() {
   }
 
   return (
-    <div>
-      <div className="toolbar" style={{ alignItems: "flex-end" }}>
+    <div className="two-col-layout">
+      <div>
+        <div className="field" style={{ flexDirection: "row", marginBottom: "var(--space-3)" }}>
+          <button
+            type="button"
+            className={cameraOn ? "btn btn-secondary btn-sm" : "btn btn-primary btn-sm"}
+            onClick={() => setCameraOn((on) => !on)}
+          >
+            {cameraOn ? "Tắt camera" : "Bật camera"}
+          </button>
+        </div>
+
+        {cameraError && <p className="editor-status">{cameraError}</p>}
+
+        {cameraOn ? (
+          <video ref={videoRef} style={{ width: "100%", maxWidth: 360, borderRadius: "var(--radius-md)", marginBottom: "var(--space-3)" }} />
+        ) : null}
+
         <form onSubmit={submitManualInput} className="field">
           <span className="field-label">Nhập mã thủ công</span>
           <div style={{ display: "flex", gap: 4 }}>
@@ -161,45 +181,46 @@ export function BarcodeScanForm() {
             </button>
           </div>
         </form>
+      </div>
 
-        <div className="field" style={{ flexDirection: "row" }}>
-          <button
-            type="button"
-            className={cameraOn ? "btn btn-secondary btn-sm" : "btn btn-primary btn-sm"}
-            onClick={() => setCameraOn((on) => !on)}
-          >
-            {cameraOn ? "Tắt camera" : "Bật camera"}
-          </button>
+      <div>
+        <span className="field-label">Mã chờ xác nhận ({codes.length})</span>
+        <div className="filter-pill-group" style={{ margin: "6px 0 var(--space-3)" }}>
+          {codes.length === 0 ? (
+            <span className="cell-muted">Chưa quét/nhập mã nào.</span>
+          ) : (
+            codes.map((code) => (
+              <span key={code} className="filter-pill active" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {code}
+                <button
+                  type="button"
+                  onClick={() => removeCode(code)}
+                  aria-label={`Xoá ${code}`}
+                  style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </span>
+            ))
+          )}
         </div>
-      </div>
 
-      {cameraError && <p className="editor-status">{cameraError}</p>}
-
-      {cameraOn ? (
-        <video ref={videoRef} style={{ width: "100%", maxWidth: 360, borderRadius: "var(--radius-md)", marginBottom: "var(--space-3)" }} />
-      ) : null}
-
-      <div className="filter-pill-group" style={{ marginBottom: "var(--space-3)" }}>
-        {codes.length === 0 ? (
-          <span className="cell-muted">Chưa quét/nhập mã nào.</span>
-        ) : (
-          codes.map((code) => (
-            <span key={code} className="filter-pill active" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              {code}
+        <div className="field">
+          <span className="field-label">Trạng thái nhận huỷ</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {CANCEL_RECEIPT_STATUS_OPTIONS.map((value) => (
               <button
+                key={value}
                 type="button"
-                onClick={() => removeCode(code)}
-                aria-label={`Xoá ${code}`}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                className={`filter-pill${cancelReceiptStatus === value ? " active" : ""}`}
+                onClick={() => setCancelReceiptStatus(value)}
               >
-                ×
+                {CANCEL_RECEIPT_STATUS_LABELS[value]}
               </button>
-            </span>
-          ))
-        )}
-      </div>
+            ))}
+          </div>
+        </div>
 
-      <div className="toolbar" style={{ alignItems: "flex-end" }}>
         <div className="field">
           <span className="field-label">Ngày giờ nhận huỷ</span>
           <input
@@ -209,26 +230,29 @@ export function BarcodeScanForm() {
             onChange={(e) => setConfirmedAt(e.target.value)}
           />
         </div>
+
         <div className="field">
-          <span className="field-label">Trạng thái nhận huỷ</span>
-          <select
-            className="select"
-            value={cancelReceiptStatus}
-            onChange={(e) => setCancelReceiptStatus(e.target.value as (typeof CANCEL_RECEIPT_STATUS_OPTIONS)[number])}
-          >
-            {CANCEL_RECEIPT_STATUS_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {CANCEL_RECEIPT_STATUS_LABELS[value]}
-              </option>
-            ))}
-          </select>
+          <span className="field-label">Tỷ lệ hỏng (%)</span>
+          <input
+            className="input"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={defectRatePercent}
+            onChange={(e) => setDefectRatePercent(e.target.value)}
+            style={{ maxWidth: 120 }}
+          />
         </div>
-        <div className="field" style={{ flexDirection: "row" }}>
-          <button type="button" className="btn btn-primary btn-sm" onClick={submitAll} disabled={submitting || codes.length === 0}>
-            {submitting ? "Đang xử lý..." : `Xác nhận (${codes.length})`}
-          </button>
+
+        <div className="sticky-mobile-actions">
+          <div className="field" style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-2)" }}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={submitAll} disabled={submitting || codes.length === 0}>
+              {submitting ? "Đang xử lý..." : `Xác nhận ${codes.length} mã`}
+            </button>
+            {status && <span className="editor-status">{status}</span>}
+          </div>
         </div>
-        {status && <span className="editor-status">{status}</span>}
       </div>
     </div>
   );
