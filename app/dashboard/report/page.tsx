@@ -133,16 +133,7 @@ export default async function ReportPage({
       <ReportFilterForm filters={filters} orderStatusOptions={orderStatusOptions} />
 
       <div className="toolbar" style={{ justifyContent: "space-between" }}>
-        <p className="cell-muted" style={{ margin: 0 }}>
-          {allRows.length} đơn
-        </p>
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalCount={allRows.length}
-          baseQuery={filterQuery}
-        />
+        <ColumnVisibilityMenu />
         <a className="btn btn-secondary btn-sm" href={exportHref}>
           Xuất Excel
         </a>
@@ -378,7 +369,7 @@ function ReportFilterForm({
   filters: ReportFilters;
   orderStatusOptions: StatusFilterOption[];
 }) {
-  const dropdownFieldStyle = { width: 170 };
+  const dropdownFieldStyle = { width: 125 };
   const sentCount = filters.sentFrom || filters.sentTo ? 1 : 0;
   const cancelCount = filters.cancelFrom || filters.cancelTo ? 1 : 0;
   const paidCount = filters.paidFrom || filters.paidTo ? 1 : 0;
@@ -394,7 +385,7 @@ function ReportFilterForm({
             name="q"
             defaultValue={filters.q}
             placeholder="Mã đơn hàng / mã vận đơn / mã vận đơn hoàn"
-            style={{ minWidth: 200 }}
+            style={{ minWidth: 160 }}
           />
         </div>
 
@@ -477,7 +468,6 @@ function ReportFilterForm({
           <a href="/dashboard/report" className="btn btn-secondary btn-sm">
             Xoá lọc
           </a>
-          <ColumnVisibilityMenu />
         </div>
       </div>
     </form>
