@@ -183,6 +183,12 @@ model Cancellation {
   firstSyncedAt        DateTime         @default(now()) @map("first_synced_at")
   lastSyncedAt         DateTime         @updatedAt @map("last_synced_at")
 
+  // Set once the "overdue, still unresolved" Zalo warning has been sent for
+  // this row (see lib/cancellation/overdueWarnings.ts) — null means not
+  // sent yet. Only gates the Zalo message, not the web banner, which always
+  // shows every currently-overdue row regardless of this flag.
+  overdueWarnedAt      DateTime?        @map("overdue_warned_at")
+
   @@unique([shopeeOrderId, type])
   @@map("cancellations")
 }

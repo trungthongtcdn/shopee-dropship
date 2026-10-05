@@ -17,7 +17,7 @@ const NAV_GROUPS: { href: string; label: string }[][] = [
   [{ href: "/dashboard/reconciliation", label: "Đối soát thanh toán" }],
 ];
 
-export function AppHeader() {
+export function AppHeader({ overdueWarningCount = 0 }: { overdueWarningCount?: number }) {
   const pathname = usePathname();
   const [hidden, setHidden] = useState(false);
   const lastScrollY = useRef(0);
@@ -54,6 +54,11 @@ export function AppHeader() {
             </span>
           ))}
         </nav>
+        {overdueWarningCount > 0 ? (
+          <Link href="/dashboard/hoan-huy" className="badge badge-danger" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+            ⚠️ {overdueWarningCount} đơn cảnh báo quá hạn
+          </Link>
+        ) : null}
       </div>
     </header>
   );

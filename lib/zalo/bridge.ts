@@ -47,6 +47,17 @@ export async function fetchMessages(
   return data.messages ?? [];
 }
 
+export async function sendGroupMessage(groupId: string, message: string): Promise<void> {
+  const response = await fetch(bridgeUrl("/send-group-message"), {
+    method: "POST",
+    headers: { ...bridgeHeaders(), "content-type": "application/json" },
+    body: JSON.stringify({ group_id: groupId, message }),
+  });
+  if (!response.ok) {
+    throw new Error(`Zalo bridge /send-group-message failed: HTTP ${response.status}`);
+  }
+}
+
 export async function searchGroups(query?: string): Promise<ZaloGroup[]> {
   const params = query ? `?q=${encodeURIComponent(query)}` : "";
   const response = await fetch(bridgeUrl(`/zalo/groups${params}`), {

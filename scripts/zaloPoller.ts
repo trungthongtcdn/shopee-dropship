@@ -6,8 +6,15 @@
 // dependencies (child_process/fs, for pdftotext) fail that build.
 import { runPollCycle } from "../lib/zalo/poller";
 import { runCancelReceiptPollCycle } from "../lib/zalo/cancelReceiptPoller";
+import { runOverdueWarningPollCycle } from "../lib/zalo/overdueWarningPoller";
 
 const POLL_INTERVAL_MS = 20_000;
+// The overdue check is about day-scale thresholds, not seconds — running it
+// on the same 20s cadence as message polling would just hammer the DB for
+// no benefit. Throttled to once an hour in the same long-running process
+// instead of standing up a separate cron job.
+const OVERDUE_CHECK_INTERVAL_MS = 60 * 60_000;
+let lastOverdueCheckAt = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,6 +39,18 @@ async function main() {
       }
     } catch (error) {
       console.error("[zalo-poller] cancel-receipt cycle failed:", error);
+    }
+
+    if (Date.now() - lastOverdueCheckAt >= OVERDUE_CHECK_INTERVAL_MS) {
+      lastOverdueCheckAt = Date.now();
+      try {
+        const result = await runOverdueWarningPollCycle();
+        if (result && result.newlyWarned > 0) {
+          console.log(`[zalo-poller] overdue-warning: warned about ${result.newlyWarned} order(s)`);
+        }
+      } catch (error) {
+        console.error("[zalo-poller] overdue-warning cycle failed:", error);
+      }
     }
 
     await sleep(POLL_INTERVAL_MS);

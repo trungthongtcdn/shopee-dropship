@@ -3,9 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { CANCEL_RECEIPT_CONFIRM_PURPOSE } from "@/lib/zalo/cancelReceiptPoller";
+import { OVERDUE_WARNING_PURPOSE } from "@/lib/zalo/overdueWarningPoller";
 
 const watchSchema = z.object({
-  purpose: z.enum([WAYBILL_CONFIRM_PURPOSE, CANCEL_RECEIPT_CONFIRM_PURPOSE]),
+  purpose: z.enum([WAYBILL_CONFIRM_PURPOSE, CANCEL_RECEIPT_CONFIRM_PURPOSE, OVERDUE_WARNING_PURPOSE]),
   threadId: z.string().min(1),
   threadType: z.enum(["user", "group"]),
   threadName: z.string().min(1),
