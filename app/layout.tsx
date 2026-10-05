@@ -17,6 +17,14 @@ const firaCode = Fira_Code({
   display: "swap",
 });
 
+// Forces every route (including /_not-found and "/") to render at request
+// time instead of being statically prerendered at build time — the layout
+// now queries the DB on every render (loadOverdueWarnings), and `next build`
+// has no DATABASE_URL available in every build context (confirmed: it broke
+// the zalo-poller image's build, which runs `next build` too but without a
+// live DB to query against).
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const warnings = await loadOverdueWarnings();
 
