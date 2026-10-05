@@ -1,9 +1,12 @@
+import { prisma } from "@/lib/db";
 import { Pagination } from "../Pagination";
+import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
 import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
-import { formatDateVN } from "@/lib/format/datetime";
+import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
+import { OVERDUE_WARNING_PURPOSE } from "@/lib/zalo/overdueWarningPoller";
 import type { Cancellation } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +79,10 @@ export default async function HoanHuyPage({
   // count regardless of which tab is active, and the active tab's rows are
   // just a slice of this same set (in-memory, same convention as the other
   // computed-filter fields on the Report page).
-  const allRows = await loadCancellationRows({ q: filters.q, types: [] });
+  const [allRows, overdueWarningConfig] = await Promise.all([
+    loadCancellationRows({ q: filters.q, types: [] }),
+    prisma.zaloWatchConfig.findUnique({ where: { purpose: OVERDUE_WARNING_PURPOSE } }),
+  ]);
   const countDeliveryFailed = allRows.filter((r) => r.type === "delivery_failed").length;
   const countReturned = allRows.filter((r) => r.type === "returned_refunded").length;
   const filteredRows = activeType ? allRows.filter((r) => r.type === activeType) : allRows;
@@ -99,6 +105,13 @@ export default async function HoanHuyPage({
   return (
     <main className="page">
       <h1>Đơn hoàn huỷ</h1>
+
+      <ZaloGroupPicker
+        purpose={OVERDUE_WARNING_PURPOSE}
+        threadName={overdueWarningConfig?.threadName ?? null}
+        updatedAt={overdueWarningConfig ? formatDateTimeVN(overdueWarningConfig.updatedAt) : null}
+        extra={<span className="cell-sub">(nhóm nhận cảnh báo đơn quá hạn)</span>}
+      />
 
       <div className="toolbar">
         <a className={`filter-pill${!activeType ? " active" : ""}`} href={tabHref(undefined)}>

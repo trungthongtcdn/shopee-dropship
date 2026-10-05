@@ -1,13 +1,10 @@
-import { prisma } from "@/lib/db";
 import { ReportTableRow, type ReportRowDisplay } from "./ReportTableRow";
 import type { RowEditorProps } from "./RowEditor";
 import { ColumnVisibilityMenu } from "./ColumnVisibilityMenu";
 import { FilterDropdown } from "../FilterDropdown";
 import { DateRangeDropdown } from "../DateRangeDropdown";
 import { Pagination } from "../Pagination";
-import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
-import { OVERDUE_WARNING_PURPOSE } from "@/lib/zalo/overdueWarningPoller";
 import {
   parseReportFilters,
   reportFiltersToSearchParams,
@@ -20,7 +17,7 @@ import {
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
 import { DELIVERY_RESULT_LABELS, DELIVERY_RESULT_VALUES, type DeliveryResult } from "@/lib/report/deliveryResult";
 import type { ReportRow } from "@/lib/report/buildReport";
-import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
+import { formatDateVN } from "@/lib/format/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -122,24 +119,13 @@ export default async function ReportPage({
   const filterQuery = reportFiltersToSearchParams(filters).toString();
   const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
 
-  const [allRows, orderStatusOptions, overdueWarningConfig] = await Promise.all([
-    loadReportRows(filters),
-    loadOrderStatusFilterOptions(),
-    prisma.zaloWatchConfig.findUnique({ where: { purpose: OVERDUE_WARNING_PURPOSE } }),
-  ]);
+  const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadOrderStatusFilterOptions()]);
   const totalPages = totalPagesFor(allRows.length, pageSize);
   const rows = allRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <main className="page">
       <h1>Report (LUÂN CẦN)</h1>
-
-      <ZaloGroupPicker
-        purpose={OVERDUE_WARNING_PURPOSE}
-        threadName={overdueWarningConfig?.threadName ?? null}
-        updatedAt={overdueWarningConfig ? formatDateTimeVN(overdueWarningConfig.updatedAt) : null}
-        extra={<span className="cell-sub">(nhóm nhận cảnh báo đơn quá hạn)</span>}
-      />
 
       <QuickFilterBar filters={filters} pageSize={pageSize} />
       <ActiveFilterChips filters={filters} pageSize={pageSize} orderStatusOptions={orderStatusOptions} />
