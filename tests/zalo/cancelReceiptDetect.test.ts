@@ -18,6 +18,14 @@ describe("extractOrderCodes", () => {
     expect(extractOrderCodes("SPXVN06781167424A - XO,2 L - huỷ -đã nhận")).toEqual(["SPXVN06781167424A"]);
   });
 
+  it("finds a Giao Hàng Nhanh tracking code (GY prefix, no SPXVN) and uppercases it", () => {
+    expect(extractOrderCodes("GYRK89W4 - chân - huỷ - đã nhận")).toEqual(["GYRK89W4"]);
+  });
+
+  it("finds a lowercase GHN tracking code inside a sentence", () => {
+    expect(extractOrderCodes("shop ơi mã gyrk89w4 đã nhận hàng huỷ rồi nhé")).toEqual(["GYRK89W4"]);
+  });
+
   it("finds both an order id and a tracking code in the same message", () => {
     const content = "Đã nhận huỷ đơn 260621MB6WJXKM, mã vận đơn SPXVN068985623989 nhé shop";
     expect(extractOrderCodes(content)).toEqual(["260621MB6WJXKM", "SPXVN068985623989"]);
