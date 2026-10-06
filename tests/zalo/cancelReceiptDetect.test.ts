@@ -14,6 +14,10 @@ describe("extractOrderCodes", () => {
     expect(extractOrderCodes("spxvn068985623989")).toEqual(["SPXVN068985623989"]);
   });
 
+  it("finds a tracking code with the trailing letter suffix Shopee now appends", () => {
+    expect(extractOrderCodes("SPXVN06781167424A - XO,2 L - huỷ -đã nhận")).toEqual(["SPXVN06781167424A"]);
+  });
+
   it("finds both an order id and a tracking code in the same message", () => {
     const content = "Đã nhận huỷ đơn 260621MB6WJXKM, mã vận đơn SPXVN068985623989 nhé shop";
     expect(extractOrderCodes(content)).toEqual(["260621MB6WJXKM", "SPXVN068985623989"]);
