@@ -1,0 +1,97 @@
+# Patch applied on the VPS to /opt/zalo-bridge-thanhluan on 2026-10-07 (the bridge is not in this repo).
+# Adds POST /send-file + sendFileByThreadId (see docs/superpowers/specs/2026-10-07-waybill-excel-design.md).
+# Re-apply with: cd /opt/zalo-bridge-thanhluan && patch -p0 < send-file.patch (paths below are index.js / zaloClient.js).
+--- index.js
++++ index.js
+@@ -8,6 +8,7 @@
+   sendTextByPhone,
+   sendTextToGroup,
+   sendTextByThreadId,
++  sendFileByThreadId,
+   getMessages,
+   getGroupHistory,
+   listGroups,
+@@ -17,7 +18,7 @@
+ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || '';
+ 
+ const app = express();
+-app.use(express.json());
++app.use(express.json({ limit: '20mb' }));
+ 
+ app.post('/send-reminder', async (req, res) => {
+   const secret = req.header('x-webhook-secret');
+@@ -84,6 +85,43 @@
+     res.json({ ok: true });
+   } catch (err) {
+     console.error('Gửi tin nhắn Zalo thất bại:', err);
++    res.status(500).json({ error: String(err.message ?? err) });
++  }
++});
++
++// Sends a file (base64 in JSON) to a group or 1-1 thread — used by the
++// shopee-dropship app to post the grouped order list (.xlsx) back into the
++// Zalo group a waybill PDF arrived in.
++app.post('/send-file', async (req, res) => {
++  if (!requireSecret(req, res)) return;
++  const {
++    thread_id: threadId,
++    thread_type: threadType,
++    filename,
++    file_base64: fileBase64,
++    message,
++  } = req.body ?? {};
++  if (
++    !threadId ||
++    !['user', 'group'].includes(threadType) ||
++    typeof fileBase64 !== 'string' ||
++    !fileBase64 ||
++    typeof filename !== 'string' ||
++    !/^[^/\\]+\.[A-Za-z0-9]+$/.test(filename)
++  ) {
++    return res.status(400).json({
++      error: 'thread_id, thread_type ("user"|"group"), filename (name.ext, no path) and file_base64 are required',
++    });
++  }
++  const data = Buffer.from(fileBase64, 'base64');
++  if (data.length === 0) {
++    return res.status(400).json({ error: 'file_base64 decoded to an empty file' });
++  }
++  try {
++    await sendFileByThreadId(threadType, threadId, filename, data, message);
++    res.json({ ok: true });
++  } catch (err) {
++    console.error('Gửi file Zalo thất bại:', err);
+     res.status(500).json({ error: String(err.message ?? err) });
+   }
+ });
+--- zaloClient.js
++++ zaloClient.js
+@@ -226,6 +226,28 @@
+   await api.sendMessage({ msg: message }, threadId, numericType);
+ }
+ 
++/**
++ * Sends a file (e.g. the grouped .xlsx the shopee-dropship app builds) with a
++ * caption to a group or 1-1 thread. `data` is a Buffer already in memory — the
++ * API receives it as base64 — so nothing is written to disk.
++ * @param threadType 'user' | 'group'
++ */
++export async function sendFileByThreadId(threadType, threadId, filename, data, message) {
++  if (!api) {
++    throw new Error('Chưa đăng nhập Zalo — mở màn Cấu hình nhắc hẹn Zalo trong app để kết nối trước');
++  }
++  const numericType = threadType === 'group' ? ThreadType.Group : ThreadType.User;
++  await api.sendMessage(
++    {
++      // zca-js wants a text part alongside attachments; fall back to the file
++      // name so the message is never empty.
++      msg: message || filename,
++      attachments: [{ data, filename, metadata: { totalSize: data.length } }],
++    },
++    threadId,
++    numericType
++  );
++}
+ /**
+  * Synchronous history backfill — group threads only, zca-js has no
+  * equivalent for 1-1 user threads (see getMessages()'s doc comment).

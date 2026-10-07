@@ -4,6 +4,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { extractWaybillPagesFromText, type WaybillPage } from "@/lib/waybill/items";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,30 +36,42 @@ export function extractOrderIdsFromWaybillText(text: string): string[] {
 // the label/value reading order on this waybill layout ("Mã vận đơn:" and
 // "Mã đơn hàng:" values came out scrambled) — pdftotext -layout reproduces
 // the visual left-to-right order faithfully, which this regex depends on.
-export async function extractOrdersFromWaybillPdf(buffer: Buffer): Promise<WaybillOrder[]> {
+async function pdfToText(buffer: Buffer): Promise<string> {
   const tmpPath = path.join(tmpdir(), `waybill-${randomUUID()}.pdf`);
   await writeFile(tmpPath, buffer);
   try {
-    const { stdout } = await execFileAsync("pdftotext", ["-layout", tmpPath, "-"]);
-    return extractOrdersFromWaybillText(stdout);
+    const { stdout } = await execFileAsync("pdftotext", ["-layout", tmpPath, "-"], { maxBuffer: 64 * 1024 * 1024 });
+    return stdout;
   } finally {
     await unlink(tmpPath).catch(() => {});
   }
+}
+
+export async function extractOrdersFromWaybillPdf(buffer: Buffer): Promise<WaybillOrder[]> {
+  return extractOrdersFromWaybillText(await pdfToText(buffer));
 }
 
 export async function extractOrderIdsFromWaybillPdf(buffer: Buffer): Promise<string[]> {
   return (await extractOrdersFromWaybillPdf(buffer)).map((order) => order.shopeeOrderId);
 }
 
-export async function downloadAndExtractOrders(pdfUrl: string): Promise<WaybillOrder[]> {
+export interface ParsedWaybill {
+  // What the confirmation flow acts on (order id + tracking code per page).
+  orders: WaybillOrder[];
+  // The same pages with their product lines, for the grouped Excel.
+  pages: WaybillPage[];
+}
+
+// One pdftotext run feeds both readings of the document.
+export async function parseWaybillPdf(buffer: Buffer): Promise<ParsedWaybill> {
+  const text = await pdfToText(buffer);
+  return { orders: extractOrdersFromWaybillText(text), pages: extractWaybillPagesFromText(text) };
+}
+
+export async function downloadWaybillPdf(pdfUrl: string): Promise<Buffer> {
   const response = await fetch(pdfUrl);
   if (!response.ok) {
     throw new Error(`Failed to download waybill PDF: HTTP ${response.status}`);
   }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return extractOrdersFromWaybillPdf(buffer);
-}
-
-export async function downloadAndExtractOrderIds(pdfUrl: string): Promise<string[]> {
-  return (await downloadAndExtractOrders(pdfUrl)).map((order) => order.shopeeOrderId);
+  return Buffer.from(await response.arrayBuffer());
 }

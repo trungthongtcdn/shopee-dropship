@@ -39,7 +39,8 @@ export function ManualConfirmForm() {
 
     if (response.ok) {
       const createdNote = json.createdCount > 0 ? `, tạo mới ${json.createdCount} đơn chưa sync` : "";
-      setStatus(`Đã khớp ${json.matchedCount}/${json.orderIds.length} đơn trong file${createdNote}`);
+      const excelNote = json.hasExcel ? ". Đã tạo file excel gom nhóm — bấm \"Xem excel\" ở lịch sử bên dưới" : "";
+      setStatus(`Đã khớp ${json.matchedCount}/${json.orderIds.length} đơn trong file${createdNote}${excelNote}`);
       setPdfUrl("");
       setSentAt("");
       if (fileInputRef.current) fileInputRef.current.value = "";

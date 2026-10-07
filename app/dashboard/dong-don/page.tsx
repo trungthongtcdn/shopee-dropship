@@ -12,6 +12,15 @@ export default async function DongDonPage() {
     prisma.zaloConfirmationLog.findMany({ orderBy: { confirmedAt: "desc" }, take: 20 }),
   ]);
 
+  // Which of these rows have a stored Excel / PDF. Names only — never pull the
+  // bytea columns into a list page. Rows logged before the grouped-Excel
+  // feature have no file and keep just the plain "Xem PDF" link.
+  const storedFiles = await prisma.waybillFile.findMany({
+    where: { confirmationLogId: { in: logs.map((log) => log.id) } },
+    select: { confirmationLogId: true, pdfName: true },
+  });
+  const storedByLogId = new Map(storedFiles.map((file) => [file.confirmationLogId, file]));
+
   return (
     <main className="page">
       <h1>Đóng đơn</h1>
@@ -49,13 +58,21 @@ export default async function DongDonPage() {
                 <th>Thời gian</th>
                 <th>Người xác nhận</th>
                 <th>Khớp / trong file</th>
-                <th>File</th>
+                <th>Xem file</th>
               </tr>
             </thead>
             <tbody>
               {logs.map((log) => {
                 const orderIds = Array.isArray(log.orderIds) ? (log.orderIds as string[]) : [];
                 const pct = orderIds.length > 0 ? Math.round((log.matchedCount / orderIds.length) * 100) : 0;
+                const stored = storedByLogId.get(log.id);
+                // A link PDF opens from its own URL; an uploaded one only exists
+                // in our database (pdfName is set exactly when it was kept).
+                const pdfHref = log.pdfUrl.startsWith("http")
+                  ? log.pdfUrl
+                  : stored?.pdfName
+                    ? `/api/waybills/${log.id}/pdf`
+                    : null;
                 return (
                   <tr key={log.id}>
                     <td className="cell-muted">{formatDateTimeVN(log.confirmedAt)}</td>
@@ -71,13 +88,20 @@ export default async function DongDonPage() {
                       </div>
                     </td>
                     <td>
-                      {log.pdfUrl.startsWith("http") ? (
-                        <a href={log.pdfUrl} target="_blank" rel="noreferrer">
-                          Xem PDF
-                        </a>
-                      ) : (
-                        <span className="cell-muted">{log.pdfUrl}</span>
-                      )}
+                      <div className="btn-group">
+                        {pdfHref ? (
+                          <a className="btn btn-secondary btn-sm" href={pdfHref} target="_blank" rel="noreferrer">
+                            Xem PDF
+                          </a>
+                        ) : (
+                          <span className="cell-muted">{log.pdfUrl}</span>
+                        )}
+                        {stored ? (
+                          <a className="btn btn-success btn-sm" href={`/api/waybills/${log.id}/xlsx`}>
+                            Xem excel
+                          </a>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );

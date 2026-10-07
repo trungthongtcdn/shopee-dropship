@@ -58,9 +58,10 @@ describe("middleware", () => {
     expect(response.status).toBe(200);
   });
 
-  it("covers the accounts API but not /login or /api/auth/*", () => {
+  it("covers the accounts and waybill-file APIs but not /login or /api/auth/*", () => {
     const matchers = config.matcher as string[];
     expect(matchers).toContain("/api/accounts/:path*");
+    expect(matchers).toContain("/api/waybills/:path*");
     expect(matchers.some((m) => m.startsWith("/login") || m.startsWith("/api/auth"))).toBe(false);
   });
 });

@@ -377,8 +377,27 @@ model ZaloConfirmationLog {
   matchedCount    Int      @map("matched_count")
   confirmedByName String?  @map("confirmed_by_name")
   confirmedAt     DateTime @default(now()) @map("confirmed_at")
+  // Absent for rows logged before the grouped-Excel feature existed.
+  file            WaybillFile?
 
   @@map("zalo_confirmation_logs")
+}
+
+// The grouped Excel generated for a waybill confirmation (lib/waybill), and —
+// only when the PDF was uploaded by hand — the PDF itself, since an upload has
+// no URL to open later (a pasted/Zalo link stays reachable at its own URL, so
+// its PDF isn't copied here). Kept in Postgres as bytea: a few dozen KB per
+// Excel, ~0.5 MB per uploaded PDF, and it needs no extra volume in Docker.
+model WaybillFile {
+  confirmationLogId Int                 @id @map("confirmation_log_id")
+  xlsxName          String              @map("xlsx_name")
+  xlsxData          Bytes               @map("xlsx_data")
+  pdfName           String?             @map("pdf_name")
+  pdfData           Bytes?              @map("pdf_data")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  log               ZaloConfirmationLog @relation(fields: [confirmationLogId], references: [id], onDelete: Cascade)
+
+  @@map("waybill_files")
 }
 
 // Audit trail for the "cancel_receipt_confirm" Zalo group (lib/zalo/

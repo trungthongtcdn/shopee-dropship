@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
-import { downloadAndExtractOrders, type WaybillOrder } from "@/lib/zalo/parseWaybill";
+import { downloadWaybillPdf, parseWaybillPdf, type WaybillOrder } from "@/lib/zalo/parseWaybill";
+import { deliverWaybillExcel } from "@/lib/waybill/deliver";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
 // for the other one ("cancel_receipt_confirm").
@@ -88,6 +89,9 @@ export interface ApplyWaybillConfirmationParams {
 export interface ApplyWaybillConfirmationResult {
   matchedCount: number;
   createdCount: number;
+  // The zalo_confirmation_logs row just written — the grouped Excel is stored
+  // against it.
+  logId: number;
 }
 
 // Shared by the automatic Zalo poller below and the manual-entry API route
@@ -150,7 +154,7 @@ export async function applyWaybillConfirmation(
     }
   }
 
-  await prisma.zaloConfirmationLog.create({
+  const log = await prisma.zaloConfirmationLog.create({
     data: {
       threadId,
       pdfUrl,
@@ -161,7 +165,7 @@ export async function applyWaybillConfirmation(
     },
   });
 
-  return { matchedCount: result.count, createdCount };
+  return { matchedCount: result.count, createdCount, logId: log.id };
 }
 
 export async function runPollCycle(): Promise<PollCycleResult | null> {
@@ -178,7 +182,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
 
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const orders = await downloadAndExtractOrders(confirmation.pdfUrl);
+    const { orders, pages } = await parseWaybillPdf(await downloadWaybillPdf(confirmation.pdfUrl));
     if (orders.length === 0) continue;
 
     // Uses processing time, not the message's own `ts` — the bridge API
@@ -187,7 +191,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // runs every ~20s, so "now" is close enough for a date-level field.
     const confirmedAt = new Date();
 
-    await applyWaybillConfirmation({
+    const { logId } = await applyWaybillConfirmation({
       orders,
       confirmedAt,
       confirmedByName: confirmation.confirmedByName,
@@ -195,6 +199,16 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
       threadId: config.threadId,
     });
     confirmedCount += 1;
+
+    // Warehouse copy: the same orders regrouped so identical ones sit together,
+    // posted back into the thread the PDF came from. Never throws (see
+    // deliverWaybillExcel) — the confirmation above is already applied.
+    await deliverWaybillExcel({
+      logId,
+      pages,
+      at: confirmedAt,
+      zaloThread: { id: config.threadId, type: config.threadType as "user" | "group" },
+    });
   }
 
   await prisma.zaloWatchConfig.update({

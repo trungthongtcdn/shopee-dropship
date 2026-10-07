@@ -58,6 +58,31 @@ export async function sendGroupMessage(groupId: string, message: string): Promis
   }
 }
 
+// Posts a file (with an optional caption) to a group or 1-1 thread. The bridge
+// takes it as base64 inside JSON — the Excel files this carries are tens of KB.
+export async function sendFile(
+  threadId: string,
+  threadType: "user" | "group",
+  fileName: string,
+  data: Buffer,
+  message?: string
+): Promise<void> {
+  const response = await fetch(bridgeUrl("/send-file"), {
+    method: "POST",
+    headers: { ...bridgeHeaders(), "content-type": "application/json" },
+    body: JSON.stringify({
+      thread_id: threadId,
+      thread_type: threadType,
+      filename: fileName,
+      file_base64: data.toString("base64"),
+      ...(message ? { message } : {}),
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Zalo bridge /send-file failed: HTTP ${response.status}`);
+  }
+}
+
 export async function searchGroups(query?: string): Promise<ZaloGroup[]> {
   const params = query ? `?q=${encodeURIComponent(query)}` : "";
   const response = await fetch(bridgeUrl(`/zalo/groups${params}`), {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { downloadAndExtractOrders, extractOrdersFromWaybillPdf, type WaybillOrder } from "@/lib/zalo/parseWaybill";
+import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
+import { deliverWaybillExcel } from "@/lib/waybill/deliver";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 
 // Fallback path for when the Zalo bridge doesn't capture the group message
@@ -26,16 +27,20 @@ export async function POST(request: NextRequest) {
   const urlRaw = form.get("pdfUrl");
   const pdfUrl = typeof urlRaw === "string" ? urlRaw.trim() : "";
 
-  let orders: WaybillOrder[];
+  let parsed: ParsedWaybill;
   let sourceLabel: string;
+  // Only an uploaded file needs keeping: a pasted link can be reopened from
+  // its own URL, an upload can't.
+  let uploadedPdf: { fileName: string; data: Buffer } | undefined;
 
   try {
     if (file instanceof File && file.size > 0) {
       const buffer = Buffer.from(await file.arrayBuffer());
-      orders = await extractOrdersFromWaybillPdf(buffer);
+      parsed = await parseWaybillPdf(buffer);
       sourceLabel = `upload:${file.name}`;
+      uploadedPdf = { fileName: file.name, data: buffer };
     } else if (pdfUrl) {
-      orders = await downloadAndExtractOrders(pdfUrl);
+      parsed = await parseWaybillPdf(await downloadWaybillPdf(pdfUrl));
       sourceLabel = pdfUrl;
     } else {
       return NextResponse.json({ error: "cần nhập link PDF hoặc chọn file" }, { status: 400 });
@@ -44,11 +49,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "lỗi khi đọc file PDF" }, { status: 400 });
   }
 
+  const { orders, pages } = parsed;
   if (orders.length === 0) {
     return NextResponse.json({ error: "không tìm thấy mã đơn hàng nào trong file", orderIds: [] }, { status: 422 });
   }
 
-  const { matchedCount, createdCount } = await applyWaybillConfirmation({
+  const { matchedCount, createdCount, logId } = await applyWaybillConfirmation({
     orders,
     confirmedAt: sentAt,
     confirmedByName: "Nhập thủ công",
@@ -56,5 +62,10 @@ export async function POST(request: NextRequest) {
     threadId: MANUAL_THREAD_ID,
   });
 
-  return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount });
+  // The grouped Excel for the warehouse; opened later from the "Xem file"
+  // column. File name carries the time it was made, not the (back-datable)
+  // sent-at the user typed. Never throws — the confirmation is already saved.
+  const { stored: hasExcel } = await deliverWaybillExcel({ logId, pages, at: new Date(), pdf: uploadedPdf });
+
+  return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount, hasExcel });
 }

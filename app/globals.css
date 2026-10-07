@@ -14,6 +14,7 @@
   --color-destructive: #a8231a;
   --color-on-destructive: #ffffff;
   --color-success: #14692f;
+  --color-on-success: #ffffff;
   --color-success-bg: #e8f6ee;
   --color-danger-bg: #fdecea;
   --color-warning-bg: #fff4db;
@@ -60,6 +61,7 @@
     --color-destructive: #f87171;
     --color-on-destructive: #2a0a0a;
     --color-success: #4ade80;
+    --color-on-success: #052e16;
     --color-success-bg: #0f2e1c;
     --color-danger-bg: #3a1414;
     --color-warning-bg: #3a2a05;
@@ -406,6 +408,23 @@ html[data-hide-col~="note"] .col-note {
 }
 .btn-primary:hover {
   opacity: 0.9;
+}
+
+/* Green: "Xem excel" next to a neutral "Xem PDF" — told apart by colour at a glance. */
+.btn-success {
+  background: var(--color-success);
+  color: var(--color-on-success);
+}
+.btn-success:hover {
+  opacity: 0.9;
+  text-decoration: none;
+}
+
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .btn-secondary {
