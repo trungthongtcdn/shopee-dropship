@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
-import { deliverWaybillExcel } from "@/lib/waybill/deliver";
+import { storeWaybillExcel } from "@/lib/waybill/deliver";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 
 // Fallback path for when the Zalo bridge doesn't capture the group message
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   // The grouped Excel for the warehouse; opened later from the "Xem file"
   // column. File name carries the time it was made, not the (back-datable)
   // sent-at the user typed. Never throws — the confirmation is already saved.
-  const { stored: hasExcel } = await deliverWaybillExcel({ logId, pages, at: new Date(), pdf: uploadedPdf });
+  const { stored: hasExcel } = await storeWaybillExcel({ logId, pages, at: new Date(), pdf: uploadedPdf });
 
   return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount, hasExcel });
 }

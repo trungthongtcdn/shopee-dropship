@@ -111,4 +111,42 @@ describe("planFromMessages", () => {
     ]);
     expect(result.lastMsgId).toBe("3");
   });
+
+  describe("pdfMessages (grouped Excel goes out when the PDF arrives, not on confirmation)", () => {
+    it("reports a pdf link message even when nobody ever confirms it", () => {
+      const messages = [
+        msg({ msg_id: "1", ts: "1790000000000", content: "link: https://example.com/waybill.pdf" }),
+        msg({ msg_id: "2", content: "chào buổi sáng" }),
+      ];
+      const result = planFromMessages(messages, EMPTY_STATE);
+
+      expect(result.pdfMessages).toEqual([{ pdfUrl: "https://example.com/waybill.pdf", msgId: "1", ts: "1790000000000" }]);
+      expect(result.confirmations).toEqual([]);
+    });
+
+    it("reports every pdf message of the batch, including one replaced before it was confirmed", () => {
+      const messages = [
+        msg({ msg_id: "1", content: "https://example.com/old.pdf" }),
+        msg({ msg_id: "2", content: "https://example.com/new.pdf" }),
+        msg({ msg_id: "3", content: "Đã in 3 đơn" }),
+      ];
+      const result = planFromMessages(messages, EMPTY_STATE);
+
+      expect(result.pdfMessages.map((m) => [m.msgId, m.pdfUrl])).toEqual([
+        ["1", "https://example.com/old.pdf"],
+        ["2", "https://example.com/new.pdf"],
+      ]);
+    });
+
+    it("does not report a pending link carried over from an earlier cycle again", () => {
+      const initialState: PollState = { pendingPdfUrl: "https://example.com/waybill.pdf", pendingPdfMsgId: "0" };
+      const result = planFromMessages([msg({ msg_id: "1", content: "Đã in 3 đơn" })], initialState);
+      expect(result.pdfMessages).toEqual([]);
+    });
+
+    it("ignores non-text messages", () => {
+      const messages = [{ ...msg({ msg_id: "1" }), content: { href: "https://example.com/x.pdf" } } as unknown as ZaloMessage];
+      expect(planFromMessages(messages, EMPTY_STATE).pdfMessages).toEqual([]);
+    });
+  });
 });

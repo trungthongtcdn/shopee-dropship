@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
-import { downloadWaybillPdf, parseWaybillPdf, type WaybillOrder } from "@/lib/zalo/parseWaybill";
-import { deliverWaybillExcel } from "@/lib/waybill/deliver";
+import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
+import { sendWaybillExcel, storeWaybillExcel } from "@/lib/waybill/deliver";
+import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
 // for the other one ("cancel_receipt_confirm").
@@ -22,9 +23,19 @@ export interface ConfirmationEvent {
   confirmedAt: number | string;
 }
 
+// A message carrying a waybill PDF link, whether or not anyone ever confirms it.
+export interface PdfMessage {
+  pdfUrl: string;
+  msgId: string;
+  ts: number | string;
+}
+
 export interface PlanResult {
   state: PollState;
   confirmations: ConfirmationEvent[];
+  // Every PDF link seen in this batch — the grouped Excel is posted back for
+  // each as soon as it arrives, independently of the "Đã in" confirmation.
+  pdfMessages: PdfMessage[];
   lastMsgId: string | null;
 }
 
@@ -48,6 +59,7 @@ export interface PlanResult {
 export function planFromMessages(messages: ZaloMessage[], initialState: PollState): PlanResult {
   let state: PollState = { ...initialState };
   const confirmations: ConfirmationEvent[] = [];
+  const pdfMessages: PdfMessage[] = [];
   let lastMsgId: string | null = null;
 
   for (const message of messages) {
@@ -61,6 +73,7 @@ export function planFromMessages(messages: ZaloMessage[], initialState: PollStat
     const pdfUrl = findPdfUrl(message.content);
     if (pdfUrl) {
       state = { pendingPdfUrl: pdfUrl, pendingPdfMsgId: message.msg_id };
+      pdfMessages.push({ pdfUrl, msgId: message.msg_id, ts: message.ts });
       continue;
     }
 
@@ -70,7 +83,7 @@ export function planFromMessages(messages: ZaloMessage[], initialState: PollStat
     }
   }
 
-  return { state, confirmations, lastMsgId };
+  return { state, confirmations, pdfMessages, lastMsgId };
 }
 
 export interface PollCycleResult {
@@ -168,6 +181,36 @@ export async function applyWaybillConfirmation(
   return { matchedCount: result.count, createdCount, logId: log.id };
 }
 
+// A PDF message older than this is backlog (poller was down, or the watched
+// group was just changed and the bridge still buffers the old group's history),
+// not something the warehouse is waiting on — posting an Excel for each old one
+// would spam the group.
+const EXCEL_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+// PDF messages whose Excel was already handled by this process. A cycle that
+// fails after posting the file (say the DB hiccups while applying the
+// confirmation) leaves the cursor where it was and is retried every 20s; without
+// this the same file would be posted on every retry. Marked BEFORE the attempt,
+// so a failing send isn't retried into a flood either.
+const handledPdfMessages = new Set<string>();
+const HANDLED_PDF_MESSAGES_CAP = 500;
+
+function markPdfMessageHandled(key: string): boolean {
+  if (handledPdfMessages.has(key)) return false;
+  handledPdfMessages.add(key);
+  if (handledPdfMessages.size > HANDLED_PDF_MESSAGES_CAP) {
+    handledPdfMessages.delete(handledPdfMessages.values().next().value as string);
+  }
+  return true;
+}
+
+function isStalePdfMessage(ts: number | string): boolean {
+  const sentAt = tsToDate(ts).getTime();
+  // An unreadable timestamp is treated as fresh — the guard is only there to
+  // stop backlog floods, not to withhold a file for a parsing quirk.
+  return !Number.isNaN(sentAt) && Date.now() - sentAt > EXCEL_MAX_AGE_MS;
+}
+
 export async function runPollCycle(): Promise<PollCycleResult | null> {
   const config = await prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } });
   if (!config) return null;
@@ -175,14 +218,42 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
   const messages = await fetchMessages(config.threadId, config.threadType as "user" | "group", config.lastProcessedMsgId);
   if (messages.length === 0) return { processed: 0, confirmed: 0 };
 
-  const { state, confirmations, lastMsgId } = planFromMessages(messages, {
+  const { state, confirmations, pdfMessages, lastMsgId } = planFromMessages(messages, {
     pendingPdfUrl: config.pendingPdfUrl,
     pendingPdfMsgId: config.pendingPdfMsgId,
   });
 
+  // One download + parse per URL per cycle, shared by the Excel and the
+  // confirmation of the same PDF.
+  const waybills = new Map<string, Promise<ParsedWaybill>>();
+  const loadWaybill = (url: string) => {
+    let waybill = waybills.get(url);
+    if (!waybill) {
+      waybill = downloadWaybillPdf(url).then(parseWaybillPdf);
+      waybills.set(url, waybill);
+    }
+    return waybill;
+  };
+
+  // Warehouse copy: the same orders regrouped so identical ones sit together,
+  // posted back into the thread as soon as the PDF shows up — packing starts
+  // from this, before (and regardless of whether) anyone types "Đã in". Best
+  // effort: nothing here may fail the cycle.
+  const thread = { id: config.threadId, type: config.threadType as "user" | "group" };
+  for (const pdfMessage of pdfMessages) {
+    if (!markPdfMessageHandled(`${config.threadId}:${pdfMessage.msgId}`)) continue;
+    if (isStalePdfMessage(pdfMessage.ts)) continue;
+    try {
+      const { pages } = await loadWaybill(pdfMessage.pdfUrl);
+      await sendWaybillExcel({ pages, at: new Date(), thread });
+    } catch (error) {
+      console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
+    }
+  }
+
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const { orders, pages } = await parseWaybillPdf(await downloadWaybillPdf(confirmation.pdfUrl));
+    const { orders, pages } = await loadWaybill(confirmation.pdfUrl);
     if (orders.length === 0) continue;
 
     // Uses processing time, not the message's own `ts` — the bridge API
@@ -200,15 +271,9 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     });
     confirmedCount += 1;
 
-    // Warehouse copy: the same orders regrouped so identical ones sit together,
-    // posted back into the thread the PDF came from. Never throws (see
-    // deliverWaybillExcel) — the confirmation above is already applied.
-    await deliverWaybillExcel({
-      logId,
-      pages,
-      at: confirmedAt,
-      zaloThread: { id: config.threadId, type: config.threadType as "user" | "group" },
-    });
+    // Keep the Excel with the log row for the "Xem excel" button. It was
+    // already posted to the group when the PDF arrived, so no second post.
+    await storeWaybillExcel({ logId, pages, at: confirmedAt });
   }
 
   await prisma.zaloWatchConfig.update({

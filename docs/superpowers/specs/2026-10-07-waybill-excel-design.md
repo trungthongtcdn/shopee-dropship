@@ -41,9 +41,15 @@ frozen header, autofilter. Built with `exceljs` (SheetJS CE can't style cells).
 
 ## Flows
 
-- **Zalo:** after the confirmation is applied, build the xlsx and send it to the
-  same thread via a new bridge endpoint `POST /send-file`. Failure to build/send
-  is logged and never blocks the confirmation or the cursor.
+- **Zalo:** the moment a message carrying a waybill PDF link shows up in the
+  watched thread — no need to wait for "Đã in" — build the xlsx and post it back
+  to that thread via the bridge's `POST /send-file`, captioned "Đây là danh sách
+  đơn đã gom các đơn giống nhau đứng gần nhau". Guards: a PDF message older
+  than 2 h is skipped (backlog after an outage / group change must not spam the
+  group); each message is answered once per process even if its cycle is retried
+  (cycles that fail after posting leave the cursor behind); download/build/send
+  errors are logged and never fail the cycle. On the later "Đã in" confirmation
+  the Excel is only *stored* (for the "Xem excel" button), not posted again.
 - **Manual (link/upload):** build the xlsx; for an *uploaded* PDF also keep the
   PDF bytes (a link PDF stays reachable by its URL). Stored in `waybill_files`
   (Postgres `bytea`) keyed by the confirmation log row.
