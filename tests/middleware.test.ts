@@ -1,59 +1,86 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { middleware } from "@/middleware";
+import { middleware, config } from "@/middleware";
+import { signSession, SESSION_COOKIE } from "@/lib/auth/session";
 
-function requestWithAuth(header?: string) {
-  return new NextRequest("http://localhost/dashboard/orders", {
-    headers: header ? { authorization: header } : {},
+const SECRET = "middleware-test-secret-middleware-test";
+
+function requestTo(path: string, token?: string) {
+  return new NextRequest(`http://localhost${path}`, {
+    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
   });
-}
-
-function basicAuthHeader(user: string, password: string) {
-  return "Basic " + Buffer.from(`${user}:${password}`).toString("base64");
 }
 
 describe("middleware", () => {
-  const originalUser = process.env.DASHBOARD_USER;
-  const originalPassword = process.env.DASHBOARD_PASSWORD;
+  const originalSecret = process.env.SESSION_SECRET;
 
-  afterEach(() => {
-    process.env.DASHBOARD_USER = originalUser;
-    process.env.DASHBOARD_PASSWORD = originalPassword;
+  beforeEach(() => {
+    process.env.SESSION_SECRET = SECRET;
   });
 
-  it("allows the request through when no credentials are configured (local dev)", () => {
-    delete process.env.DASHBOARD_USER;
-    delete process.env.DASHBOARD_PASSWORD;
+  afterEach(() => {
+    if (originalSecret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = originalSecret;
+  });
 
-    const response = middleware(requestWithAuth());
+  it("redirects a page request with no session cookie to /login, remembering where it was going", async () => {
+    const response = await middleware(requestTo("/dashboard/orders?q=abc"));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/login?next=%2Fdashboard%2Forders%3Fq%3Dabc");
+  });
+
+  it("redirects the bare root to /login without a next param", async () => {
+    const response = await middleware(requestTo("/"));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/login");
+  });
+
+  it("answers an API request with no session cookie with 401 JSON, not a redirect", async () => {
+    const response = await middleware(requestTo("/api/orders/1"));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Authentication required" });
+  });
+
+  it("rejects a cookie signed with the wrong secret", async () => {
+    const forged = await signSession(1, "some-other-secret-some-other-secret");
+    const response = await middleware(requestTo("/dashboard/report", forged));
+    expect(response.status).toBe(307);
+  });
+
+  it("rejects a garbage cookie", async () => {
+    const response = await middleware(requestTo("/api/report/export", "not-a-token"));
+    expect(response.status).toBe(401);
+  });
+
+  it("lets a request with a valid session cookie through", async () => {
+    const token = await signSession(7, SECRET);
+    const response = await middleware(requestTo("/dashboard/orders", token));
     expect(response.status).toBe(200);
   });
 
-  describe("with credentials configured", () => {
-    beforeEach(() => {
-      process.env.DASHBOARD_USER = "luan";
-      process.env.DASHBOARD_PASSWORD = "s3cret";
-    });
+  it("covers the accounts API but not /login or /api/auth/*", () => {
+    const matchers = config.matcher as string[];
+    expect(matchers).toContain("/api/accounts/:path*");
+    expect(matchers.some((m) => m.startsWith("/login") || m.startsWith("/api/auth"))).toBe(false);
+  });
+});
 
-    it("rejects a request with no Authorization header", () => {
-      const response = middleware(requestWithAuth());
-      expect(response.status).toBe(401);
-      expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
-    });
+describe("middleware in production without SESSION_SECRET", () => {
+  const originalSecret = process.env.SESSION_SECRET;
+  const originalEnv = process.env.NODE_ENV;
 
-    it("rejects wrong credentials", () => {
-      const response = middleware(requestWithAuth(basicAuthHeader("luan", "wrong-password")));
-      expect(response.status).toBe(401);
-    });
+  afterEach(() => {
+    if (originalSecret === undefined) delete process.env.SESSION_SECRET;
+    else process.env.SESSION_SECRET = originalSecret;
+    (process.env as Record<string, string | undefined>).NODE_ENV = originalEnv;
+  });
 
-    it("rejects a malformed Authorization header", () => {
-      const response = middleware(requestWithAuth("Basic not-valid-base64-colon-pair"));
-      expect(response.status).toBe(401);
-    });
+  it("fails closed even for a token signed with the dev fallback secret", async () => {
+    const devToken = await signSession(1, "dev-only-insecure-session-secret");
+    delete process.env.SESSION_SECRET;
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
 
-    it("allows the request through with correct credentials", () => {
-      const response = middleware(requestWithAuth(basicAuthHeader("luan", "s3cret")));
-      expect(response.status).toBe(200);
-    });
+    const response = await middleware(requestTo("/dashboard/report", devToken));
+    expect(response.status).toBe(307);
   });
 });

@@ -33,11 +33,14 @@ POSTGRES_PASSWORD=$(openssl rand -hex 24)
 SYNC_WEBHOOK_SECRET=$(openssl rand -hex 24)
 DASHBOARD_USER=luan
 DASHBOARD_PASSWORD=$(openssl rand -hex 12)
+SESSION_SECRET=$(openssl rand -hex 32)
 DOMAIN=your-domain.com
 EOF
 cat .env.prod
 ```
-Save the values it prints — you'll need `SYNC_WEBHOOK_SECRET` again for the Apps Script side, and `DASHBOARD_USER`/`DASHBOARD_PASSWORD` to log into the dashboard itself (the browser will prompt for them on first visit).
+Save the values it prints — you'll need `SYNC_WEBHOOK_SECRET` again for the Apps Script side, and `DASHBOARD_USER`/`DASHBOARD_PASSWORD` for the **first** login to the dashboard (the login page at `/login` creates the first account from that pair while no account exists yet; after that, accounts are managed at `/dashboard/accounts` and these two variables are ignored).
+
+`SESSION_SECRET` signs the login cookies and is **required** — with it unset in production nobody can log in. Rotating it (and redeploying) logs every session out at once; that is the emergency way to revoke a deleted account's still-valid cookie for API calls (page loads re-check that the account exists, API routes other than `/api/accounts` only verify the signature).
 
 ## 5. Start everything
 

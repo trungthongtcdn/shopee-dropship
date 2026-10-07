@@ -927,3 +927,82 @@ a.stat-card:hover {
 .pagination-status {
   color: var(--color-muted-foreground);
 }
+
+/* ---------- Auth (login page, header user block, form errors) ---------- */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+.auth-card h1 {
+  margin-bottom: var(--space-2);
+}
+
+.user-menu {
+  position: relative;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.user-menu > summary {
+  list-style: none;
+  user-select: none;
+}
+
+.user-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-menu > summary::after {
+  content: "▾";
+  font-size: 10px;
+  margin-left: 6px;
+}
+
+.user-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+}
+
+.user-menu-panel .filter-dropdown-item {
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+
+.user-menu-button {
+  width: 100%;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+}
+
+.form-error {
+  color: var(--color-destructive);
+  font-size: 12px;
+  margin: var(--space-2) 0 0;
+}

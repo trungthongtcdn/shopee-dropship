@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionSecret, SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
 // Deliberately not applied to /api/sync/webhook — Apps Script authenticates
-// there with its own X-Sync-Secret header, checked inside the route handler.
+// there with its own X-Sync-Secret header, checked inside the route handler —
+// nor to /login and /api/auth/*, which have to be reachable while logged out.
 export const config = {
   matcher: [
     "/",
@@ -11,53 +13,27 @@ export const config = {
     "/api/zalo/:path*",
     "/api/report/:path*",
     "/api/don-huy/:path*",
+    "/api/accounts/:path*",
   ],
 };
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
+// Edge runtime: can only check the cookie's signature and expiry, not that
+// the account still exists (no Prisma here). That second check lives in
+// app/dashboard/layout.tsx and the accounts API — see lib/auth/currentUser.ts.
+export async function middleware(request: NextRequest) {
+  const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value, getSessionSecret());
+  if (session) return NextResponse.next();
 
-function unauthorized() {
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Shopee Dropship Reconciliation"' },
-  });
-}
-
-export function middleware(request: NextRequest) {
-  const expectedUser = process.env.DASHBOARD_USER;
-  const expectedPassword = process.env.DASHBOARD_PASSWORD;
-
-  // No credentials configured — fail open in local dev so `npm run dev`
-  // keeps working without extra setup, but this must always be set in any
-  // deployed environment (see DEPLOY_VPS.md / README).
-  if (!expectedUser || !expectedPassword) {
-    return NextResponse.next();
+  const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
 
-  const header = request.headers.get("authorization");
-  if (!header?.startsWith("Basic ")) {
-    return unauthorized();
-  }
-
-  const decoded = Buffer.from(header.slice(6), "base64").toString("utf-8");
-  const separatorIndex = decoded.indexOf(":");
-  if (separatorIndex === -1) {
-    return unauthorized();
-  }
-
-  const user = decoded.slice(0, separatorIndex);
-  const password = decoded.slice(separatorIndex + 1);
-
-  if (!timingSafeEqual(user, expectedUser) || !timingSafeEqual(password, expectedPassword)) {
-    return unauthorized();
-  }
-
-  return NextResponse.next();
+  // Must be an absolute URL: a hand-built relative `Location` header makes
+  // Next's middleware adapter throw "TypeError: Invalid URL" (found by actually
+  // loading a protected page — unit tests never run that adapter). Caddy's
+  // plain reverse_proxy keeps the public Host header, so request.url is right.
+  const destination = pathname + search;
+  const location = destination === "/" ? "/login" : `/login?next=${encodeURIComponent(destination)}`;
+  return NextResponse.redirect(new URL(location, request.url));
 }

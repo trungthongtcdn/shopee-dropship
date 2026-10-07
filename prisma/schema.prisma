@@ -416,3 +416,15 @@ model CancelReceiptSyncState {
 
   @@map("cancel_receipt_sync_state")
 }
+
+// Dashboard login accounts. Flat on purpose — every account can manage every
+// other account, no roles (see docs/superpowers/specs/2026-10-07-account-management-design.md).
+// `username` is always stored lower-cased so uniqueness is case-insensitive.
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}

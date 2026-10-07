@@ -1,7 +1,5 @@
 import { Be_Vietnam_Pro, Fira_Code } from "next/font/google";
 import "./globals.css";
-import { AppHeader } from "./dashboard/AppHeader";
-import { loadOverdueWarnings } from "@/lib/cancellation/overdueWarnings";
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ["latin", "vietnamese"],
@@ -17,23 +15,16 @@ const firaCode = Fira_Code({
   display: "swap",
 });
 
-// Forces every route (including /_not-found and "/") to render at request
-// time instead of being statically prerendered at build time — the layout
-// now queries the DB on every render (loadOverdueWarnings), and `next build`
-// has no DATABASE_URL available in every build context (confirmed: it broke
-// the zalo-poller image's build, which runs `next build` too but without a
-// live DB to query against).
-export const dynamic = "force-dynamic";
-
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const warnings = await loadOverdueWarnings();
-
+// Deliberately does no DB work and renders no app chrome: this layout also
+// wraps /login (no header there) and /_not-found, which `next build`
+// prerenders — a DB query here breaks the build wherever DATABASE_URL isn't
+// available (it broke the zalo-poller image once). The header, the
+// overdue-warning count and the "is this account still real" check live in
+// app/dashboard/layout.tsx instead.
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi" className={`${beVietnamPro.variable} ${firaCode.variable}`}>
-      <body>
-        <AppHeader overdueWarningCount={warnings.length} />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
