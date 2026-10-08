@@ -11,6 +11,9 @@ export interface WaybillItem {
 }
 
 export interface WaybillPage {
+  // 0-based position of this order's page in the source PDF — the key to
+  // re-ordering the PDF itself the same way the Excel is ordered.
+  pageIndex: number;
   shopeeOrderId: string;
   trackingCode: string | null;
   // "Tổng SL sản phẩm: N" printed on the label; null when the page has no
@@ -136,18 +139,21 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
 // as `pdftotext -layout` prints it (pages separated by form feeds).
 export function extractWaybillPagesFromText(text: string): WaybillPage[] {
   const pages: WaybillPage[] = [];
-  for (const pageText of text.split("\f")) {
+  // pdftotext ends every PDF page with a form feed, so the split index IS the
+  // page index — pages that name no order are skipped but still counted.
+  text.split("\f").forEach((pageText, pageIndex) => {
     const orderId = ORDER_ID_RE.exec(pageText)?.[1];
-    if (!orderId) continue;
+    if (!orderId) return;
 
     const { declaredTotalQuantity, items } = parseItemBlock(pageText);
     pages.push({
+      pageIndex,
       shopeeOrderId: orderId,
       trackingCode: TRACKING_RE.exec(pageText)?.[1] ?? null,
       declaredTotalQuantity,
       items,
     });
-  }
+  });
   return pages;
 }
 
@@ -208,4 +214,11 @@ export function groupWaybillPages(pages: WaybillPage[]): WaybillGroup[] {
   const groups: WaybillGroup[] = readable.map((groupPages) => ({ readable: true, pages: groupPages }));
   if (unreadable.length > 0) groups.push({ readable: false, pages: unreadable });
   return groups;
+}
+
+// Source-PDF page numbers in the exact order the groups list their orders — the
+// order of the Excel rows. The re-ordered PDF is built from this, so the two
+// can never disagree.
+export function orderedPageIndexes(groups: WaybillGroup[]): number[] {
+  return groups.flatMap((group) => group.pages.map((page) => page.pageIndex));
 }

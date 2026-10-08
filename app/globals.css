@@ -20,6 +20,7 @@
   --color-warning-bg: #fff4db;
   --color-warning-foreground: #8a4b00;
   --color-info: #1d4fb8;
+  --color-on-info: #ffffff;
   --color-info-bg: #eaf1ff;
   --color-neutral-bg: #f2f3f5;
   --color-ring: #c2410c;
@@ -67,6 +68,7 @@
     --color-warning-bg: #3a2a05;
     --color-warning-foreground: #fbbf24;
     --color-info: #60a5fa;
+    --color-on-info: #0b1f44;
     --color-info-bg: #0f2347;
     --color-neutral-bg: #182338;
     --color-ring: #fb923c;
@@ -416,6 +418,16 @@ html[data-hide-col~="note"] .col-note {
   color: var(--color-on-success);
 }
 .btn-success:hover {
+  opacity: 0.9;
+  text-decoration: none;
+}
+
+/* Blue: the re-ordered PDF — a third look next to neutral "Xem PDF" and green "Xem excel". */
+.btn-info {
+  background: var(--color-info);
+  color: var(--color-on-info);
+}
+.btn-info:hover {
   opacity: 0.9;
   text-decoration: none;
 }

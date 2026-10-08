@@ -3,6 +3,7 @@ import {
   extractWaybillPagesFromText,
   joinWrappedLines,
   groupWaybillPages,
+  orderedPageIndexes,
   type WaybillPage,
 } from "@/lib/waybill/items";
 
@@ -214,5 +215,44 @@ describe("groupWaybillPages", () => {
   it("raises no note when the quantities add up", () => {
     const [group] = groupWaybillPages(pages(PAGE_TWO_ITEMS));
     expect(group.pages[0].note).toBeNull();
+  });
+});
+
+describe("pageIndex (which page of the source PDF an order is on)", () => {
+  it("is the 0-based position in the document", () => {
+    const pages = extractWaybillPagesFromText(join(PAGE_PISTON, PAGE_WALLET, PAGE_FREESHIP_A));
+    expect(pages.map((p) => [p.shopeeOrderId, p.pageIndex])).toEqual([
+      ["261006UMM8YEW0", 0],
+      ["261006UXT0K4U8", 1],
+      ["261006UY0Q6UGG", 2],
+    ]);
+  });
+
+  it("still counts a page that names no order, so later pages keep their real position", () => {
+    const COVER = "\n   Some cover page with no order on it\n";
+    const pages = extractWaybillPagesFromText(join(COVER, PAGE_PISTON, COVER, PAGE_WALLET));
+    expect(pages.map((p) => [p.shopeeOrderId, p.pageIndex])).toEqual([
+      ["261006UMM8YEW0", 1],
+      ["261006UXT0K4U8", 3],
+    ]);
+  });
+});
+
+describe("orderedPageIndexes", () => {
+  it("lists source pages in exactly the order the groups (and so the Excel rows) have", () => {
+    // PDF order: piston(0), freeship A(1), wallet(2), freeship B(3)
+    const groups = groupWaybillPages(pages(PAGE_PISTON, PAGE_FREESHIP_A, PAGE_WALLET, PAGE_FREESHIP_B));
+    // Groups: the two freeship orders first (pages 1, 3), then the singles by name.
+    expect(orderedPageIndexes(groups)).toEqual([1, 3, 0, 2]);
+    expect(orderedPageIndexes(groups)).toEqual(groups.flatMap((g) => g.pages.map((p) => p.pageIndex)));
+  });
+
+  it("includes pages whose items couldn't be read, last", () => {
+    const groups = groupWaybillPages(pages(PAGE_NO_ITEMS, PAGE_PISTON));
+    expect(orderedPageIndexes(groups)).toEqual([1, 0]);
+  });
+
+  it("is empty for no groups", () => {
+    expect(orderedPageIndexes([])).toEqual([]);
   });
 });

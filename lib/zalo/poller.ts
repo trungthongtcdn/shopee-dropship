@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
-import { sendWaybillExcel, storeWaybillExcel } from "@/lib/waybill/deliver";
+import { sendSortedWaybillPdf, sendWaybillExcel, storeWaybillFiles } from "@/lib/waybill/deliver";
 import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
@@ -223,29 +223,34 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     pendingPdfMsgId: config.pendingPdfMsgId,
   });
 
-  // One download + parse per URL per cycle, shared by the Excel and the
-  // confirmation of the same PDF.
-  const waybills = new Map<string, Promise<ParsedWaybill>>();
+  // One download + parse per URL per cycle, shared by the Excel/PDF post and the
+  // confirmation of the same PDF. `pdf` keeps the downloaded bytes: the
+  // re-ordered copy is cut from them.
+  const waybills = new Map<string, Promise<ParsedWaybill & { pdf: Buffer }>>();
   const loadWaybill = (url: string) => {
     let waybill = waybills.get(url);
     if (!waybill) {
-      waybill = downloadWaybillPdf(url).then(parseWaybillPdf);
+      waybill = downloadWaybillPdf(url).then(async (pdf) => ({ ...(await parseWaybillPdf(pdf)), pdf }));
       waybills.set(url, waybill);
     }
     return waybill;
   };
 
-  // Warehouse copy: the same orders regrouped so identical ones sit together,
-  // posted back into the thread as soon as the PDF shows up — packing starts
-  // from this, before (and regardless of whether) anyone types "Đã in". Best
-  // effort: nothing here may fail the cycle.
+  // Warehouse copies: the same orders regrouped so identical ones sit together —
+  // as an Excel list and as the PDF itself with its pages in that order — posted
+  // back into the thread as soon as the PDF shows up. Packing starts from these,
+  // before (and regardless of whether) anyone types "Đã in". Best effort:
+  // nothing here may fail the cycle.
   const thread = { id: config.threadId, type: config.threadType as "user" | "group" };
   for (const pdfMessage of pdfMessages) {
     if (!markPdfMessageHandled(`${config.threadId}:${pdfMessage.msgId}`)) continue;
     if (isStalePdfMessage(pdfMessage.ts)) continue;
     try {
-      const { pages } = await loadWaybill(pdfMessage.pdfUrl);
-      await sendWaybillExcel({ pages, at: new Date(), thread });
+      const { pages, pdf } = await loadWaybill(pdfMessage.pdfUrl);
+      // One timestamp so the two files share a name stem and pair up visibly.
+      const at = new Date();
+      await sendWaybillExcel({ pages, at, thread });
+      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, thread });
     } catch (error) {
       console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
     }
@@ -253,7 +258,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
 
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const { orders, pages } = await loadWaybill(confirmation.pdfUrl);
+    const { orders, pages, pdf } = await loadWaybill(confirmation.pdfUrl);
     if (orders.length === 0) continue;
 
     // Uses processing time, not the message's own `ts` — the bridge API
@@ -271,9 +276,10 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     });
     confirmedCount += 1;
 
-    // Keep the Excel with the log row for the "Xem excel" button. It was
-    // already posted to the group when the PDF arrived, so no second post.
-    await storeWaybillExcel({ logId, pages, at: confirmedAt });
+    // Keep the Excel and the re-ordered PDF with the log row for the buttons on
+    // the Đóng đơn page. Both were already posted to the group when the PDF
+    // arrived, so no second post.
+    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf });
   }
 
   await prisma.zaloWatchConfig.update({

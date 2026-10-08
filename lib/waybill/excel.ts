@@ -80,8 +80,9 @@ export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer>
 }
 
 // Vietnam local time (not the server's UTC) — this name is what the warehouse
-// sees on the file in the Zalo group and in their downloads.
-export function waybillExcelFileName(at: Date): string {
+// sees on the files in the Zalo group and in their downloads. The Excel and the
+// re-ordered PDF share it (only the extension differs) so the pair is obvious.
+export function waybillFileStem(at: Date): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
     year: "numeric",
@@ -92,5 +93,9 @@ export function waybillExcelFileName(at: Date): string {
     hourCycle: "h23",
   }).formatToParts(at);
   const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
-  return `danh-sach-don-gom-nhom-${part("year")}${part("month")}${part("day")}-${part("hour")}${part("minute")}.xlsx`;
+  return `danh-sach-don-gom-nhom-${part("year")}${part("month")}${part("day")}-${part("hour")}${part("minute")}`;
+}
+
+export function waybillExcelFileName(at: Date): string {
+  return `${waybillFileStem(at)}.xlsx`;
 }

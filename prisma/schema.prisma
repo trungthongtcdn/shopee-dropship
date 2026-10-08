@@ -394,6 +394,10 @@ model WaybillFile {
   xlsxData          Bytes               @map("xlsx_data")
   pdfName           String?             @map("pdf_name")
   pdfData           Bytes?              @map("pdf_data")
+  // The source PDF's pages re-ordered exactly like the Excel rows. Null when the
+  // PDF couldn't be re-ordered, and for rows from before this existed.
+  sortedPdfName     String?             @map("sorted_pdf_name")
+  sortedPdfData     Bytes?              @map("sorted_pdf_data")
   createdAt         DateTime            @default(now()) @map("created_at")
   log               ZaloConfirmationLog @relation(fields: [confirmationLogId], references: [id], onDelete: Cascade)
 

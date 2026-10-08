@@ -32,6 +32,19 @@ Two orders are "identical" when their sorted item list — (name, variant, qty)
 per item — is equal. Groups are ordered by size (largest first), then by first
 item name; the unreadable group goes last. Inside a group the PDF order is kept.
 
+## Re-ordered PDF
+
+The same PDF with its pages rearranged to the Excel's order, so the warehouse can
+pack straight down the printed labels. Built from `groupWaybillPages(pages)` via
+`orderedPageIndexes` — the very list the Excel rows are written from — so the two
+cannot disagree (a test reads both back and compares). Each parsed page remembers
+its 0-based `pageIndex` in the source (pdftotext's form-feed split index; pages
+naming no order still count). Pages not in that list (a cover, a page the parser
+couldn't read) are kept, after the ordered ones — nothing is dropped. Pages are
+copied with `pdf-lib` (not re-rendered), so labels stay vector-sharp and text stays
+searchable; file size is about the same as the source. If the PDF can't be
+re-ordered (corrupt/encrypted) the Excel still goes out / is stored.
+
 ## Excel
 
 One sheet, header on row 1 (filter-friendly): `Nhóm | Số đơn | STT | Mã đơn hàng |
@@ -50,13 +63,18 @@ frozen header, autofilter. Built with `exceljs` (SheetJS CE can't style cells).
   (cycles that fail after posting leave the cursor behind); download/build/send
   errors are logged and never fail the cycle. On the later "Đã in" confirmation
   the Excel is only *stored* (for the "Xem excel" button), not posted again.
-- **Manual (link/upload):** build the xlsx; for an *uploaded* PDF also keep the
-  PDF bytes (a link PDF stays reachable by its URL). Stored in `waybill_files`
-  (Postgres `bytea`) keyed by the confirmation log row.
+- **Zalo, second file:** right after the Excel, the re-ordered PDF is posted to the
+  same thread with its own caption; both share a file-name stem
+  (`danh-sach-don-gom-nhom-YYYYMMDD-HHmm`) so they pair up.
+- **Manual (link/upload):** build the xlsx and the re-ordered PDF; for an *uploaded*
+  PDF also keep the original bytes (a link PDF stays reachable by its URL). Stored in
+  `waybill_files` (Postgres `bytea`, ~0.5 MB per re-ordered PDF) keyed by the
+  confirmation log row.
 - **UI (`/dashboard/dong-don`, column "Xem file"):** `Xem PDF` (unchanged for
-  links, now also works for uploads) + green `Xem excel` wherever a file exists.
+  links, now also works for uploads), blue `Xem PDF đã xếp` and green `Xem excel`
+  wherever those files exist.
   Rows from before this feature keep just `Xem PDF`.
-- `GET /api/waybills/[logId]/pdf|xlsx` serve the stored files behind the session
+- `GET /api/waybills/[logId]/pdf|sorted-pdf|xlsx` serve the stored files behind the session
   auth (added to the middleware matcher).
 
 ## Bridge (outside this repo)

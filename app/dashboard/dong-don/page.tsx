@@ -12,12 +12,12 @@ export default async function DongDonPage() {
     prisma.zaloConfirmationLog.findMany({ orderBy: { confirmedAt: "desc" }, take: 20 }),
   ]);
 
-  // Which of these rows have a stored Excel / PDF. Names only — never pull the
-  // bytea columns into a list page. Rows logged before the grouped-Excel
-  // feature have no file and keep just the plain "Xem PDF" link.
+  // Which of these rows have a stored Excel / re-ordered PDF / uploaded PDF. Names
+  // only — never pull the bytea columns into a list page. Rows logged before the
+  // grouped-Excel feature have no file and keep just the plain "Xem PDF" link.
   const storedFiles = await prisma.waybillFile.findMany({
     where: { confirmationLogId: { in: logs.map((log) => log.id) } },
-    select: { confirmationLogId: true, pdfName: true },
+    select: { confirmationLogId: true, pdfName: true, sortedPdfName: true },
   });
   const storedByLogId = new Map(storedFiles.map((file) => [file.confirmationLogId, file]));
 
@@ -96,6 +96,11 @@ export default async function DongDonPage() {
                         ) : (
                           <span className="cell-muted">{log.pdfUrl}</span>
                         )}
+                        {stored?.sortedPdfName ? (
+                          <a className="btn btn-info btn-sm" href={`/api/waybills/${log.id}/sorted-pdf`} target="_blank" rel="noreferrer">
+                            Xem PDF đã xếp
+                          </a>
+                        ) : null}
                         {stored ? (
                           <a className="btn btn-success btn-sm" href={`/api/waybills/${log.id}/xlsx`}>
                             Xem excel

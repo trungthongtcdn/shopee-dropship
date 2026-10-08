@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { makePdf, pageWidths } from "../waybill/pdfFixture";
 
 const fetchMessages = vi.fn();
 const sendFile = vi.fn();
@@ -14,8 +15,8 @@ const GOOD_PARSE = {
     { shopeeOrderId: "SP2", trackingCode: "T2" },
   ],
   pages: [
-    { shopeeOrderId: "SP1", trackingCode: "T1", declaredTotalQuantity: 1, items: [{ name: "Ghế", variant: "Đen", quantity: 1 }] },
-    { shopeeOrderId: "SP2", trackingCode: "T2", declaredTotalQuantity: 1, items: [{ name: "Ghế", variant: "Đen", quantity: 1 }] },
+    { pageIndex: 0, shopeeOrderId: "SP1", trackingCode: "T1", declaredTotalQuantity: 1, items: [{ name: "Ghế", variant: "Đen", quantity: 1 }] },
+    { pageIndex: 1, shopeeOrderId: "SP2", trackingCode: "T2", declaredTotalQuantity: 1, items: [{ name: "Ghế", variant: "Đen", quantity: 1 }] },
   ],
 };
 
@@ -59,7 +60,7 @@ describe("runPollCycle + grouped Excel", () => {
     downloadWaybillPdf.mockReset();
     parseWaybillPdf.mockReset();
     sendFile.mockResolvedValue(undefined);
-    downloadWaybillPdf.mockResolvedValue(Buffer.from("pdf"));
+    downloadWaybillPdf.mockImplementation(async () => makePdf(2));
     parseWaybillPdf.mockResolvedValue(GOOD_PARSE);
     await prisma.waybillFile.deleteMany();
     await prisma.zaloConfirmationLog.deleteMany();
@@ -70,18 +71,26 @@ describe("runPollCycle + grouped Excel", () => {
     });
   });
 
-  it("answers a PDF message with the grouped Excel right away, without waiting for anyone to confirm", async () => {
+  it("answers a PDF message right away with the grouped Excel and then the re-ordered PDF, without waiting for anyone to confirm", async () => {
     const ids = freshIds();
     fetchMessages.mockResolvedValue([pdfMessage(ids.pdf)]);
 
     const result = await runPollCycle();
 
     expect(result).toEqual({ processed: 1, confirmed: 0 });
-    expect(sendFile).toHaveBeenCalledTimes(1);
-    const [threadId, threadType, fileName, , message] = sendFile.mock.calls[0];
-    expect([threadId, threadType]).toEqual(["G1", "group"]);
-    expect(fileName).toMatch(/^danh-sach-don-gom-nhom-\d{8}-\d{4}\.xlsx$/);
-    expect(message).toBe("Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau");
+    expect(sendFile).toHaveBeenCalledTimes(2);
+
+    const [excelThread, excelType, excelName, , excelMessage] = sendFile.mock.calls[0];
+    expect([excelThread, excelType]).toEqual(["G1", "group"]);
+    expect(excelName).toMatch(/^danh-sach-don-gom-nhom-\d{8}-\d{4}\.xlsx$/);
+    expect(excelMessage).toBe("Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau");
+
+    const [pdfThread, pdfType, pdfName, pdfData, pdfMessageText] = sendFile.mock.calls[1];
+    expect([pdfThread, pdfType]).toEqual(["G1", "group"]);
+    // Same stem as the Excel, so the two files pair up in the group.
+    expect(pdfName).toBe(String(excelName).replace(/\.xlsx$/, ".pdf"));
+    expect(pdfMessageText).toBe("Đây là file PDF phiếu gửi hàng đã sắp xếp lại theo đúng thứ tự trong file Excel");
+    expect(await pageWidths(pdfData)).toEqual([101, 102]);
 
     // Nothing was confirmed, so no orders touched and nothing logged.
     expect(await prisma.zaloConfirmationLog.count()).toBe(0);
@@ -89,19 +98,21 @@ describe("runPollCycle + grouped Excel", () => {
     expect(config.lastProcessedMsgId).toBe(ids.pdf);
   });
 
-  it("posts the file once when 'Đã in' follows, and keeps a copy for the Xem excel button", async () => {
+  it("posts the files once when 'Đã in' follows, and keeps copies for the buttons on the page", async () => {
     const ids = freshIds();
     fetchMessages.mockResolvedValue([pdfMessage(ids.pdf), confirmMessage(ids.confirm)]);
 
     const result = await runPollCycle();
 
     expect(result).toEqual({ processed: 2, confirmed: 1 });
-    expect(sendFile).toHaveBeenCalledTimes(1);
-    // One download serves both the Excel and the confirmation.
+    // Excel + PDF, once — the confirmation doesn't post them again.
+    expect(sendFile).toHaveBeenCalledTimes(2);
+    // One download serves both the files and the confirmation.
     expect(downloadWaybillPdf).toHaveBeenCalledTimes(1);
 
     const log = await prisma.zaloConfirmationLog.findFirstOrThrow();
-    expect(await prisma.waybillFile.findUnique({ where: { confirmationLogId: log.id } })).not.toBeNull();
+    const stored = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    expect(stored.sortedPdfData).not.toBeNull();
   });
 
   it("answers every PDF message in a batch", async () => {
@@ -111,7 +122,8 @@ describe("runPollCycle + grouped Excel", () => {
 
     await runPollCycle();
 
-    expect(sendFile).toHaveBeenCalledTimes(2);
+    // Excel + PDF for each of the two messages.
+    expect(sendFile).toHaveBeenCalledTimes(4);
   });
 
   it("still confirms and advances the cursor when Zalo refuses the file", async () => {
@@ -138,14 +150,28 @@ describe("runPollCycle + grouped Excel", () => {
     parseWaybillPdf.mockResolvedValueOnce({ ...GOOD_PARSE, orders: [{ shopeeOrderId: undefined, trackingCode: null }] });
 
     await expect(runPollCycle()).rejects.toThrow();
-    expect(sendFile).toHaveBeenCalledTimes(1);
+    expect(sendFile).toHaveBeenCalledTimes(2);
     expect(await prisma.zaloConfirmationLog.count()).toBe(0);
 
     // The cursor never advanced, so the next cycle sees the same messages.
     await runPollCycle();
 
-    expect(sendFile).toHaveBeenCalledTimes(1);
+    expect(sendFile).toHaveBeenCalledTimes(2);
     expect(await prisma.zaloConfirmationLog.count()).toBe(1);
+  });
+
+  it("still posts the Excel when the PDF can't be re-ordered", async () => {
+    // restoreAllMocks() would also wipe sendFile's recorded calls, so restore only the console spy.
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ids = freshIds();
+    downloadWaybillPdf.mockImplementation(async () => Buffer.from("not really a pdf"));
+    fetchMessages.mockResolvedValue([pdfMessage(ids.pdf)]);
+
+    await runPollCycle();
+    consoleSpy.mockRestore();
+
+    expect(sendFile).toHaveBeenCalledTimes(1);
+    expect(String(sendFile.mock.calls[0][2])).toMatch(/\.xlsx$/);
   });
 
   it("skips a PDF message that is hours old (backlog after an outage or a group change)", async () => {

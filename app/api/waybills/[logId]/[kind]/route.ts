@@ -11,8 +11,9 @@ function contentDisposition(disposition: "inline" | "attachment", fileName: stri
   return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
-// Serves what lib/waybill/deliver.ts stored: the grouped Excel ("xlsx") and,
-// for hand-uploaded PDFs only, the PDF itself ("pdf").
+// Serves what lib/waybill/deliver.ts stored: the grouped Excel ("xlsx"), the
+// source PDF with its pages re-ordered like the Excel ("sorted-pdf"), and — for
+// hand-uploaded PDFs only — the original PDF ("pdf").
 export async function GET(request: NextRequest, { params }: { params: { logId: string; kind: string } }) {
   if (!(await getUserFromRequest(request))) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -41,6 +42,15 @@ export async function GET(request: NextRequest, { params }: { params: { logId: s
     });
     name = file?.pdfName ?? null;
     data = file?.pdfData ?? null;
+    contentType = "application/pdf";
+    disposition = "inline";
+  } else if (params.kind === "sorted-pdf") {
+    const file = await prisma.waybillFile.findUnique({
+      where: { confirmationLogId: logId },
+      select: { sortedPdfName: true, sortedPdfData: true },
+    });
+    name = file?.sortedPdfName ?? null;
+    data = file?.sortedPdfData ?? null;
     contentType = "application/pdf";
     disposition = "inline";
   } else {

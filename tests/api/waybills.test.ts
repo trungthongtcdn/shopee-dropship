@@ -15,7 +15,7 @@ async function signedInRequest(path: string) {
   return new NextRequest(`http://localhost${path}`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
 }
 
-async function seedFile(extra: { pdfName?: string; pdfData?: Buffer } = {}) {
+async function seedFile(extra: { pdfName?: string; pdfData?: Buffer; sortedPdfName?: string; sortedPdfData?: Buffer } = {}) {
   const log = await prisma.zaloConfirmationLog.create({
     data: { threadId: "manual", pdfUrl: "upload:x.pdf", orderIds: [], matchedCount: 0 },
   });
@@ -58,6 +58,21 @@ describe("GET /api/waybills/[logId]/[kind]", () => {
     expect(disposition).toMatch(/^inline; /);
     expect(disposition).toContain(`filename*=UTF-8''${encodeURIComponent("Phiếu gửi hàng (1).pdf")}`);
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-bytes");
+  });
+
+  it("opens the re-ordered PDF inline", async () => {
+    const id = await seedFile({ sortedPdfName: "danh-sach-don-gom-nhom-20261007-1015.pdf", sortedPdfData: Buffer.from("%PDF-sorted") });
+    const response = await call(id, "sorted-pdf");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toMatch(/^inline; filename="danh-sach-don-gom-nhom-20261007-1015\.pdf"/);
+    expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-sorted");
+  });
+
+  it("404s a re-ordered PDF that wasn't made (rows from before the feature, or a PDF that couldn't be re-ordered)", async () => {
+    const id = await seedFile();
+    expect((await call(id, "sorted-pdf")).status).toBe(404);
   });
 
   it("404s a PDF that was never stored (link PDFs are opened from their own URL)", async () => {

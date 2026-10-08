@@ -3,8 +3,10 @@ import ExcelJS from "exceljs";
 import { buildWaybillExcel, waybillExcelFileName } from "@/lib/waybill/excel";
 import { groupWaybillPages, type WaybillPage } from "@/lib/waybill/items";
 
+let nextPageIndex = 0;
 function page(orderId: string, tracking: string, items: [string, string, number][], declared?: number): WaybillPage {
   return {
+    pageIndex: nextPageIndex++,
     shopeeOrderId: orderId,
     trackingCode: tracking,
     declaredTotalQuantity: declared ?? (items.length ? items.reduce((s, i) => s + i[2], 0) : null),
