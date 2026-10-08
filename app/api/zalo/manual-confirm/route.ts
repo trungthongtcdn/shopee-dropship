@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
 import { storeWaybillFiles } from "@/lib/waybill/deliver";
+import { parsePerPage, type PerPage } from "@/lib/waybill/compose";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 
 // Fallback path for when the Zalo bridge doesn't capture the group message
@@ -21,6 +22,15 @@ export async function POST(request: NextRequest) {
   const sentAt = new Date(sentAtRaw);
   if (Number.isNaN(sentAt.getTime())) {
     return NextResponse.json({ error: "sentAt is not a valid date" }, { status: 400 });
+  }
+
+  // Labels per A4 sheet for the re-ordered PDF kept for the "Xem file" button (2, 4,
+  // 6 or 9); empty / "same" keeps the layout of the PDF that was uploaded.
+  let perPage: PerPage | null;
+  try {
+    perPage = parsePerPage(form.get("perPage"));
+  } catch {
+    return NextResponse.json({ error: "định dạng PDF không hợp lệ (chọn 2, 4, 6 hoặc 9 phiếu mỗi trang)" }, { status: 400 });
   }
 
   const file = form.get("pdfFile");
@@ -75,6 +85,7 @@ export async function POST(request: NextRequest) {
     sourcePdf,
     uploadedPdfName,
     layout,
+    perPage,
   });
 
   return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount, hasExcel, hasSortedPdf });

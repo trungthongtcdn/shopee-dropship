@@ -3,6 +3,8 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/db";
 import { makePdf, pageWidths } from "./pdfFixture";
 import { makeTiledPdf, renderedCellIds } from "./tiledFixture";
+import { idsOf, makeLabelPages, renderedInk } from "./composeFixture";
+import { outputSheet } from "@/lib/waybill/compose";
 
 const sendFile = vi.fn(async () => {});
 vi.mock("@/lib/zalo/bridge", () => ({ sendFile: (...args: unknown[]) => (sendFile as (...a: unknown[]) => Promise<void>)(...args) }));
@@ -239,6 +241,63 @@ describe("a PDF with several labels per sheet", () => {
   it("without a layout the same call would treat each sheet as one order's page", async () => {
     // The layout is what tells the two kinds of PDF apart; documents it is not set for behave as before.
     await sendSortedWaybillPdf({ pages: PAGES, at: AT, sourcePdf: await makePdf(3), thread: { id: "G123", type: "group" } });
+    expect(await pageWidths(sentData(0))).toEqual(SORTED_WIDTHS);
+  });
+});
+
+// The layout asked for on the Đóng đơn page: N labels per A4 sheet, whatever the PDF looked like.
+describe("a chosen PDF layout (perPage)", () => {
+  // Products A B A B A C on slots 0..5, so the order is A A A B B C = slots 0 2 4 1 3 5.
+  const PAGES6 = ["A", "B", "A", "B", "A", "C"].map((product, slot) => page(slot, `O${slot}`, product));
+  const sentData = (n: number) => (sendFile.mock.calls[n] as unknown as unknown[])[3] as Uint8Array;
+
+  beforeEach(async () => {
+    sendFile.mockReset();
+    await prisma.waybillFile.deleteMany();
+    await prisma.zaloConfirmationLog.deleteMany();
+  });
+
+  it("posts a one-label-per-page PDF as N to a sheet", async () => {
+    await sendSortedWaybillPdf({ pages: PAGES6, at: AT, sourcePdf: await makeLabelPages(6), perPage: 4, thread: { id: "G123", type: "group" } });
+    expect(idsOf(await renderedInk(sentData(0), outputSheet(4)))).toEqual([
+      [0, 2, 4, 1],
+      [3, 5, null, null],
+    ]);
+  });
+
+  it("posts a PDF with several labels per sheet as N to a sheet", async () => {
+    const source = await makeTiledPdf(2, 2, [[0, 1, 2, 3], [4, 5, null, null]]);
+    await sendSortedWaybillPdf({
+      pages: PAGES6,
+      at: AT,
+      sourcePdf: source,
+      layout: { cols: 2, rows: 2, occupied: [0, 1, 2, 3, 4, 5] },
+      perPage: 6,
+      thread: { id: "G123", type: "group" },
+    });
+    expect(idsOf(await renderedInk(sentData(0), outputSheet(6)))).toEqual([[0, 2, 4, 1, 3, 5]]);
+  });
+
+  it("stores the PDF in that layout, next to an Excel in the same order", async () => {
+    const log = await newLog();
+    const result = await storeWaybillFiles({ logId: log.id, pages: PAGES6, at: AT, sourcePdf: await makeLabelPages(6), perPage: 9 });
+
+    expect(result).toEqual({ stored: true, sortedPdfStored: true });
+    const file = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    expect(idsOf(await renderedInk(file.sortedPdfData!, outputSheet(9)))).toEqual([[0, 2, 4, 1, 3, 5, null, null, null]]);
+    expect(await orderIdsInExcel(file.xlsxData)).toEqual(["O0", "O2", "O4", "O1", "O3", "O5"]);
+  });
+
+  it("falls back to no PDF (but keeps the Excel) when the layout can't be made", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = await newLog();
+    const result = await storeWaybillFiles({ logId: log.id, pages: PAGES6, at: AT, sourcePdf: Buffer.from("not a pdf"), perPage: 4 });
+    vi.restoreAllMocks();
+    expect(result).toEqual({ stored: true, sortedPdfStored: false });
+  });
+
+  it("treats a null layout as 'keep the PDF as it is'", async () => {
+    await sendSortedWaybillPdf({ pages: PAGES, at: AT, sourcePdf: await makePdf(3), perPage: null, thread: { id: "G123", type: "group" } });
     expect(await pageWidths(sentData(0))).toEqual(SORTED_WIDTHS);
   });
 });

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { ManualConfirmForm } from "./ManualConfirmForm";
+import { WaybillFormatSelect } from "./WaybillFormatSelect";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { formatDateTimeVN } from "@/lib/format/datetime";
 
@@ -39,11 +40,12 @@ export default async function DongDonPage() {
               </>
             }
           />
+          <WaybillFormatSelect initial={config?.waybillPerPage ?? null} hasGroup={Boolean(config?.threadName)} />
         </div>
 
         <div className="card" style={{ flex: 1, minWidth: 320, marginBottom: 0 }}>
           <h3 style={{ marginTop: 0 }}>Xác nhận thủ công</h3>
-          <ManualConfirmForm />
+          <ManualConfirmForm defaultPerPage={config?.waybillPerPage ?? null} />
         </div>
       </div>
 

@@ -2,13 +2,16 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { WAYBILL_FORMAT_OPTIONS } from "./waybillFormat";
 
-export function ManualConfirmForm() {
+export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: number | null }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<"link" | "file">("link");
   const [pdfUrl, setPdfUrl] = useState("");
   const [sentAt, setSentAt] = useState("");
+  // Layout of the re-ordered PDF kept for the "Xem file" button; starts at what the Zalo group gets.
+  const [perPage, setPerPage] = useState(defaultPerPage === null ? "same" : String(defaultPerPage));
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -30,6 +33,7 @@ export function ManualConfirmForm() {
 
     const form = new FormData();
     form.set("sentAt", new Date(sentAt).toISOString());
+    form.set("perPage", perPage);
     if (file) form.set("pdfFile", file);
     else form.set("pdfUrl", pdfUrl.trim());
 
@@ -90,6 +94,16 @@ export function ManualConfirmForm() {
         </div>
       )}
 
+      <div className="field">
+        <span className="field-label">Định dạng PDF xuất ra</span>
+        <select className="select" value={perPage} onChange={(e) => setPerPage(e.target.value)} aria-label="Định dạng PDF xuất ra">
+          {WAYBILL_FORMAT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="field">
         <span className="field-label">Ngày, giờ gửi</span>
         <input className="input" type="datetime-local" value={sentAt} onChange={(e) => setSentAt(e.target.value)} />

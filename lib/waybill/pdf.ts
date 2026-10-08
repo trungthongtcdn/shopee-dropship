@@ -64,7 +64,10 @@ export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, orde
   }
 
   const sourceDoc = await PDFDocument.load(source);
-  const sheetsNeeded = [...new Set(sequence.map((slot) => Math.floor(slot / perSheet)))].filter((sheet) => sheet < sourceDoc.getPageCount());
+  // A page with no content at all can't be embedded by pdf-lib (and has nothing to show).
+  const sheetsNeeded = [...new Set(sequence.map((slot) => Math.floor(slot / perSheet)))].filter(
+    (sheet) => sheet < sourceDoc.getPageCount() && sourceDoc.getPage(sheet).node.Contents() !== undefined
+  );
   const output = await PDFDocument.create();
   const embedded = new Map<number, Awaited<ReturnType<PDFDocument["embedPdf"]>>[number]>();
   (await output.embedPdf(sourceDoc, sheetsNeeded)).forEach((page, i) => embedded.set(sheetsNeeded[i], page));

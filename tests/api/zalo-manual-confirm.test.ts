@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { PDFDocument } from "pdf-lib";
 import { makePdf, pageWidths } from "../waybill/pdfFixture";
 
 // downloadWaybillPdf hands back a real (1-page) PDF so the re-ordered copy can
@@ -128,6 +129,42 @@ describe("POST /api/zalo/manual-confirm", () => {
     expect(stored.pdfName).toBe("waybill.pdf");
     expect(Buffer.from(stored.pdfData!).equals(bytes)).toBe(true);
     expect(stored.sortedPdfData).not.toBeNull();
+  });
+
+  describe("the layout of the re-ordered PDF (perPage)", () => {
+    const keptSortedPdf = async () => {
+      const log = await prisma.zaloConfirmationLog.findFirstOrThrow({ where: { threadId: "manual" } });
+      return prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    };
+
+    it.each([
+      ["4", 595.28, 841.89],
+      ["9", 595.28, 841.89],
+      ["2", 841.89, 595.28],
+      ["6", 841.89, 595.28],
+    ])("lays it out %s to an A4 sheet when asked", async (perPage, width, height) => {
+      const response = await POST(makeFormRequest({ pdfUrl: "https://example.com/waybill.pdf", sentAt: "2026-06-25T10:00", perPage }));
+      expect(response.status).toBe(200);
+      const doc = await PDFDocument.load((await keptSortedPdf()).sortedPdfData!);
+      expect(doc.getPageCount()).toBe(1);
+      expect(doc.getPage(0).getWidth()).toBeCloseTo(width, 1);
+      expect(doc.getPage(0).getHeight()).toBeCloseTo(height, 1);
+    });
+
+    it.each(["same", ""])("keeps the PDF's own layout when the field is %j", async (perPage) => {
+      await POST(makeFormRequest({ pdfUrl: "https://example.com/waybill.pdf", sentAt: "2026-06-25T10:00", perPage }));
+      expect(await pageWidths((await keptSortedPdf()).sortedPdfData!)).toEqual([101]);
+    });
+
+    it("refuses an unknown layout before confirming anything", async () => {
+      await prisma.order.create({
+        data: { shopeeOrderId: "SP002", categoryName: "D100", status: "pending", rawRowHash: "h", sheetRowIndex: 1 },
+      });
+      const response = await POST(makeFormRequest({ pdfUrl: "https://example.com/waybill.pdf", sentAt: "2026-06-25T10:00", perPage: "5" }));
+      expect(response.status).toBe(400);
+      expect(await prisma.zaloConfirmationLog.count()).toBe(0);
+      expect((await prisma.order.findFirst({ where: { shopeeOrderId: "SP002" } }))?.sendStatus).not.toBe("sent");
+    });
   });
 
   it("returns 422 when no order ids are found in the pdf", async () => {

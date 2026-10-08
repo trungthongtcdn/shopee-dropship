@@ -3,6 +3,7 @@ import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 import { sendSortedWaybillPdf, sendWaybillExcel, storeWaybillFiles } from "@/lib/waybill/deliver";
+import { parsePerPage, type PerPage } from "@/lib/waybill/compose";
 import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
@@ -242,6 +243,14 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
   // before (and regardless of whether) anyone types "Đã in". Best effort:
   // nothing here may fail the cycle.
   const thread = { id: config.threadId, type: config.threadType as "user" | "group" };
+  // The layout the warehouse wants the PDF in (set on the Đóng đơn page). A value
+  // that isn't one of the choices is treated as "keep the sent layout".
+  let perPage: PerPage | null = null;
+  try {
+    perPage = parsePerPage(config.waybillPerPage);
+  } catch {
+    console.error(`[zalo-poller] ignoring unknown waybill_per_page ${config.waybillPerPage}`);
+  }
   for (const pdfMessage of pdfMessages) {
     if (!markPdfMessageHandled(`${config.threadId}:${pdfMessage.msgId}`)) continue;
     if (isStalePdfMessage(pdfMessage.ts)) continue;
@@ -250,7 +259,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
       // One timestamp so the two files share a name stem and pair up visibly.
       const at = new Date();
       await sendWaybillExcel({ pages, at, thread });
-      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread });
+      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, perPage, thread });
     } catch (error) {
       console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
     }
@@ -279,7 +288,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // Keep the Excel and the re-ordered PDF with the log row for the buttons on
     // the Đóng đơn page. Both were already posted to the group when the PDF
     // arrived, so no second post.
-    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout });
+    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout, perPage });
   }
 
   await prisma.zaloWatchConfig.update({

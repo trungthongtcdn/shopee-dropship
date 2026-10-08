@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PDFDocument } from "pdf-lib";
+import { makePdf } from "./pdfFixture";
 import { reorderPdfLabels } from "@/lib/waybill/pdf";
 import type { SheetLayout } from "@/lib/waybill/layout";
 import { makeTiledPdf, renderedCellIds, SHEET_HEIGHT, SHEET_WIDTH } from "./tiledFixture";
@@ -82,6 +83,21 @@ describe("reorderPdfLabels", () => {
 
     const out = await reorderPdfLabels(heavy, layout(SEVEN), [3, 2, 1, 0, 6, 5, 4]);
     expect(out.length).toBeLessThan(heavy.length * 3.5);
+  });
+
+  it("copes with a blank sheet in the source instead of failing", async () => {
+    // Sheets: 0 (labels 0-3), 1 (a page with no content at all), 2 (labels 8, 9, 10).
+    const doc = await PDFDocument.load(await makeTiledPdf(COLS, ROWS, [[0, 1, 2, 3], [4, 5, 6, null]]));
+    const [blank] = await doc.copyPages(await PDFDocument.load(await makePdf(1)), [0]);
+    doc.insertPage(1, blank);
+    const layoutWithBlank = { cols: COLS, rows: ROWS, occupied: [0, 1, 2, 3, 4, 5, 8, 9, 10] };
+    // Slots 4 and 5 sit on the blank sheet: nothing to draw, so those cells stay empty.
+    const out = await reorderPdfLabels(Buffer.from(await doc.save()), layoutWithBlank, [5, 4, 3, 2, 1, 0, 10, 9, 8]);
+    expect(await renderedCellIds(out, COLS, ROWS)).toEqual([
+      [null, null, 3, 2],
+      [1, 0, 6, 5],
+      [4, null, null, null],
+    ]);
   });
 
   it("rejects bytes that are not a PDF", async () => {
