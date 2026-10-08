@@ -1,4 +1,5 @@
 import { parseLabelText, type WaybillPage } from "./items";
+import { findOrderInfoHeadings, readOrderInfo } from "./orderInfo";
 
 // Waybill PDFs come in two shapes: one label per page (the usual A6 download —
 // handled by items.ts on plain `pdftotext -layout` text), or several labels
@@ -32,6 +33,10 @@ export interface SheetLayout {
   // Every slot holding any text at all — including cells that don't read as an
   // order, so re-ordering can keep them instead of dropping them.
   occupied: number[];
+  // Labels followed by an order-info table (see orderInfo.ts) → the height of the label
+  // proper in points, from the top of its cell down to just above that table. Output
+  // PDFs show only this part. Absent for sheets whose labels have nothing below them.
+  labelHeights?: Record<number, number>;
 }
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
@@ -114,13 +119,17 @@ function cellOf(grid: { cols: number; rows: number }, page: BboxPage, x: number,
 // label text. A word anywhere in a thin band round the line counts as cutting it,
 // so a line that happens to fall in the 1–2 pt gap between two words doesn't pass.
 const EDGE_BAND = 2;
+// Some prints set text flush against the cell's own edge (an order-info table that
+// starts exactly where its cell does). `flush` lets a word that starts at or just
+// after the line stay; one that begins before it, or ends right up against it, still cuts.
+const FLUSH_TOLERANCE = 0.5;
 
-function textCrossesCellEdge(grid: Grid, page: BboxPage): boolean {
+function textCrossesCellEdge(grid: Grid, page: BboxPage, flush: boolean): boolean {
   const xs = Array.from({ length: grid.cols - 1 }, (_, i) => ((i + 1) * page.width) / grid.cols);
   const ys = Array.from({ length: grid.rows - 1 }, (_, i) => ((i + 1) * page.height) / grid.rows);
-  return page.words.some(
-    (w) => xs.some((x) => w.x0 < x + EDGE_BAND && w.x1 > x - EDGE_BAND) || ys.some((y) => w.y0 < y + EDGE_BAND && w.y1 > y - EDGE_BAND)
-  );
+  const cuts = (from: number, to: number, line: number) =>
+    flush ? from < line - FLUSH_TOLERANCE && to > line - EDGE_BAND : from < line + EDGE_BAND && to > line - EDGE_BAND;
+  return page.words.some((w) => xs.some((x) => cuts(w.x0, w.x1, x)) || ys.some((y) => cuts(w.y0, w.y1, y)));
 }
 
 // How much of its cell the text of an average label takes up, 0..1. Browsers
@@ -156,9 +165,10 @@ function meanFill(grid: Grid, pages: BboxPage[], anchors: Anchor[][]): number {
 }
 
 // The even grid under which every sheet's order anchors land in different cells
-// and near the top of their cell, with no text cut by a cell edge — and, when
-// several grids pass that, the one the labels fill best. Null when no grid fits:
-// better to say so than to guess a layout and read the wrong text.
+// and near the top of their cell, with no text cut by a cell edge and every order-info
+// block in the cell of its own label — and, when several grids pass that, the one the
+// labels fill best. Null when no grid fits: better to say so than to guess a layout and
+// read the wrong text.
 function detectGrid(pages: BboxPage[], anchors: Anchor[][]): Grid | null {
   const maxLabels = Math.max(0, ...anchors.map((a) => a.length));
   if (maxLabels < 2) return null;
@@ -166,11 +176,13 @@ function detectGrid(pages: BboxPage[], anchors: Anchor[][]): Grid | null {
   // One grid for the whole document, so every sheet must be the same size.
   if (pages.some((p) => Math.abs(p.width - pages[0].width) > 1 || Math.abs(p.height - pages[0].height) > 1)) return null;
 
-  const fits = (grid: Grid) =>
+  const headings = pages.map((page) => findOrderInfoHeadings(page.words));
+
+  const fits = (grid: Grid, flush: boolean) =>
     pages.every((page, i) => {
-      if (textCrossesCellEdge(grid, page)) return false;
+      if (textCrossesCellEdge(grid, page, flush)) return false;
       const seen = new Set<number>();
-      return anchors[i].every((anchor) => {
+      const anchored = anchors[i].every((anchor) => {
         const cell = cellOf(grid, page, anchor.x, anchor.y);
         const cellTop = cell.row * (page.height / grid.rows);
         const nearTop = anchor.y - cellTop <= 0.3 * (page.height / grid.rows);
@@ -178,16 +190,41 @@ function detectGrid(pages: BboxPage[], anchors: Anchor[][]): Grid | null {
         seen.add(cell.index);
         return true;
       });
+      // A label's order-info table belongs to that label: a grid that puts it in a
+      // cell of its own (under the label, say) is not the layout of this sheet.
+      return anchored && headings[i].every((heading) => seen.has(cellOf(grid, page, heading.x0, heading.y0).index));
     });
 
-  let best: { grid: Grid; fill: number } | null = null;
-  for (const grid of candidateGrids(maxLabels)) {
-    if (!fits(grid)) continue;
-    const fill = meanFill(grid, pages, anchors);
-    const better = !best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && grid.cols * grid.rows < best.grid.cols * best.grid.rows);
-    if (better) best = { grid, fill };
-  }
-  return best?.grid ?? null;
+  // Where labels carry an order-info table the unit on the sheet is label + table, and
+  // a grid with a cell that no sheet uses, below one that some sheet does, is a finer
+  // grid than the sheet really has (blocks sitting two cells apart, each half as wide
+  // as its cell): the coarser grid that describes them exactly is the better reading.
+  // (Without tables there is nothing to tell a sheet whose second column is empty from
+  // a coarser sheet, and the finer reading stands.)
+  const hasInfo = headings.some((list) => list.length > 0);
+  const hasGap = (grid: Grid) => {
+    if (!hasInfo) return false;
+    const used = new Set<number>();
+    pages.forEach((page, i) => anchors[i].forEach((anchor) => used.add(cellOf(grid, page, anchor.x, anchor.y).index)));
+    return Math.max(...used) + 1 > used.size;
+  };
+
+  const pick = (flush: boolean): Grid | null => {
+    const valid = candidateGrids(maxLabels)
+      .filter((grid) => fits(grid, flush))
+      .map((grid) => ({ grid, fill: meanFill(grid, pages, anchors), gap: hasGap(grid) }));
+    const pool = valid.some((v) => !v.gap) ? valid.filter((v) => !v.gap) : valid;
+
+    let best: (typeof pool)[number] | null = null;
+    for (const v of pool) {
+      const better = !best || v.fill > best.fill + 1e-9 || (Math.abs(v.fill - best.fill) <= 1e-9 && v.grid.cols * v.grid.rows < best.grid.cols * best.grid.rows);
+      if (better) best = v;
+    }
+    return best?.grid ?? null;
+  };
+
+  // The strict reading first; only a sheet it can't explain gets the flush-tolerant one.
+  return pick(false) ?? pick(true);
 }
 
 // One cell's words as the text lines `-layout` would print for that label alone:
@@ -229,17 +266,34 @@ export interface TiledCell {
   text: string;
 }
 
-// Every label of a tiled document, plus the grid they sit in and the text of each
-// non-empty cell (for callers that read more from a label than its product lines).
-// Null when the sheets don't fit any grid we recognise.
+// The label proper ends this far above its order-info heading (the label's own
+// border sits just above the heading's text).
+const LABEL_BOTTOM_GAP = 2;
+
+// Every label of a document read by position, plus the grid they sit in and the text
+// of each non-empty cell (for callers that read more from a label than its product
+// lines). That is a tiled document, or one whose labels carry an order-info table
+// (read as one label per sheet). Null when the sheets don't fit any grid we recognise.
 export function extractTiledLabels(pages: BboxPage[]): { labels: WaybillPage[]; layout: SheetLayout; cells: TiledCell[] } | null {
-  const grid = detectGrid(pages, pages.map(orderAnchors));
+  const anchors = pages.map(orderAnchors);
+  let grid = detectGrid(pages, anchors);
+  // One label per sheet has no grid to find; with an order-info table under it, it
+  // still needs reading by position (and cutting), and the "grid" is the sheet.
+  if (
+    !grid &&
+    anchors.every((a) => a.length <= 1) &&
+    pages.every((p) => Math.abs(p.width - pages[0].width) <= 1 && Math.abs(p.height - pages[0].height) <= 1) &&
+    pages.some((p) => findOrderInfoHeadings(p.words).length > 0)
+  ) {
+    grid = { cols: 1, rows: 1 };
+  }
   if (!grid) return null;
 
   const perSheet = grid.cols * grid.rows;
   const labels: WaybillPage[] = [];
   const occupied: number[] = [];
   const texts: TiledCell[] = [];
+  const labelHeights: Record<number, number> = {};
 
   pages.forEach((page, sheet) => {
     const cells: BboxWord[][] = Array.from({ length: perSheet }, () => []);
@@ -254,8 +308,19 @@ export function extractTiledLabels(pages: BboxPage[]): { labels: WaybillPage[]; 
       texts.push({ slot, text });
       const label = parseLabelText(text, slot);
       if (label) labels.push(label);
+
+      const info = readOrderInfo(words);
+      if (!info) return;
+      labelHeights[slot] = Math.max(0, info.top - LABEL_BOTTOM_GAP - Math.floor(cell / grid.cols) * (page.height / grid.rows));
+      // The table's row n lists the label's n-th product.
+      label?.items.forEach((item, i) => {
+        const sku = info.skus.get(i + 1);
+        if (sku) item.sku = sku;
+      });
     });
   });
 
-  return { labels, layout: { cols: grid.cols, rows: grid.rows, occupied }, cells: texts };
+  const layout: SheetLayout = { cols: grid.cols, rows: grid.rows, occupied };
+  if (Object.keys(labelHeights).length > 0) layout.labelHeights = labelHeights;
+  return { labels, layout, cells: texts };
 }

@@ -2,6 +2,39 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { extractOrderIdsFromWaybillText, extractOrdersFromWaybillText, parseWaybillText } from "@/lib/zalo/parseWaybill";
 import { tiledXml, TILED_LAYOUT_TEXT } from "../waybill/bboxFixture";
 
+// A label with an order-info table under it ("THÔNG TIN ĐƠN HÀNG" and a table whose SKU
+// column is the 2nd one), as <word> XML; `x` is the left edge of its cell.
+function labelWithTable(x: number, id: string, sku: string, tableTop: number): string {
+  const word = (text: string, x0: number, y0: number, x1 = x0 + text.length * 2.6) =>
+    `<word xMin="${x0}" yMin="${y0}" xMax="${x1}" yMax="${y0 + 5.3}">${text}</word>`;
+  const words = (text: string, x0: number, y0: number) => {
+    let cursor = x0;
+    return text
+      .split(" ")
+      .map((part) => {
+        const out = word(part, cursor, y0);
+        cursor += part.length * 2.6 + 1.3;
+        return out;
+      })
+      .join("");
+  };
+  return [
+    words(`Mã vận đơn: TRK${id}`, x + 40, 8),
+    words(`Mã đơn hàng: ${id}`, x + 40, 15),
+    words("Nội dung hàng (Tổng SL sản phẩm: 1)", x + 5, 40),
+    words(`1. Hộp vít ${id}, Loại A, SL: 1`, x + 5, 46),
+    words("THÔNG TIN ĐƠN HÀNG", x + 1, tableTop),
+    word("#", x + 0.8, tableTop + 25, x + 3.6),
+    word("SKU", x + 14.3, tableTop + 25, x + 24.8),
+    word("Tên", x + 29.2, tableTop + 25, x + 38),
+    word("1", x + 0.8, tableTop + 41, x + 3.6),
+    word(sku, x + 14.3, tableTop + 41, x + 14.3 + 2 * sku.length),
+    word("Hộp", x + 29.2, tableTop + 41, x + 40),
+  ].join("");
+}
+const infoXml = (pages: { width: number; height: number; labels: string }[]) =>
+  `<doc>${pages.map((p) => `<page width="${p.width}" height="${p.height}">${p.labels}</page>`).join("")}</doc>`;
+
 const SAMPLE_TEXT = `
                                                     Mã vận đơn: SPXVN068985623989
                                                    Mã đơn hàng: 260922P8S4YMTB
@@ -103,5 +136,72 @@ describe("parseWaybillText", () => {
     expect(parsed.pages).toEqual([]);
     expect(parsed.orders.map((o) => o.shopeeOrderId)).toEqual(["X1", "Y2"]);
     expect(error).toHaveBeenCalled();
+  });
+
+  describe("labels with an order-info table", () => {
+    const TEXT = "Mã vận đơn: TRKO1   Mã vận đơn: TRKO2\nMã đơn hàng: O1   Mã đơn hàng: O2\n\nTHÔNG TIN ĐƠN HÀNG   THÔNG TIN ĐƠN HÀNG\n";
+
+    it("reads the SKUs and where each label ends, for a tiled sheet", async () => {
+      const xml = infoXml([{ width: 300, height: 400, labels: labelWithTable(0, "O1", "SKU1", 215) + labelWithTable(150, "O2", "SKU2", 215) }]);
+      const parsed = await parseWaybillText(TEXT, async () => xml);
+
+      expect(parsed.layout).toMatchObject({ cols: 2, rows: 1, occupied: [0, 1] });
+      expect(parsed.layout!.labelHeights).toEqual({ 0: 213, 1: 213 });
+      expect(parsed.pages.map((p) => [p.shopeeOrderId, p.items[0].sku])).toEqual([
+        ["O1", "SKU1"],
+        ["O2", "SKU2"],
+      ]);
+      // the table's "OrderSN:" line is not taken for a second order id
+      expect(parsed.orders).toEqual([
+        { shopeeOrderId: "O1", trackingCode: "TRKO1" },
+        { shopeeOrderId: "O2", trackingCode: "TRKO2" },
+      ]);
+    });
+
+    it("reads the same when each sheet holds one label", async () => {
+      const text = "Mã vận đơn: TRKO1\nMã đơn hàng: O1\nTHÔNG TIN ĐƠN HÀNG\f" + "Mã vận đơn: TRKO2\nMã đơn hàng: O2\nTHÔNG TIN ĐƠN HÀNG\f";
+      const xml = infoXml([
+        { width: 300, height: 400, labels: labelWithTable(0, "O1", "SKU1", 215) },
+        { width: 300, height: 400, labels: labelWithTable(0, "O2", "SKU2", 215) },
+      ]);
+      const parsed = await parseWaybillText(text, async () => xml);
+
+      expect(parsed.layout).toMatchObject({ cols: 1, rows: 1, occupied: [0, 1] });
+      expect(parsed.pages.map((p) => [p.pageIndex, p.items[0].sku])).toEqual([
+        [0, "SKU1"],
+        [1, "SKU2"],
+      ]);
+      expect(parsed.orders.map((o) => o.shopeeOrderId)).toEqual(["O1", "O2"]);
+    });
+
+    it("falls back to the plain text when the sheets differ in size", async () => {
+      const text =
+        "Mã vận đơn: TRKO1\nMã đơn hàng: O1\n\nNội dung hàng (Tổng SL sản phẩm: 1)\n1. Hộp vít, Loại A, SL: 1\n\nTHÔNG TIN ĐƠN HÀNG\f" +
+        "Mã vận đơn: TRKO2\nMã đơn hàng: O2\n\nNội dung hàng (Tổng SL sản phẩm: 1)\n1. Hộp vít, Loại A, SL: 1\n\nTHÔNG TIN ĐƠN HÀNG\f";
+      const xml = infoXml([
+        { width: 300, height: 400, labels: labelWithTable(0, "O1", "SKU1", 215) },
+        { width: 200, height: 400, labels: labelWithTable(0, "O2", "SKU2", 215) },
+      ]);
+      const parsed = await parseWaybillText(text, async () => xml);
+
+      expect(parsed.layout).toBeUndefined();
+      expect(parsed.pages.map((p) => [p.shopeeOrderId, p.items[0].sku])).toEqual([
+        ["O1", undefined],
+        ["O2", undefined],
+      ]);
+      expect(parsed.orders.map((o) => o.shopeeOrderId)).toEqual(["O1", "O2"]);
+    });
+
+    it("keeps confirming orders when the word positions can't be read", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const text = "Mã vận đơn: TRKO1\nMã đơn hàng: O1\n\nNội dung hàng (Tổng SL sản phẩm: 1)\n1. Hộp vít, Loại A, SL: 1\n\nTHÔNG TIN ĐƠN HÀNG\f";
+      const parsed = await parseWaybillText(text, async () => {
+        throw new Error("pdftotext blew up");
+      });
+
+      expect(parsed.orders.map((o) => o.shopeeOrderId)).toEqual(["O1"]);
+      expect(parsed.pages.map((p) => p.shopeeOrderId)).toEqual(["O1"]);
+      expect(error).toHaveBeenCalled();
+    });
   });
 });

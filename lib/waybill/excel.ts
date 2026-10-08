@@ -14,12 +14,26 @@ const GROUP_DIVIDER_COLOR = "FF6B7280";
 
 const thin = (color: string): Partial<ExcelJS.Border> => ({ style: "thin", color: { argb: color } });
 
+// A file whose labels carry the seller's SKUs (see orderInfo.ts) gets the sheet the
+// warehouse's accounting file is filled from (buildSkuSheet below); every other file
+// keeps the packing sheet.
+function hasSkus(groups: WaybillGroup[]): boolean {
+  return groups.some((group) => group.pages.some((page) => page.items.some((item) => item.sku)));
+}
+
+// `at` is when the file was made; only the SKU sheet shows it (print date and shift).
+export async function buildWaybillExcel(groups: WaybillGroup[], at: Date = new Date()): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  if (hasSkus(groups)) buildSkuSheet(workbook, groups, at);
+  else buildPackingSheet(workbook, groups);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 // One row per product line (a multi-item order repeats its order/tracking code
 // on each line so filtering and sorting by order still work). Rows of the same
 // group share a band colour and each new group starts under a darker rule, so
 // the clusters read at a glance from across a packing table.
-export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
+function buildPackingSheet(workbook: ExcelJS.Workbook, groups: WaybillGroup[]): void {
   const sheet = workbook.addWorksheet("Danh sách đơn", {
     views: [{ state: "frozen", ySplit: 1 }],
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1" },
@@ -76,7 +90,141 @@ export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer>
   });
 
   sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: HEADERS.length } };
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+// The columns of the accounting file ("FILE CONVERT FULL THÔNG TIN ĐƠN SHOPEE"), in its
+// order. What the labels can't tell (Kiot code and warehouse, cost, the cancelled /
+// duplicate / payout bookkeeping) is left empty for whoever maps it afterwards.
+const SKU_HEADERS = [
+  "NGÀY IN",
+  "BUỔI",
+  "STT",
+  "MÃ VẬN ĐƠN",
+  "Mã Kiot",
+  "Kho Kiot",
+  "SKU PHÂN LOẠI HÀNG",
+  "SỐ LƯỢNG",
+  "GIAN",
+  "Giá Vốn",
+  "Tổng GV",
+  "HỦY SAU IN",
+  "TRÙNG",
+  "Tiền xuất",
+  "SL SP",
+  "tổng Số Đơn",
+  "phân loại hàng",
+  "Nhóm",
+  "số đơn giống",
+] as const;
+const NOTE_HEADER = "Ghi chú";
+const SKU_WIDTHS = [13.8, 10.8, 8, 24, 14, 12, 24, 10.8, 20, 12, 12, 12, 10.8, 12, 10.8, 13.3, 20, 10.8, 12.8];
+const NOTE_WIDTH = 36;
+
+// 1-based column numbers.
+const COL = {
+  date: 1,
+  shift: 2,
+  number: 3,
+  tracking: 4,
+  kiotCode: 5,
+  kiotStore: 6,
+  sku: 7,
+  quantity: 8,
+  shop: 9,
+  cost: 10,
+  costTotal: 11,
+  variant: 17,
+  group: 18,
+  groupSize: 19,
+  note: 20,
+} as const;
+// Order-level cells: one value for the whole order, merged over its product lines.
+const ORDER_COLUMNS: number[] = [COL.number, COL.tracking, COL.group, COL.groupSize, COL.note];
+// Text the eye reads left to right; the rest is centred.
+const LEFT_COLUMNS = new Set<number>([COL.tracking, COL.kiotCode, COL.kiotStore, COL.sku, COL.shop, COL.variant, COL.note]);
+
+// The date and shift (sáng before noon, chiều after) in Vietnam, where the warehouse is.
+function printStamp(at: Date): { date: Date; shift: string } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(at);
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  // A calendar date has no time zone: Excel shows the UTC fields of the value as they are.
+  return { date: new Date(Date.UTC(part("year"), part("month") - 1, part("day"))), shift: part("hour") < 12 ? "Sáng" : "Chiều" };
+}
+
+// One row per product line, each SKU on a line of its own; the cells that belong to the
+// whole order (STT, tracking code, group, note) are merged over its lines. Orders keep
+// the order of the groups, so identical orders still stand next to each other.
+function buildSkuSheet(workbook: ExcelJS.Workbook, groups: WaybillGroup[], at: Date): void {
+  const withNotes = groups.some((group) => group.pages.some((page) => page.note));
+  const columnCount = SKU_HEADERS.length + (withNotes ? 1 : 0);
+  const sheet = workbook.addWorksheet("Sheet1", { views: [{ state: "frozen", ySplit: 1 }] });
+  sheet.columns = [...SKU_WIDTHS, ...(withNotes ? [NOTE_WIDTH] : [])].map((width) => ({ width }));
+
+  const border = { top: thin("FF000000"), bottom: thin("FF000000"), left: thin("FF000000"), right: thin("FF000000") };
+  const header = sheet.addRow([...SKU_HEADERS, ...(withNotes ? [NOTE_HEADER] : [])]);
+  header.height = 52;
+  header.eachCell((cell) => {
+    cell.font = { name: "Arial", size: 13, bold: true, color: { argb: "FF151515" } };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = border;
+  });
+
+  const { date, shift } = printStamp(at);
+  let orderNumber = 0;
+  groups.forEach((group, groupIndex) => {
+    for (const page of group.pages) {
+      orderNumber += 1;
+      const lines = page.items.length > 0 ? page.items : [null];
+      const firstRow = sheet.rowCount + 1;
+
+      lines.forEach((item, lineIndex) => {
+        // Cells with nothing to say stay truly empty (not ""), so ISBLANK and "fill the blanks"
+        // work for whoever maps the Kiot columns afterwards.
+        const cells: ExcelJS.CellValue[] = new Array(columnCount).fill(null);
+        cells[COL.date - 1] = date;
+        cells[COL.shift - 1] = shift;
+        cells[COL.number - 1] = orderNumber;
+        cells[COL.tracking - 1] = page.trackingCode || null;
+        cells[COL.sku - 1] = item?.sku || null;
+        cells[COL.quantity - 1] = item?.quantity ?? null;
+        cells[COL.shop - 1] = page.shopName || null;
+        cells[COL.variant - 1] = item?.variant || null;
+        cells[COL.group - 1] = groupIndex + 1;
+        cells[COL.groupSize - 1] = group.pages.length;
+        if (withNotes) cells[COL.note - 1] = (lineIndex === 0 && page.note) || null;
+        const row = sheet.addRow(cells);
+
+        // Cost total = cost × quantity, once somebody has filled the cost in.
+        const n = row.number;
+        row.getCell(COL.costTotal).value = { formula: `IF(OR(J${n}="",H${n}=""),"",J${n}*H${n})`, result: "" };
+
+        row.height = 30;
+        for (let column = 1; column <= columnCount; column++) {
+          const cell = row.getCell(column);
+          cell.font = { name: "Calibri", size: 13 };
+          cell.alignment = { vertical: "middle", horizontal: LEFT_COLUMNS.has(column) ? "left" : "center", wrapText: true };
+          cell.border = border;
+        }
+        row.getCell(COL.date).numFmt = "d/m/yyyy";
+        row.getCell(COL.cost).numFmt = "#,##0";
+        row.getCell(COL.costTotal).numFmt = "#,##0";
+      });
+
+      const lastRow = firstRow + lines.length - 1;
+      if (lastRow > firstRow) {
+        for (const column of ORDER_COLUMNS) {
+          if (column <= columnCount) sheet.mergeCells(firstRow, column, lastRow, column);
+        }
+      }
+    }
+  });
 }
 
 // Vietnam local time (not the server's UTC) — this name is what the warehouse

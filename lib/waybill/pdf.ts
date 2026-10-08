@@ -45,7 +45,9 @@ export async function reorderPdfPages(source: Buffer, order: number[]): Promise<
 //
 // Each source sheet is embedded ONCE and drawn once per label, clipped to that
 // label's cell — the fonts and barcodes are shared, so the file stays about the
-// size of the original — and the labels stay vector, sharp and searchable.
+// size of the original — and the labels stay vector, sharp and searchable. A label
+// with an order-info table under it (layout.labelHeights) is clipped above that table,
+// so the SKU list is not printed.
 export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, order: number[]): Promise<Buffer> {
   const { cols, rows } = layout;
   const perSheet = cols * rows;
@@ -89,7 +91,9 @@ export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, orde
       const from = cellOrigin(slot % perSheet);
       const to = cellOrigin(position);
 
-      sheet.pushOperators(pushGraphicsState(), rectangle(to.x, to.y, cellWidth, cellHeight), clip(), endPath());
+      // Only the label proper when there is an order-info table under it.
+      const shown = Math.min(cellHeight, layout.labelHeights?.[slot] ?? cellHeight);
+      sheet.pushOperators(pushGraphicsState(), rectangle(to.x, to.y + cellHeight - shown, cellWidth, shown), clip(), endPath());
       sheet.drawPage(sourcePage, { x: to.x - from.x, y: to.y - from.y });
       sheet.pushOperators(popGraphicsState());
     });

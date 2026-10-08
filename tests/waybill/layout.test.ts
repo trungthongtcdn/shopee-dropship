@@ -294,3 +294,140 @@ describe("2 and 6 labels per sheet", () => {
     expect(extractTiledLabels([sheet(labels(3))])!.layout).toMatchObject({ cols: 3, rows: 3 });
   });
 });
+
+// Labels with an order-info table under each ("THÔNG TIN ĐƠN HÀNG" and a table of the
+// order's lines with the seller's SKUs), as a seller's print has them: Letter landscape,
+// two labels side by side, 396 pt cells, each label ~190 pt wide at the cell's left and
+// its table running flush from the cell's very edge.
+describe("labels followed by an order-info table", () => {
+  const word = (text: string, x0: number, y0: number, x1: number): BboxWord => ({ text, x0, y0, x1, y1: y0 + 5.6 });
+
+  // rows: [SKU lines, (variation SKU lines)] — one entry per product line. Every
+  // character is 2.45 pt wide and a line holds 5 of them, like the print's narrow column.
+  function infoTable(x: number, top: number, rows: { sku?: string[]; variantSku?: string[] }[]): BboxWord[] {
+    const words = [
+      ...line("THÔNG TIN ĐƠN HÀNG", x + 2, top, 1.3),
+      ...line("OrderSN: X package 1", x + 2, top + 13),
+      word("#", x + 0.8, top + 25, x + 3.6),
+      word("SKU", x + 14.3, top + 25, x + 24.8),
+      word("Tên", x + 29.2, top + 25, x + 38),
+      word("sản", x + 39.4, top + 25, x + 48.6),
+      word("phẩm", x + 50, top + 25, x + 63.9),
+      word("SKU", x + 81.5, top + 25, x + 92),
+      word("Phân", x + 101.9, top + 25, x + 114.1),
+      word("SL", x + 141.2, top + 25, x + 147.6),
+    ];
+    let y = top + 41;
+    rows.forEach((spec, n) => {
+      words.push(word(String(n + 1), x + 0.8, y, x + 3.6), word("Hộp", x + 29.2, y, x + 40), word("1", x + 141.2, y, x + 144));
+      const lines = (list: string[] = [], column: number) =>
+        list.forEach((text, i) => words.push(word(text, x + column, y + 5 * i, x + column + text.length * 2.45)));
+      lines(spec.sku, 14.3);
+      lines(spec.variantSku, 81.5);
+      y += 5 * Math.max(1, spec.sku?.length ?? 0, spec.variantSku?.length ?? 0) + 6;
+    });
+    return words;
+  }
+
+  // The label at ~0.93 scale (≈190 pt wide); its table starts 310 pt down, past the middle
+  // of the page, as on the real print — so the sheet can't be read as two rows of cells.
+  const TABLE_TOP = 310;
+  const cell = (cellX: number, n: number, rows: { sku?: string[]; variantSku?: string[] }[], extra: Partial<LabelSpec> = {}) => [
+    ...label(cellX - 8, 0, simple(n, extra), 0.93),
+    ...infoTable(cellX, TABLE_TOP, rows),
+  ];
+
+  const landscape = (cells: BboxWord[][]): BboxPage => ({ width: 792, height: 612, words: cells.flat() });
+
+  const pages = [
+    landscape([cell(0, 0, [{ sku: ["TyHoi", "_D160", "_Den"] }]), cell(396, 1, [{ sku: ["Bo_05", "BanhX", "e"] }])]),
+    landscape([cell(0, 2, [{ sku: ["ConTh", "u"] }])]),
+  ];
+
+  it("reads two labels per sheet even though each table starts exactly at its cell's edge", () => {
+    const result = extractTiledLabels(pages)!;
+    expect(result.layout).toMatchObject({ cols: 2, rows: 1, occupied: [0, 1, 2] });
+    expect(result.labels.map((l) => l.pageIndex)).toEqual([0, 1, 2]);
+  });
+
+  it("attaches each product line's SKU", () => {
+    const { labels } = extractTiledLabels(pages)!;
+    expect(labels.map((l) => l.items.map((item) => item.sku))).toEqual([["TyHoi_D160_Den"], ["Bo_05BanhXe"], ["ConThu"]]);
+    // the rest of the line is read as before
+    expect(labels[0].items[0]).toMatchObject({ name: "Hộp vít số 0", variant: "Loại A", quantity: 1 });
+  });
+
+  it("matches the table's rows to the label's product lines by number (the SKU column, not SKU phân loại)", () => {
+    const two = landscape([
+      cell(0, 0, [{ sku: ["AAAAA", "B"] }, { sku: ["CC"], variantSku: ["VV"] }], {
+        total: 2,
+        itemLines: ["1. Hộp vít số 0, Loại A, SL: 1", "2. Đinh, Loại B, SL: 1"],
+      }),
+      cell(396, 1, [{ sku: ["Z"] }]),
+    ]);
+    const { labels } = extractTiledLabels([two])!;
+    expect(labels[0].items.map((item) => item.sku)).toEqual(["AAAAAB", "CC"]);
+    expect(labels[1].items.map((item) => item.sku)).toEqual(["Z"]);
+  });
+
+  it("records where each label ends, just above its table", () => {
+    const { layout } = extractTiledLabels(pages)!;
+    expect(Object.keys(layout.labelHeights!)).toEqual(["0", "1", "2"]);
+    // the cut sits a hair above the heading, inside the cell
+    for (const height of Object.values(layout.labelHeights!)) expect(height).toBeCloseTo(TABLE_TOP - 2, 1);
+  });
+
+  it("does not take the table for labels or cells of its own", () => {
+    const { labels, layout, cells } = extractTiledLabels(pages)!;
+    expect(labels).toHaveLength(3);
+    expect(cells.map((c) => c.slot)).toEqual([0, 1, 2]);
+    // not read as 2×2 (the table half of a cell as a cell of its own), nor as 4 columns
+    // of which every second is empty
+    expect([layout.cols, layout.rows]).toEqual([2, 1]);
+  });
+
+  it("measures each label's height from the top of its own cell", () => {
+    // 2 labels stacked on a portrait sheet, 306 pt cells: the second label's table is
+    // 306 pt lower than the first's.
+    const stacked: BboxPage = {
+      width: 612,
+      height: 792,
+      words: [
+        ...label(-8, 0, simple(0), 0.93),
+        ...infoTable(0, 244, [{ sku: ["A"] }]),
+        ...label(-8, 396, simple(1), 0.93),
+        ...infoTable(0, 396 + 244, [{ sku: ["B"] }]),
+      ],
+    };
+    const { layout } = extractTiledLabels([stacked])!;
+    expect(layout).toMatchObject({ cols: 1, rows: 2 });
+    expect(layout.labelHeights![0]).toBeCloseTo(layout.labelHeights![1], 0);
+  });
+
+  it("reads one label per sheet when it has a table", () => {
+    const single = (n: number) => ({ width: 300, height: 450, words: [...label(-8, 0, simple(n), 0.93), ...infoTable(0, 244, [{ sku: [`S${n}`] }])] });
+    const result = extractTiledLabels([single(0), single(1)])!;
+    expect(result.layout).toMatchObject({ cols: 1, rows: 1, occupied: [0, 1] });
+    expect(result.labels.map((l) => [l.pageIndex, l.items[0].sku])).toEqual([
+      [0, "S0"],
+      [1, "S1"],
+    ]);
+    expect(result.layout.labelHeights![0]).toBeGreaterThan(236);
+  });
+
+  it("still returns null for one label per sheet without a table (nothing to read by position)", () => {
+    expect(extractTiledLabels([{ width: 300, height: 450, words: label(0, 0, simple(0), 0.93) }])).toBeNull();
+  });
+
+  it("gives no label heights, and no SKUs, to sheets without tables", () => {
+    const { layout, labels } = extractTiledLabels([sheet([simple(0), simple(1), simple(2), simple(3)], 2, 2, 612, 792)])!;
+    expect(layout.labelHeights).toBeUndefined();
+    expect(labels.every((l) => l.items.every((item) => item.sku === undefined))).toBe(true);
+  });
+
+  it("keeps the label height of a table whose SKU columns are empty, and gives that line no SKU", () => {
+    const { layout, labels } = extractTiledLabels([landscape([cell(0, 0, [{}]), cell(396, 1, [{}])])])!;
+    expect(layout.labelHeights).toBeDefined();
+    expect(labels.map((l) => l.items[0].sku)).toEqual([undefined, undefined]);
+  });
+});

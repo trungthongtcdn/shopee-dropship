@@ -6,6 +6,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { extractWaybillPagesFromText, type WaybillPage } from "@/lib/waybill/items";
 import { extractTiledLabels, looksTiled, parseBboxXml, type SheetLayout } from "@/lib/waybill/layout";
+import { hasOrderInfoHeading } from "@/lib/waybill/orderInfo";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,8 +67,9 @@ export interface ParsedWaybill {
   // The same pages with their product lines, for the grouped Excel. Empty when
   // the document's layout couldn't be read (the confirmation still goes ahead).
   pages: WaybillPage[];
-  // Set when several labels are tiled on each sheet: `pages` are then labels, not
-  // PDF pages, and the re-ordered PDF has to be built label by label.
+  // Set when several labels are tiled on each sheet, or when each label has an
+  // order-info table under it to be cut off: `pages` are then labels, not PDF pages,
+  // and the re-ordered PDF has to be built label by label.
   layout?: SheetLayout;
 }
 
@@ -75,11 +77,14 @@ export interface ParsedWaybill {
 // and is read from the `-layout` text alone. A PDF with several labels tiled on a
 // sheet (a browser's "N pages per sheet" print) interleaves them line by line in
 // that text, so each label is read from its own cell instead (waybill/layout.ts);
-// `readBboxXml` is only called then. If the grid can't be worked out, the order
-// codes are still taken from the whole text — confirming orders must not depend on
-// the grouped files — and just `pages` stays empty.
+// so is one whose labels carry an order-info table (its SKU columns wrap too narrowly
+// for plain text, and the PDF is cut above the table). `readBboxXml` is only called
+// then. If the grid can't be worked out, the order codes are still taken from the
+// whole text — confirming orders must not depend on the grouped files — and for a
+// tiled document just `pages` stays empty.
 export async function parseWaybillText(text: string, readBboxXml: () => Promise<string>): Promise<ParsedWaybill> {
-  if (!looksTiled(text)) {
+  const tiledSheets = looksTiled(text);
+  if (!tiledSheets && !hasOrderInfoHeading(text)) {
     return { orders: extractOrdersFromWaybillText(text), pages: extractWaybillPagesFromText(text) };
   }
 
@@ -92,11 +97,13 @@ export async function parseWaybillText(text: string, readBboxXml: () => Promise<
         layout: tiled.layout,
       };
     }
-    console.warn("[waybill] several labels per page but no recognisable grid — grouped files skipped");
+    if (tiledSheets) console.warn("[waybill] several labels per page but no recognisable grid — grouped files skipped");
   } catch (error) {
     console.error("[waybill] reading tiled labels failed:", error);
   }
-  return { orders: extractOrdersFromWaybillText(text), pages: [] };
+  // One label per page whose sheets can't be read by position: as plain text, the
+  // order-info table stays in the PDF and the SKUs stay out of the Excel.
+  return { orders: extractOrdersFromWaybillText(text), pages: tiledSheets ? [] : extractWaybillPagesFromText(text) };
 }
 
 export async function parseWaybillPdf(buffer: Buffer): Promise<ParsedWaybill> {

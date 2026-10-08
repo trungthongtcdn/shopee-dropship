@@ -23,7 +23,7 @@ export const WAYBILL_SORTED_PDF_MESSAGE = "Đây là file PDF phiếu gửi hàn
 async function buildExcel(label: string, pages: WaybillPage[], at: Date): Promise<{ xlsx: Buffer; fileName: string } | null> {
   if (pages.length === 0) return null;
   try {
-    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages)), fileName: waybillExcelFileName(at) };
+    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages), at), fileName: waybillExcelFileName(at) };
   } catch (error) {
     console.error(`[waybill-excel] build failed (${label}):`, error);
     return null;

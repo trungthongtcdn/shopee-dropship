@@ -135,23 +135,19 @@ export async function composeLabelsPdf(source: Buffer, layout: SheetLayout | nul
     if (!used.has(slot) && Math.floor(slot / perSheet) < pageCount && hasContents(Math.floor(slot / perSheet))) sequence.push(slot);
   }
 
-  // Which part of its sheet each label sits on: the grid cell, or the whole page.
+  // Which part of its sheet each label sits on: the grid cell, or the whole page —
+  // cut above the order-info table when the label has one (layout.labelHeights), so
+  // the SKU list never reaches the output.
   const tileOf = (slot: number): { sheet: number; tile: Rect } => {
     const sheet = Math.floor(slot / perSheet);
     const { width, height } = sourceDoc.getPage(sheet).getSize();
-    if (!layout) return { sheet, tile: { x: 0, y: 0, width, height } };
-    const cell = slot % perSheet;
-    const cellWidth = width / layout.cols;
-    const cellHeight = height / layout.rows;
-    return {
-      sheet,
-      tile: {
-        x: (cell % layout.cols) * cellWidth,
-        y: height - (Math.floor(cell / layout.cols) + 1) * cellHeight,
-        width: cellWidth,
-        height: cellHeight,
-      },
-    };
+    const cell = layout ? slot % perSheet : 0;
+    const cols = layout?.cols ?? 1;
+    const cellWidth = width / cols;
+    const cellHeight = height / (layout?.rows ?? 1);
+    const shown = Math.min(cellHeight, layout?.labelHeights?.[slot] ?? cellHeight);
+    const top = height - Math.floor(cell / cols) * cellHeight;
+    return { sheet, tile: { x: (cell % cols) * cellWidth, y: top - shown, width: cellWidth, height: shown } };
   };
 
   // A label that is named but sits on a blank page is left as an empty cell.

@@ -8,6 +8,10 @@ export interface WaybillItem {
   name: string;
   variant: string;
   quantity: number;
+  // The seller's SKU of this line (the table's "SKU" column), for labels that carry an
+  // order-info table — see orderInfo.ts. Never part of the grouping: the
+  // same product always has the same SKU.
+  sku?: string;
 }
 
 export interface WaybillPage {
@@ -22,6 +26,8 @@ export interface WaybillPage {
   // item block at all.
   declaredTotalQuantity: number | null;
   items: WaybillItem[];
+  // The sender printed under "Từ:" — the shop the parcel goes out under ("gian hàng").
+  shopName?: string;
 }
 
 export interface GroupedPage extends WaybillPage {
@@ -140,6 +146,19 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
   return { declaredTotalQuantity, items };
 }
 
+// The sender: the first line under "Từ:" (the line also carries the receiver's
+// column, cut off the same way item lines are). Empty when there is none.
+function parseShopName(labelText: string): string {
+  const lines = labelText.split("\n");
+  const from = lines.findIndex((line) => /^\s*Từ:/.test(line));
+  if (from === -1) return "";
+  for (const line of lines.slice(from + 1, from + 4)) {
+    const text = cutRightColumn(line);
+    if (text !== "") return text;
+  }
+  return "";
+}
+
 // One label's text → the order it names, or null if it names none. `labelText`
 // is what `pdftotext -layout` prints for that label alone.
 export function parseLabelText(labelText: string, pageIndex: number): WaybillPage | null {
@@ -147,12 +166,14 @@ export function parseLabelText(labelText: string, pageIndex: number): WaybillPag
   if (!orderId) return null;
 
   const { declaredTotalQuantity, items } = parseItemBlock(labelText);
+  const shopName = parseShopName(labelText);
   return {
     pageIndex,
     shopeeOrderId: orderId,
     trackingCode: TRACKING_RE.exec(labelText)?.[1] ?? null,
     declaredTotalQuantity,
     items,
+    ...(shopName ? { shopName } : {}),
   };
 }
 

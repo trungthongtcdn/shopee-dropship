@@ -4,6 +4,7 @@ import {
   joinWrappedLines,
   groupWaybillPages,
   orderedPageIndexes,
+  parseLabelText,
   type WaybillPage,
 } from "@/lib/waybill/items";
 
@@ -287,5 +288,22 @@ describe("orderedPageIndexes", () => {
 
   it("is empty for no groups", () => {
     expect(orderedPageIndexes([])).toEqual([]);
+  });
+});
+
+describe("parseLabelText — the shop", () => {
+  const label = (from: string) => `Mã vận đơn: TRK1\nMã đơn hàng: O1\n\n${from}\n\nNội dung hàng (Tổng SL sản phẩm: 1)\n1. Hộp, A, SL: 1\n`;
+
+  it("is the sender under Từ:, without the receiver's column", () => {
+    const parsed = parseLabelText(label("Từ:                       Đến:\nKho Sỉ Đồ Thể Thao        NGUYỄN THANH HÙNG\nĐỊA CHỈ 56 MẠC THỊ BƯỞI    Honda Long Khánh"), 0);
+    expect(parsed!.shopName).toBe("Kho Sỉ Đồ Thể Thao");
+  });
+
+  it("skips a blank line between Từ: and the name", () => {
+    expect(parseLabelText(label("Từ:   Đến:\n\nFurni Home    Cuong Manh"), 0)!.shopName).toBe("Furni Home");
+  });
+
+  it("is absent when the label names no sender", () => {
+    expect(parseLabelText(label("Gọi 1900 6885"), 0)!.shopName).toBeUndefined();
   });
 });
