@@ -360,9 +360,6 @@ model ZaloWatchConfig {
   lastProcessedMsgId String?  @map("last_processed_msg_id")
   pendingPdfUrl      String?  @map("pending_pdf_url")
   pendingPdfMsgId    String?  @map("pending_pdf_msg_id")
-  // Labels per A4 sheet (2, 4, 6 or 9) of the re-ordered PDF posted to this thread;
-  // null keeps the layout of the PDF that was sent. Only the waybill flow reads it.
-  waybillPerPage     Int?     @map("waybill_per_page")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("zalo_watch_config")
@@ -450,6 +447,9 @@ model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
   passwordHash String   @map("password_hash")
+  // This account's choice for the layout of the re-ordered waybill PDF: 2, 4, 6 or 9
+  // labels per A4 sheet; null keeps the layout of the PDF that was uploaded.
+  waybillPerPage Int?   @map("waybill_per_page")
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("users")

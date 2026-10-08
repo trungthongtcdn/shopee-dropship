@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { PDFDocument } from "pdf-lib";
 import { prisma } from "@/lib/db";
 import { makePdf, pageWidths } from "../waybill/pdfFixture";
 import { makeTiledPdf, renderedCellIds } from "../waybill/tiledFixture";
-import { idsOf, makeLabelPages, renderedInk } from "../waybill/composeFixture";
-import { outputSheet } from "@/lib/waybill/compose";
 
 const fetchMessages = vi.fn();
 const sendFile = vi.fn();
@@ -241,68 +238,6 @@ describe("runPollCycle + grouped Excel", () => {
     const log = await prisma.zaloConfirmationLog.findFirstOrThrow();
     const stored = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
     expect(await renderedCellIds(stored.sortedPdfData!, 2, 2)).toEqual(expected);
-  });
-
-  describe("the layout chosen on the Đóng đơn page (waybill_per_page)", () => {
-    // Six one-label pages; products A B A B A C, so the order is slots 0 2 4 1 3 5.
-    const products = ["A", "B", "A", "B", "A", "C"];
-    const setUp = async (perPage: number | null) => {
-      downloadWaybillPdf.mockImplementation(async () => makeLabelPages(6));
-      parseWaybillPdf.mockResolvedValue({
-        orders: products.map((_, slot) => ({ shopeeOrderId: `SP${slot}`, trackingCode: `T${slot}` })),
-        pages: products.map((name, slot) => ({
-          pageIndex: slot,
-          shopeeOrderId: `SP${slot}`,
-          trackingCode: `T${slot}`,
-          declaredTotalQuantity: 1,
-          items: [{ name, variant: "V", quantity: 1 }],
-        })),
-      });
-      await prisma.zaloWatchConfig.update({ where: { purpose: WAYBILL_CONFIRM_PURPOSE }, data: { waybillPerPage: perPage } });
-    };
-
-    it("posts and keeps the PDF as N labels per sheet", async () => {
-      await setUp(4);
-      const ids = freshIds();
-      fetchMessages.mockResolvedValue([pdfMessage(ids.pdf), confirmMessage(ids.confirm)]);
-
-      await runPollCycle();
-
-      const expected = [
-        [0, 2, 4, 1],
-        [3, 5, null, null],
-      ];
-      expect(sendFile).toHaveBeenCalledTimes(2);
-      expect(idsOf(await renderedInk(sendFile.mock.calls[1][3], outputSheet(4)))).toEqual(expected);
-      const log = await prisma.zaloConfirmationLog.findFirstOrThrow();
-      const stored = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
-      expect(idsOf(await renderedInk(stored.sortedPdfData!, outputSheet(4)))).toEqual(expected);
-    });
-
-    it("keeps the sent PDF's layout when none is chosen", async () => {
-      await setUp(null);
-      const ids = freshIds();
-      fetchMessages.mockResolvedValue([pdfMessage(ids.pdf)]);
-
-      await runPollCycle();
-
-      const doc = await PDFDocument.load(sendFile.mock.calls[1][3]);
-      expect(doc.getPageCount()).toBe(6);
-    });
-
-    it("ignores a value that isn't one of the choices, instead of failing the cycle", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-      await setUp(5);
-      const ids = freshIds();
-      fetchMessages.mockResolvedValue([pdfMessage(ids.pdf)]);
-
-      const result = await runPollCycle();
-      consoleError.mockRestore(); // only the console spy: restoreAllMocks would also wipe sendFile's call records
-
-      expect(result).toEqual({ processed: 1, confirmed: 0 });
-      expect(sendFile).toHaveBeenCalledTimes(2);
-      expect((await PDFDocument.load(sendFile.mock.calls[1][3])).getPageCount()).toBe(6);
-    });
   });
 
   afterAll(async () => {

@@ -1,16 +1,19 @@
 import { prisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { ManualConfirmForm } from "./ManualConfirmForm";
-import { WaybillFormatSelect } from "./WaybillFormatSelect";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { formatDateTimeVN } from "@/lib/format/datetime";
+import { getCurrentUser } from "@/lib/auth/currentUser";
 
 export const dynamic = "force-dynamic";
 
 export default async function DongDonPage() {
-  const [config, logs] = await Promise.all([
+  const user = await getCurrentUser();
+  const [config, logs, account] = await Promise.all([
     prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } }),
     prisma.zaloConfirmationLog.findMany({ orderBy: { confirmedAt: "desc" }, take: 20 }),
+    // This account's saved choice of PDF layout (the page sits behind the sign-in check).
+    user ? prisma.user.findUnique({ where: { id: user.id }, select: { waybillPerPage: true } }) : null,
   ]);
 
   // Which of these rows have a stored Excel / re-ordered PDF / uploaded PDF. Names
@@ -40,12 +43,11 @@ export default async function DongDonPage() {
               </>
             }
           />
-          <WaybillFormatSelect initial={config?.waybillPerPage ?? null} hasGroup={Boolean(config?.threadName)} />
         </div>
 
         <div className="card" style={{ flex: 1, minWidth: 320, marginBottom: 0 }}>
           <h3 style={{ marginTop: 0 }}>Xác nhận thủ công</h3>
-          <ManualConfirmForm defaultPerPage={config?.waybillPerPage ?? null} />
+          <ManualConfirmForm defaultPerPage={account?.waybillPerPage ?? null} />
         </div>
       </div>
 

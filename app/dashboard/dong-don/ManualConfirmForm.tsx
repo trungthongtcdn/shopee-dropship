@@ -10,8 +10,25 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
   const [tab, setTab] = useState<"link" | "file">("link");
   const [pdfUrl, setPdfUrl] = useState("");
   const [sentAt, setSentAt] = useState("");
-  // Layout of the re-ordered PDF kept for the "Xem file" button; starts at what the Zalo group gets.
+  // Layout of the re-ordered PDF kept for the "Xem file" button. It is the signed-in
+  // account's own choice: starts at what the account saved and is saved again on change.
   const [perPage, setPerPage] = useState(defaultPerPage === null ? "same" : String(defaultPerPage));
+  const [formatNote, setFormatNote] = useState<string | null>(null);
+
+  async function chooseFormat(value: string) {
+    setPerPage(value);
+    setFormatNote("Đang lưu...");
+    try {
+      const response = await fetch("/api/accounts/me/waybill-format", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ perPage: value }),
+      });
+      setFormatNote(response.ok ? "Đã lưu cho tài khoản của bạn" : "Chưa lưu được lựa chọn này cho tài khoản");
+    } catch {
+      setFormatNote("Chưa lưu được lựa chọn này cho tài khoản");
+    }
+  }
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -96,13 +113,14 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
 
       <div className="field">
         <span className="field-label">Định dạng PDF xuất ra</span>
-        <select className="select" value={perPage} onChange={(e) => setPerPage(e.target.value)} aria-label="Định dạng PDF xuất ra">
+        <select className="select" value={perPage} onChange={(e) => void chooseFormat(e.target.value)} aria-label="Định dạng PDF xuất ra">
           {WAYBILL_FORMAT_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
+        {formatNote ? <span className="editor-status">{formatNote}</span> : null}
       </div>
       <div className="field">
         <span className="field-label">Ngày, giờ gửi</span>
