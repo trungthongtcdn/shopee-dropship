@@ -1,5 +1,6 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, clip, endPath, popGraphicsState, pushGraphicsState, rectangle } from "pdf-lib";
 import { waybillFileStem } from "./excel";
+import type { SheetLayout } from "./layout";
 
 export function waybillSortedPdfFileName(at: Date): string {
   return `${waybillFileStem(at)}.pdf`;
@@ -32,5 +33,63 @@ export async function reorderPdfPages(source: Buffer, order: number[]): Promise<
   // One copyPages call for the whole sequence: pdf-lib then copies the fonts and
   // other resources shared between pages once instead of once per page.
   for (const page of await output.copyPages(sourceDoc, sequence)) output.addPage(page);
+  return Buffer.from(await output.save());
+}
+
+// The same for a PDF with several labels tiled on each sheet: a new PDF with the
+// same sheet size and the same grid, whose cells hold the labels in `order`
+// (label slots, see layout.ts) filled row by row, sheet after sheet. Slots the
+// list doesn't name but that hold something keep their original order after the
+// listed ones, and a slot is used at most once. Empty cells are not carried over
+// (that is what closes the gaps), so the last sheet is simply shorter.
+//
+// Each source sheet is embedded ONCE and drawn once per label, clipped to that
+// label's cell — the fonts and barcodes are shared, so the file stays about the
+// size of the original — and the labels stay vector, sharp and searchable.
+export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, order: number[]): Promise<Buffer> {
+  const { cols, rows } = layout;
+  const perSheet = cols * rows;
+  const occupied = new Set(layout.occupied);
+
+  const used = new Set<number>();
+  const sequence: number[] = [];
+  for (const slot of order) {
+    if (Number.isInteger(slot) && occupied.has(slot) && !used.has(slot)) {
+      used.add(slot);
+      sequence.push(slot);
+    }
+  }
+  for (const slot of [...occupied].sort((a, b) => a - b)) {
+    if (!used.has(slot)) sequence.push(slot);
+  }
+
+  const sourceDoc = await PDFDocument.load(source);
+  const sheetsNeeded = [...new Set(sequence.map((slot) => Math.floor(slot / perSheet)))].filter((sheet) => sheet < sourceDoc.getPageCount());
+  const output = await PDFDocument.create();
+  const embedded = new Map<number, Awaited<ReturnType<PDFDocument["embedPdf"]>>[number]>();
+  (await output.embedPdf(sourceDoc, sheetsNeeded)).forEach((page, i) => embedded.set(sheetsNeeded[i], page));
+
+  const { width, height } = sourceDoc.getPage(0).getSize();
+  const cellWidth = width / cols;
+  const cellHeight = height / rows;
+  // PDF coordinates start at the bottom-left; cells are counted from the top-left.
+  const cellOrigin = (cell: number) => ({
+    x: (cell % cols) * cellWidth,
+    y: height - (Math.floor(cell / cols) + 1) * cellHeight,
+  });
+
+  for (let start = 0; start < sequence.length; start += perSheet) {
+    const sheet = output.addPage([width, height]);
+    sequence.slice(start, start + perSheet).forEach((slot, position) => {
+      const sourcePage = embedded.get(Math.floor(slot / perSheet));
+      if (!sourcePage) return;
+      const from = cellOrigin(slot % perSheet);
+      const to = cellOrigin(position);
+
+      sheet.pushOperators(pushGraphicsState(), rectangle(to.x, to.y, cellWidth, cellHeight), clip(), endPath());
+      sheet.drawPage(sourcePage, { x: to.x - from.x, y: to.y - from.y });
+      sheet.pushOperators(popGraphicsState());
+    });
+  }
   return Buffer.from(await output.save());
 }

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "lỗi khi đọc file PDF" }, { status: 400 });
   }
 
-  const { orders, pages } = parsed;
+  const { orders, pages, layout } = parsed;
   if (orders.length === 0) {
     return NextResponse.json({ error: "không tìm thấy mã đơn hàng nào trong file", orderIds: [] }, { status: 422 });
   }
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     at: new Date(),
     sourcePdf,
     uploadedPdfName,
+    layout,
   });
 
   return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount, hasExcel, hasSortedPdf });

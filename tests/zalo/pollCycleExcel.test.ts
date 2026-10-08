@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { makePdf, pageWidths } from "../waybill/pdfFixture";
+import { makeTiledPdf, renderedCellIds } from "../waybill/tiledFixture";
 
 const fetchMessages = vi.fn();
 const sendFile = vi.fn();
@@ -199,6 +200,44 @@ describe("runPollCycle + grouped Excel", () => {
     expect(sendFile).not.toHaveBeenCalled();
     const config = await prisma.zaloWatchConfig.findUniqueOrThrow({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } });
     expect(config.lastProcessedMsgId).toBe(ids.pdf);
+  });
+
+  it("re-orders a PDF with several labels per sheet label by label, and keeps that copy for the page buttons", async () => {
+    const ids = freshIds();
+    // Two 2×2 sheets, six labels. Slots 0..5 hold products A B A B A C, so the Excel
+    // (and the PDF) go A A A B B C = slots 0 2 4 1 3 5.
+    const products = ["A", "B", "A", "B", "A", "C"];
+    downloadWaybillPdf.mockImplementation(async () =>
+      makeTiledPdf(2, 2, [
+        [0, 1, 2, 3],
+        [4, 5, null, null],
+      ])
+    );
+    parseWaybillPdf.mockResolvedValue({
+      orders: products.map((_, slot) => ({ shopeeOrderId: `SP${slot}`, trackingCode: `T${slot}` })),
+      pages: products.map((name, slot) => ({
+        pageIndex: slot,
+        shopeeOrderId: `SP${slot}`,
+        trackingCode: `T${slot}`,
+        declaredTotalQuantity: 1,
+        items: [{ name, variant: "V", quantity: 1 }],
+      })),
+      layout: { cols: 2, rows: 2, occupied: [0, 1, 2, 3, 4, 5] },
+    });
+    fetchMessages.mockResolvedValue([pdfMessage(ids.pdf), confirmMessage(ids.confirm)]);
+
+    await runPollCycle();
+
+    const expected = [
+      [0, 2, 4, 1],
+      [3, 5, null, null],
+    ];
+    expect(sendFile).toHaveBeenCalledTimes(2);
+    expect(await renderedCellIds(sendFile.mock.calls[1][3], 2, 2)).toEqual(expected);
+
+    const log = await prisma.zaloConfirmationLog.findFirstOrThrow();
+    const stored = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    expect(await renderedCellIds(stored.sortedPdfData!, 2, 2)).toEqual(expected);
   });
 
   afterAll(async () => {

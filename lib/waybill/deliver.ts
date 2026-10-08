@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 import { sendFile } from "@/lib/zalo/bridge";
 import { buildWaybillExcel, waybillExcelFileName } from "./excel";
 import { groupWaybillPages, orderedPageIndexes, type WaybillPage } from "./items";
-import { reorderPdfPages, waybillSortedPdfFileName } from "./pdf";
+import type { SheetLayout } from "./layout";
+import { reorderPdfLabels, reorderPdfPages, waybillSortedPdfFileName } from "./pdf";
 
 // Captions the warehouse sees with the files in the Zalo group.
 export const WAYBILL_EXCEL_MESSAGE = "Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau";
@@ -32,12 +33,15 @@ async function buildSortedPdf(
   label: string,
   pages: WaybillPage[],
   sourcePdf: Buffer,
-  at: Date
+  at: Date,
+  layout?: SheetLayout
 ): Promise<{ pdf: Buffer; fileName: string } | null> {
   if (pages.length === 0) return null;
   try {
     const order = orderedPageIndexes(groupWaybillPages(pages));
-    return { pdf: await reorderPdfPages(sourcePdf, order), fileName: waybillSortedPdfFileName(at) };
+    // Several labels per sheet: move labels (cells), not whole pages.
+    const pdf = layout ? await reorderPdfLabels(sourcePdf, layout, order) : await reorderPdfPages(sourcePdf, order);
+    return { pdf, fileName: waybillSortedPdfFileName(at) };
   } catch (error) {
     console.error(`[waybill-pdf] re-ordering failed (${label}):`, error);
     return null;
@@ -51,6 +55,8 @@ export interface StoreWaybillFilesParams {
   at: Date;
   // The PDF the pages were read from; the re-ordered copy is made from it.
   sourcePdf: Buffer;
+  // Set when the PDF has several labels tiled on each sheet (see ParsedWaybill).
+  layout?: SheetLayout;
   // Set only for a hand-uploaded PDF, which has no URL to open later — then the
   // original is kept too. A pasted or Zalo link stays reachable at its own URL,
   // so it isn't copied.
@@ -67,12 +73,12 @@ export interface StoreWaybillFilesResult {
 // later. The Excel is the anchor: if it can't be built nothing is stored; if
 // only the PDF can't be re-ordered, the Excel is still kept.
 export async function storeWaybillFiles(params: StoreWaybillFilesParams): Promise<StoreWaybillFilesResult> {
-  const { logId, pages, at, sourcePdf, uploadedPdfName } = params;
+  const { logId, pages, at, sourcePdf, uploadedPdfName, layout } = params;
   const label = `log ${logId}`;
 
   const excel = await buildExcel(label, pages, at);
   if (!excel) return { stored: false, sortedPdfStored: false };
-  const sorted = await buildSortedPdf(label, pages, sourcePdf, at);
+  const sorted = await buildSortedPdf(label, pages, sourcePdf, at, layout);
 
   try {
     const data = {
@@ -123,12 +129,13 @@ export async function sendWaybillExcel(params: SendWaybillExcelParams): Promise<
 
 export interface SendSortedWaybillPdfParams extends SendWaybillExcelParams {
   sourcePdf: Buffer;
+  layout?: SheetLayout;
 }
 
 // Posts the PDF, its pages re-ordered like the Excel rows, into the same thread.
 export async function sendSortedWaybillPdf(params: SendSortedWaybillPdfParams): Promise<{ sent: boolean }> {
-  const { pages, at, sourcePdf, thread } = params;
-  const built = await buildSortedPdf(`thread ${thread.id}`, pages, sourcePdf, at);
+  const { pages, at, sourcePdf, thread, layout } = params;
+  const built = await buildSortedPdf(`thread ${thread.id}`, pages, sourcePdf, at, layout);
   if (!built) return { sent: false };
 
   try {

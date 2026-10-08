@@ -11,8 +11,10 @@ export interface WaybillItem {
 }
 
 export interface WaybillPage {
-  // 0-based position of this order's page in the source PDF — the key to
-  // re-ordering the PDF itself the same way the Excel is ordered.
+  // 0-based position of this order's label in the source PDF — the key to
+  // re-ordering the PDF itself the same way the Excel is ordered. With one label
+  // per page that is the page number; with several labels per sheet it is
+  // sheet × labels-per-sheet + cell (row by row), see layout.ts.
   pageIndex: number;
   shopeeOrderId: string;
   trackingCode: string | null;
@@ -58,6 +60,8 @@ export function joinWrappedLines(lines: string[]): string {
 function needsSpace(previous: string, next: string): boolean {
   if (previous.endsWith(",")) return true;
   if (/\d$/.test(previous) && /^\d/.test(next)) return false;
+  // The quantity marker itself can be what gets cut: "…, S" / "L: 1".
+  if (/(^|\s)S$/.test(previous) && /^L:/.test(next)) return false;
   if (!/^[\p{Lu}\d]/u.test(next)) return false;
 
   const lastWord = previous.split(/\s+/).pop() ?? "";
@@ -65,7 +69,8 @@ function needsSpace(previous: string, next: string): boolean {
   return true;
 }
 
-const ORDER_ID_RE = /Mã đơn hàng:\s*(\S+)/;
+// Pre-orders print "Mã đơn đặt trước:" where every other label has "Mã đơn hàng:".
+export const ORDER_ID_RE = /Mã đơn (?:hàng|đặt trước):\s*(\S+)/;
 const TRACKING_RE = /Mã vận đơn:\s*(\S+)/;
 const ITEM_BLOCK_RE = /Nội dung hàng\s*\(Tổng SL sản phẩm:\s*(\d+)\)/;
 const ITEM_START_RE = /^(\d+)\.\s+(.*)$/;
@@ -135,6 +140,22 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
   return { declaredTotalQuantity, items };
 }
 
+// One label's text → the order it names, or null if it names none. `labelText`
+// is what `pdftotext -layout` prints for that label alone.
+export function parseLabelText(labelText: string, pageIndex: number): WaybillPage | null {
+  const orderId = ORDER_ID_RE.exec(labelText)?.[1];
+  if (!orderId) return null;
+
+  const { declaredTotalQuantity, items } = parseItemBlock(labelText);
+  return {
+    pageIndex,
+    shopeeOrderId: orderId,
+    trackingCode: TRACKING_RE.exec(labelText)?.[1] ?? null,
+    declaredTotalQuantity,
+    items,
+  };
+}
+
 // One entry per label page that names an order. `text` is the whole document
 // as `pdftotext -layout` prints it (pages separated by form feeds).
 export function extractWaybillPagesFromText(text: string): WaybillPage[] {
@@ -142,17 +163,8 @@ export function extractWaybillPagesFromText(text: string): WaybillPage[] {
   // pdftotext ends every PDF page with a form feed, so the split index IS the
   // page index — pages that name no order are skipped but still counted.
   text.split("\f").forEach((pageText, pageIndex) => {
-    const orderId = ORDER_ID_RE.exec(pageText)?.[1];
-    if (!orderId) return;
-
-    const { declaredTotalQuantity, items } = parseItemBlock(pageText);
-    pages.push({
-      pageIndex,
-      shopeeOrderId: orderId,
-      trackingCode: TRACKING_RE.exec(pageText)?.[1] ?? null,
-      declaredTotalQuantity,
-      items,
-    });
+    const page = parseLabelText(pageText, pageIndex);
+    if (page) pages.push(page);
   });
   return pages;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/db";
 import { makePdf, pageWidths } from "./pdfFixture";
+import { makeTiledPdf, renderedCellIds } from "./tiledFixture";
 
 const sendFile = vi.fn(async () => {});
 vi.mock("@/lib/zalo/bridge", () => ({ sendFile: (...args: unknown[]) => (sendFile as (...a: unknown[]) => Promise<void>)(...args) }));
@@ -190,5 +191,54 @@ describe("sendSortedWaybillPdf", () => {
     const result = await sendSortedWaybillPdf({ pages: [], at: AT, sourcePdf: await makePdf(1), thread: { id: "G123", type: "group" } });
     expect(result).toEqual({ sent: false });
     expect(sendFile).not.toHaveBeenCalled();
+  });
+});
+
+// A PDF with several labels tiled on each sheet is re-ordered cell by cell, not page by page.
+describe("a PDF with several labels per sheet", () => {
+  // Two 2×2 sheets, slots 0..5 = products A B A B A C, so the order is A A A B B C = slots 0 2 4 1 3 5.
+  const TILED_PAGES = ["A", "B", "A", "B", "A", "C"].map((product, slot) => page(slot, `O${slot}`, product));
+  const LAYOUT = { cols: 2, rows: 2, occupied: [0, 1, 2, 3, 4, 5] };
+  const EXPECTED = [
+    [0, 2, 4, 1],
+    [3, 5, null, null],
+  ];
+  const tiledSource = () => makeTiledPdf(2, 2, [[0, 1, 2, 3], [4, 5, null, null]]);
+  // The file bytes of the n-th sendFile(thread, type, name, data, message) call.
+  const sentData = (n: number) => (sendFile.mock.calls[n] as unknown as unknown[])[3] as Uint8Array;
+
+  beforeEach(async () => {
+    sendFile.mockReset();
+    await prisma.waybillFile.deleteMany();
+    await prisma.zaloConfirmationLog.deleteMany();
+  });
+
+  it("posts a PDF whose labels follow the Excel order", async () => {
+    const result = await sendSortedWaybillPdf({
+      pages: TILED_PAGES,
+      at: AT,
+      sourcePdf: await tiledSource(),
+      layout: LAYOUT,
+      thread: { id: "G123", type: "group" },
+    });
+
+    expect(result).toEqual({ sent: true });
+    expect(await renderedCellIds(sentData(0), 2, 2)).toEqual(EXPECTED);
+  });
+
+  it("stores that PDF, and the Excel lists the same sequence", async () => {
+    const log = await newLog();
+    const result = await storeWaybillFiles({ logId: log.id, pages: TILED_PAGES, at: AT, sourcePdf: await tiledSource(), layout: LAYOUT });
+
+    expect(result).toEqual({ stored: true, sortedPdfStored: true });
+    const file = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    expect(await renderedCellIds(file.sortedPdfData!, 2, 2)).toEqual(EXPECTED);
+    expect(await orderIdsInExcel(file.xlsxData)).toEqual(["O0", "O2", "O4", "O1", "O3", "O5"]);
+  });
+
+  it("without a layout the same call would treat each sheet as one order's page", async () => {
+    // The layout is what tells the two kinds of PDF apart; documents it is not set for behave as before.
+    await sendSortedWaybillPdf({ pages: PAGES, at: AT, sourcePdf: await makePdf(3), thread: { id: "G123", type: "group" } });
+    expect(await pageWidths(sentData(0))).toEqual(SORTED_WIDTHS);
   });
 });

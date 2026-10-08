@@ -99,6 +99,12 @@ describe("joinWrappedLines", () => {
     expect(joinWrappedLines(["GHẾ VĂN PHÒNG FREESHI", "P ghế xoay"])).toBe("GHẾ VĂN PHÒNG FREESHIP ghế xoay");
   });
 
+  it("rejoins \"SL:\" when the label broke it between the S and the L", () => {
+    expect(joinWrappedLines(["1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, S", "L: 1"])).toBe(
+      "1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, SL: 1"
+    );
+  });
+
   it("puts a space after a line that ends in a comma", () => {
     expect(joinWrappedLines(["logo xe,", "VÍ ĐEN,VINFAST, SL: 1"])).toBe("logo xe, VÍ ĐEN,VINFAST, SL: 1");
   });
@@ -143,6 +149,33 @@ describe("extractWaybillPagesFromText", () => {
   it("keeps a page whose items can't be read, with an empty item list", () => {
     const [page] = extractWaybillPagesFromText(PAGE_NO_ITEMS);
     expect(page).toMatchObject({ shopeeOrderId: "261003N15DHKM8", trackingCode: "GYRK89W4", items: [], declaredTotalQuantity: null });
+  });
+
+  it("reads an item whose \"SL:\" the label broke in two", () => {
+    const [page] = extractWaybillPagesFromText(`
+  Mã vận đơn: SPXVN06415665229A
+  Mã đơn hàng: 2610071TTG1PYW
+
+Nội dung hàng (Tổng SL sản phẩm: 2)
+1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, S
+L: 2
+
+                         HN-20-25-
+                         HBVTU-N
+`);
+    expect(page.items).toEqual([{ name: "5 Bánh Xe Chân Ghế Xoay", variant: "combo 2 bánh", quantity: 2 }]);
+  });
+
+  it("reads a pre-order label, which names its order \"Mã đơn đặt trước\"", () => {
+    const [page] = extractWaybillPagesFromText(`
+  Mã vận đơn: SPXVN06581515206A
+  Mã đơn đặt trước: 261006AASITBPLDMMYM
+
+Nội dung hàng (Tổng SL sản phẩm: 1)
+1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, Combo 5 bánh, SL: 1
+`);
+    expect(page).toMatchObject({ shopeeOrderId: "261006AASITBPLDMMYM", trackingCode: "SPXVN06581515206A" });
+    expect(page.items).toHaveLength(1);
   });
 
   it("returns nothing for text with no order id", () => {
