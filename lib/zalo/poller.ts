@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
+import { isBotMessage } from "@/lib/zalo/botMessage";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 import { sendSortedWaybillPdf, sendWaybillExcel, storeWaybillFiles } from "@/lib/waybill/deliver";
 import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
@@ -49,13 +50,11 @@ export interface PlanResult {
 // message resolves it. A second PDF link before a confirmation replaces the
 // pending one — only the most recent unconfirmed link is tracked.
 //
-// `is_self` messages are NOT skipped: this bridge only ever reads (see
-// lib/zalo/bridge.ts — fetchMessages/searchGroups, no send capability), so
-// is_self never means "a message our own bot posted". In real deployments
-// the bridge is logged into the operator's own personal Zalo account (the
-// same one they use to send the waybill link and type "Đã in ..."), so
-// skipping is_self would silently ignore every message from the one person
-// actually running this workflow.
+// `is_self` messages are NOT skipped: the bridge is logged into the operator's own
+// personal Zalo account (the same one they use to send the waybill link and type "Đã
+// in ..."), so skipping is_self would silently ignore every message from the one
+// person actually running this workflow. The app's own posts come back as is_self too
+// (see botMessage.ts) — those are told apart by their "[Bot]" tag and skipped.
 export function planFromMessages(messages: ZaloMessage[], initialState: PollState): PlanResult {
   let state: PollState = { ...initialState };
   const confirmations: ConfirmationEvent[] = [];
@@ -69,6 +68,8 @@ export function planFromMessages(messages: ZaloMessage[], initialState: PollStat
     // tin nhắn") come through with non-string content — the bridge passes
     // raw Zalo payloads through uncoerced. Skip rather than crash the cycle.
     if (typeof message.content !== "string") continue;
+    // Our own posts (the grouped Excel's caption, warnings…) are never input.
+    if (isBotMessage(message.content)) continue;
 
     const pdfUrl = findPdfUrl(message.content);
     if (pdfUrl) {

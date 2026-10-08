@@ -1,3 +1,5 @@
+import { markBotMessage } from "@/lib/zalo/botMessage";
+
 export interface ZaloMessage {
   msg_id: string;
   from_uid: string;
@@ -47,11 +49,12 @@ export async function fetchMessages(
   return data.messages ?? [];
 }
 
+// Every text the app posts is tagged (see botMessage.ts) so the pollers don't read it back.
 export async function sendGroupMessage(groupId: string, message: string): Promise<void> {
   const response = await fetch(bridgeUrl("/send-group-message"), {
     method: "POST",
     headers: { ...bridgeHeaders(), "content-type": "application/json" },
-    body: JSON.stringify({ group_id: groupId, message }),
+    body: JSON.stringify({ group_id: groupId, message: markBotMessage(message) }),
   });
   if (!response.ok) {
     throw new Error(`Zalo bridge /send-group-message failed: HTTP ${response.status}`);
@@ -59,7 +62,9 @@ export async function sendGroupMessage(groupId: string, message: string): Promis
 }
 
 // Posts a file (with an optional caption) to a group or 1-1 thread. The bridge
-// takes it as base64 inside JSON — the Excel files this carries are tens of KB.
+// takes it as base64 inside JSON — the Excel files this carries are tens of KB. The
+// caption is tagged like any other post; without one the file name stands in, so
+// the message that goes out is never untagged.
 export async function sendFile(
   threadId: string,
   threadType: "user" | "group",
@@ -75,7 +80,7 @@ export async function sendFile(
       thread_type: threadType,
       filename: fileName,
       file_base64: data.toString("base64"),
-      ...(message ? { message } : {}),
+      message: markBotMessage(message || fileName),
     }),
   });
   if (!response.ok) {

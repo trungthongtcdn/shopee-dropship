@@ -2,6 +2,7 @@ import { CancelReceiptStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
+import { isBotMessage } from "@/lib/zalo/botMessage";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/poller.ts for the
 // other one ("waybill_confirm").
@@ -44,8 +45,10 @@ export interface CancelReceiptPlanResult {
 // received-date, unlike waybill-confirm where only the day matters and ts's
 // unit ambiguity wasn't worth the risk.
 //
-// `is_self` is NOT skipped, same reasoning as poller.ts: this bridge only
-// ever reads, and the operator's own account is usually the one logged in.
+// `is_self` is NOT skipped, same reasoning as poller.ts: the operator's own account
+// is the one logged in, so their typing is is_self too. What IS skipped is the app's
+// own posts (tagged, see botMessage.ts): the overdue warning lists order ids, and
+// reading it back would "confirm" exactly the orders it warns are still missing.
 export function planCancelReceiptMessages(messages: ZaloMessage[]): CancelReceiptPlanResult {
   const matches: CancelReceiptMatch[] = [];
   let lastMsgId: string | null = null;
@@ -61,6 +64,7 @@ export function planCancelReceiptMessages(messages: ZaloMessage[]): CancelReceip
     // cancel-receipt confirmations — ever got applied, silently, forever,
     // since lastProcessedMsgId also never advanced past it).
     if (typeof message.content !== "string") continue;
+    if (isBotMessage(message.content)) continue;
 
     const codes = extractOrderCodes(message.content);
     if (codes.length === 0) continue;
