@@ -7,11 +7,13 @@ import { cellText, extractTiledLabels, looksTiled, parseBboxXml, type BboxPage, 
 const H = 5.27;
 const CHAR = 2.6;
 
-function line(text: string, x: number, y: number): BboxWord[] {
+// `scale` 1 is the label as it sits in a Letter 3×3 cell (204×264 pt); a print
+// scales the label to its cell, so bigger cells hold proportionally bigger text.
+function line(text: string, x: number, y: number, scale = 1): BboxWord[] {
   let cursor = x;
   return text.split(" ").map((word) => {
-    const box = { text: word, x0: cursor, y0: y, x1: cursor + word.length * CHAR, y1: y + H };
-    cursor = box.x1 + 1.3;
+    const box = { text: word, x0: cursor, y0: y, x1: cursor + word.length * CHAR * scale, y1: y + H * scale };
+    cursor = box.x1 + 1.3 * scale;
     return box;
   });
 }
@@ -25,29 +27,34 @@ interface LabelSpec {
   rightOfLastItem?: string; // the label's right-hand column, on the same line as the last item line
 }
 
-function label(cellX: number, cellY: number, spec: LabelSpec): BboxWord[] {
-  const x = cellX + 13;
-  const y = cellY + 3;
-  const itemTop = y + 100;
+function label(cellX: number, cellY: number, spec: LabelSpec, s = 1): BboxWord[] {
+  const x = cellX + 13 * s;
+  const y = cellY + 3 * s;
+  const itemTop = y + 100 * s;
   const words = [
-    ...line(`Mã vận đơn: ${spec.tracking}`, x + 85, y + 20),
-    ...line(spec.orderLine ?? `Mã đơn hàng: ${spec.id}`, x + 85, y + 26),
-    ...line("Từ: Đến:", x + 4, y + 36),
-    ...line(`Nội dung hàng (Tổng SL sản phẩm: ${spec.total})`, x + 4, itemTop - 8),
+    ...line(`Mã vận đơn: ${spec.tracking}`, x + 85 * s, y + 20 * s, s),
+    ...line(spec.orderLine ?? `Mã đơn hàng: ${spec.id}`, x + 85 * s, y + 26 * s, s),
+    ...line("Từ: Đến:", x + 4 * s, y + 36 * s, s),
+    ...line(`Nội dung hàng (Tổng SL sản phẩm: ${spec.total})`, x + 4 * s, itemTop - 8 * s, s),
   ];
-  spec.itemLines.forEach((text, i) => words.push(...line(text, x + 4, itemTop + i * 6.1)));
-  if (spec.rightOfLastItem) words.push(...line(spec.rightOfLastItem, x + 120, itemTop + (spec.itemLines.length - 1) * 6.1));
-  words.push(...line("Gọi 1900 6885", x + 4, y + 240));
+  spec.itemLines.forEach((text, i) => words.push(...line(text, x + 4 * s, itemTop + i * 6.1 * s, s)));
+  if (spec.rightOfLastItem) words.push(...line(spec.rightOfLastItem, x + 120 * s, itemTop + (spec.itemLines.length - 1) * 6.1 * s, s));
+  // A real label's text spans nearly its whole width (this footer reaches the right edge).
+  words.push(...line("Chữ ký người nhận Xác nhận hàng", x + 90 * s, y + 215 * s, s));
+  words.push(...line("Gọi 1900 6885", x + 4 * s, y + 240 * s, s));
   return words;
 }
 
-const sheet = (labels: (LabelSpec | null)[], cols = 3, rows = 3, width = 612, height = 792): BboxPage => ({
-  width,
-  height,
-  words: labels.flatMap((spec, cell) =>
-    spec ? label((cell % cols) * (width / cols), Math.floor(cell / cols) * (height / rows), spec) : []
-  ),
-});
+const sheet = (labels: (LabelSpec | null)[], cols = 3, rows = 3, width = 612, height = 792): BboxPage => {
+  const scale = Math.min(width / cols / 204, height / rows / 264);
+  return {
+    width,
+    height,
+    words: labels.flatMap((spec, cell) =>
+      spec ? label((cell % cols) * (width / cols), Math.floor(cell / cols) * (height / rows), spec, scale) : []
+    ),
+  };
+};
 
 const simple = (n: number, extra: Partial<LabelSpec> = {}): LabelSpec => ({
   id: `ORD${n}`,
@@ -238,5 +245,52 @@ describe("4 labels per A4 sheet (2×2)", () => {
     const { labels, layout } = extractTiledLabels([a4([simple(0), null, simple(2), null])])!;
     expect(layout).toMatchObject({ cols: 2, rows: 2 });
     expect(labels.map((l) => l.pageIndex)).toEqual([0, 2]);
+  });
+});
+
+// 2 and 6 labels per sheet, on landscape and portrait paper. The grid is the one
+// the labels fill best among those that cut no text and keep every order id in
+// its own cell — so a sheet is never read with labels split across cells.
+describe("2 and 6 labels per sheet", () => {
+  const A4_LONG = 841.89;
+  const A4_SHORT = 595.28;
+  const labels = (n: number, from = 0) => Array.from({ length: n }, (_, i) => simple(from + i));
+  const slots = (result: ReturnType<typeof extractTiledLabels>) => result!.labels.map((l) => l.pageIndex);
+
+  it("2 side by side on landscape paper is 2×1", () => {
+    const pages = [sheet(labels(2), 2, 1, A4_LONG, A4_SHORT), sheet(labels(2, 2), 2, 1, A4_LONG, A4_SHORT), sheet(labels(1, 4), 2, 1, A4_LONG, A4_SHORT)];
+    const result = extractTiledLabels(pages)!;
+    expect(result.layout).toMatchObject({ cols: 2, rows: 1 });
+    expect(slots(result)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("2 on portrait paper is read whole whichever way they are laid out", () => {
+    // Stacked (1×2) and side by side in tall cells (2×1) both leave room for a finer
+    // grid that fits the labels just as well, and that is what is chosen — every
+    // label is still read whole and in order, the re-ordered sheets just hold 4.
+    for (const [cols, rows] of [[1, 2], [2, 1]]) {
+      const pages = [sheet(labels(2), cols, rows, A4_SHORT, A4_LONG), sheet(labels(2, 2), cols, rows, A4_SHORT, A4_LONG)];
+      const result = extractTiledLabels(pages)!;
+      expect(result.labels.map((l) => l.shopeeOrderId)).toEqual(["ORD0", "ORD1", "ORD2", "ORD3"]);
+      expect(result.labels.every((l) => l.items.length === 1)).toBe(true);
+    }
+  });
+
+  it("6 on landscape paper is 3×2", () => {
+    const result = extractTiledLabels([sheet(labels(6), 3, 2, A4_LONG, A4_SHORT), sheet(labels(3, 6), 3, 2, A4_LONG, A4_SHORT)])!;
+    expect(result.layout).toMatchObject({ cols: 3, rows: 2 });
+    expect(slots(result)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("6 on portrait paper is 2×3", () => {
+    const result = extractTiledLabels([sheet(labels(6), 2, 3, A4_SHORT, A4_LONG), sheet(labels(3, 6), 2, 3, A4_SHORT, A4_LONG)])!;
+    expect(result.layout).toMatchObject({ cols: 2, rows: 3 });
+    expect(slots(result)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(result.labels.every((l) => l.items.length === 1)).toBe(true);
+  });
+
+  it("a sparse 3×3 sheet is not taken for a 3×2 one", () => {
+    // Three labels in the top row fit 3×2 cells too; they fill 3×3 cells better.
+    expect(extractTiledLabels([sheet(labels(3))])!.layout).toMatchObject({ cols: 3, rows: 3 });
   });
 });

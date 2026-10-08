@@ -89,25 +89,18 @@ function orderAnchors(page: BboxPage): Anchor[] {
   return anchors;
 }
 
-// A label is an upright rectangle (A6-ish, height about 1.4× its width) printed
-// scaled into its cell, so a plausible cell is at least as tall as it is wide —
-// that rules out grids like 2×3 on a portrait sheet, which would otherwise fit a
-// sparse sheet (two or three labels) as well as the real grid does.
-const MIN_CELL_ASPECT = 1.0;
-const MAX_CELL_ASPECT = 1.9;
+type Grid = { cols: number; rows: number };
 
-function candidateGrids(maxLabels: number, page: BboxPage): { cols: number; rows: number }[] {
-  const grids: { cols: number; rows: number }[] = [];
+// Every even grid up to 4×4 that has room for the busiest sheet. Which one is
+// real is decided in detectGrid.
+function candidateGrids(maxLabels: number): Grid[] {
+  const grids: Grid[] = [];
   for (let cols = 1; cols <= 4; cols++) {
     for (let rows = 1; rows <= 4; rows++) {
-      const aspect = page.height / rows / (page.width / cols);
-      if (cols * rows >= Math.max(2, maxLabels) && aspect >= MIN_CELL_ASPECT && aspect <= MAX_CELL_ASPECT) grids.push({ cols, rows });
+      if (cols * rows >= Math.max(2, maxLabels)) grids.push({ cols, rows });
     }
   }
-  // Fewest cells first (a finer grid than the real one would also "fit"), then
-  // the one whose cells are closest to an upright label's shape.
-  const shape = (g: { cols: number; rows: number }) => Math.abs(Math.log(page.height / g.rows / (page.width / g.cols) / 1.4));
-  return grids.sort((a, b) => a.cols * a.rows - b.cols * b.rows || shape(a) - shape(b));
+  return grids;
 }
 
 function cellOf(grid: { cols: number; rows: number }, page: BboxPage, x: number, y: number) {
@@ -116,42 +109,85 @@ function cellOf(grid: { cols: number; rows: number }, page: BboxPage, x: number,
   return { col, row, index: row * grid.cols + col };
 }
 
-// In the real grid the lines between cells run through the white gaps between
-// labels; in a wrong one they cut straight through label text.
-function textCrossesCellEdge(grid: { cols: number; rows: number }, page: BboxPage): boolean {
+// In the real grid the lines between cells run through the white gutters between
+// labels (at least ~7 pt wide on real sheets); in a wrong one they cut through
+// label text. A word anywhere in a thin band round the line counts as cutting it,
+// so a line that happens to fall in the 1–2 pt gap between two words doesn't pass.
+const EDGE_BAND = 2;
+
+function textCrossesCellEdge(grid: Grid, page: BboxPage): boolean {
   const xs = Array.from({ length: grid.cols - 1 }, (_, i) => ((i + 1) * page.width) / grid.cols);
   const ys = Array.from({ length: grid.rows - 1 }, (_, i) => ((i + 1) * page.height) / grid.rows);
   return page.words.some(
-    (w) => xs.some((x) => w.x0 < x - 0.5 && w.x1 > x + 0.5) || ys.some((y) => w.y0 < y - 0.5 && w.y1 > y + 0.5)
+    (w) => xs.some((x) => w.x0 < x + EDGE_BAND && w.x1 > x - EDGE_BAND) || ys.some((y) => w.y0 < y + EDGE_BAND && w.y1 > y - EDGE_BAND)
   );
 }
 
+// How much of its cell the text of an average label takes up, 0..1. Browsers
+// scale every label to fit its cell, so under the real grid the text fills most of
+// the cell; under a finer or coarser one that still passes the checks (a sparse
+// sheet can) the labels sit in cells too big for them. Only cells that hold an
+// order id count — a stray note in another cell says nothing about the grid.
+function meanFill(grid: Grid, pages: BboxPage[], anchors: Anchor[][]): number {
+  let total = 0;
+  let cells = 0;
+  pages.forEach((page, p) => {
+    const labelCells = new Set(anchors[p].map((a) => cellOf(grid, page, a.x, a.y).index));
+    const boxes = new Map<number, { x0: number; y0: number; x1: number; y1: number }>();
+    for (const w of page.words) {
+      const index = cellOf(grid, page, (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2).index;
+      const box = boxes.get(index);
+      if (!box) boxes.set(index, { x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1 });
+      else {
+        box.x0 = Math.min(box.x0, w.x0);
+        box.y0 = Math.min(box.y0, w.y0);
+        box.x1 = Math.max(box.x1, w.x1);
+        box.y1 = Math.max(box.y1, w.y1);
+      }
+    }
+    const cellArea = (page.width / grid.cols) * (page.height / grid.rows);
+    for (const [index, box] of boxes) {
+      if (!labelCells.has(index)) continue;
+      total += ((box.x1 - box.x0) * (box.y1 - box.y0)) / cellArea;
+      cells += 1;
+    }
+  });
+  return cells === 0 ? 0 : total / cells;
+}
+
 // The even grid under which every sheet's order anchors land in different cells
-// and near the top of their cell, with no text cut by a cell edge. Null when no grid fits — better to say so than
-// to guess a layout and read the wrong text.
-function detectGrid(pages: BboxPage[], anchors: Anchor[][]): { cols: number; rows: number } | null {
+// and near the top of their cell, with no text cut by a cell edge — and, when
+// several grids pass that, the one the labels fill best. Null when no grid fits:
+// better to say so than to guess a layout and read the wrong text.
+function detectGrid(pages: BboxPage[], anchors: Anchor[][]): Grid | null {
   const maxLabels = Math.max(0, ...anchors.map((a) => a.length));
   if (maxLabels < 2) return null;
 
   // One grid for the whole document, so every sheet must be the same size.
   if (pages.some((p) => Math.abs(p.width - pages[0].width) > 1 || Math.abs(p.height - pages[0].height) > 1)) return null;
 
-  return (
-    candidateGrids(maxLabels, pages[0]).find((grid) =>
-      pages.every((page, i) => {
-        if (textCrossesCellEdge(grid, page)) return false;
-        const seen = new Set<number>();
-        return anchors[i].every((anchor) => {
-          const cell = cellOf(grid, page, anchor.x, anchor.y);
-          const cellTop = cell.row * (page.height / grid.rows);
-          const nearTop = anchor.y - cellTop <= 0.3 * (page.height / grid.rows);
-          if (!nearTop || seen.has(cell.index)) return false;
-          seen.add(cell.index);
-          return true;
-        });
-      })
-    ) ?? null
-  );
+  const fits = (grid: Grid) =>
+    pages.every((page, i) => {
+      if (textCrossesCellEdge(grid, page)) return false;
+      const seen = new Set<number>();
+      return anchors[i].every((anchor) => {
+        const cell = cellOf(grid, page, anchor.x, anchor.y);
+        const cellTop = cell.row * (page.height / grid.rows);
+        const nearTop = anchor.y - cellTop <= 0.3 * (page.height / grid.rows);
+        if (!nearTop || seen.has(cell.index)) return false;
+        seen.add(cell.index);
+        return true;
+      });
+    });
+
+  let best: { grid: Grid; fill: number } | null = null;
+  for (const grid of candidateGrids(maxLabels)) {
+    if (!fits(grid)) continue;
+    const fill = meanFill(grid, pages, anchors);
+    const better = !best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && grid.cols * grid.rows < best.grid.cols * best.grid.rows);
+    if (better) best = { grid, fill };
+  }
+  return best?.grid ?? null;
 }
 
 // One cell's words as the text lines `-layout` would print for that label alone:
