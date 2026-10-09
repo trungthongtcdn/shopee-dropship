@@ -61,12 +61,16 @@ describe("GET /api/waybills/[logId]/[kind]", () => {
   });
 
   it("opens the re-ordered PDF inline", async () => {
-    const id = await seedFile({ sortedPdfName: "danh-sach-don-gom-nhom-20261007-1015.pdf", sortedPdfData: Buffer.from("%PDF-sorted") });
+    const id = await seedFile({ sortedPdfName: "Furni_10h0710_3 đơn_Đã gom.pdf", sortedPdfData: Buffer.from("%PDF-sorted") });
     const response = await call(id, "sorted-pdf");
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/pdf");
-    expect(response.headers.get("content-disposition")).toMatch(/^inline; filename="danh-sach-don-gom-nhom-20261007-1015\.pdf"/);
+    // The name has accents and spaces: an ASCII fallback for old clients, the real name for the rest.
+    const name = "Furni_10h0710_3 đơn_Đã gom.pdf";
+    expect(response.headers.get("content-disposition")).toBe(
+      `inline; filename="${name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`
+    );
     expect(Buffer.from(await response.arrayBuffer()).toString()).toBe("%PDF-sorted");
   });
 

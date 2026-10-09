@@ -40,7 +40,7 @@ describe("reorderPdfPages", () => {
 describe("waybillSortedPdfFileName", () => {
   it("shares its name stem with the Excel so the two files pair up", () => {
     const at = new Date("2026-10-07T03:15:00Z");
-    expect(waybillSortedPdfFileName(at)).toBe("danh-sach-don-gom-nhom-20261007-1015.pdf");
-    expect(waybillSortedPdfFileName(at).replace(/\.pdf$/, "")).toBe(waybillExcelFileName(at).replace(/\.xlsx$/, ""));
+    expect(waybillSortedPdfFileName(at, 23)).toBe("Furni_10h0710_23 đơn_Đã gom.pdf");
+    expect(waybillSortedPdfFileName(at, 23).replace(/\.pdf$/, "")).toBe(waybillExcelFileName(at, 23).replace(/\.xlsx$/, ""));
   });
 });

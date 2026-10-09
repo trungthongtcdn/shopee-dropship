@@ -23,7 +23,7 @@ export const WAYBILL_SORTED_PDF_MESSAGE = "Đây là file PDF phiếu gửi hàn
 async function buildExcel(label: string, pages: WaybillPage[], at: Date): Promise<{ xlsx: Buffer; fileName: string } | null> {
   if (pages.length === 0) return null;
   try {
-    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages), at), fileName: waybillExcelFileName(at) };
+    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages), at), fileName: waybillExcelFileName(at, pages.length) };
   } catch (error) {
     console.error(`[waybill-excel] build failed (${label}):`, error);
     return null;
@@ -49,7 +49,7 @@ async function buildSortedPdf(
       : layout
         ? await reorderPdfLabels(sourcePdf, layout, order)
         : await reorderPdfPages(sourcePdf, order);
-    return { pdf, fileName: waybillSortedPdfFileName(at) };
+    return { pdf, fileName: waybillSortedPdfFileName(at, pages.length) };
   } catch (error) {
     console.error(`[waybill-pdf] re-ordering failed (${label}):`, error);
     return null;

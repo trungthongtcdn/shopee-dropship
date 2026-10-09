@@ -83,7 +83,7 @@ describe("runPollCycle + grouped Excel", () => {
 
     const [excelThread, excelType, excelName, , excelMessage] = sendFile.mock.calls[0];
     expect([excelThread, excelType]).toEqual(["G1", "group"]);
-    expect(excelName).toMatch(/^danh-sach-don-gom-nhom-\d{8}-\d{4}\.xlsx$/);
+    expect(excelName).toMatch(/^Furni_\d{1,2}h\d{4}_\d+ đơn_Đã gom\.xlsx$/);
     expect(excelMessage).toBe("Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau");
 
     const [pdfThread, pdfType, pdfName, pdfData, pdfMessageText] = sendFile.mock.calls[1];

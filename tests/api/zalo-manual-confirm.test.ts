@@ -110,8 +110,8 @@ describe("POST /api/zalo/manual-confirm", () => {
 
     const log = await prisma.zaloConfirmationLog.findFirstOrThrow({ where: { threadId: "manual" } });
     const file = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
-    expect(file.xlsxName).toMatch(/^danh-sach-don-gom-nhom-\d{8}-\d{4}\.xlsx$/);
-    expect(file.sortedPdfName).toMatch(/^danh-sach-don-gom-nhom-\d{8}-\d{4}\.pdf$/);
+    expect(file.xlsxName).toMatch(/^Furni_\d{1,2}h\d{4}_\d+ đơn_Đã gom\.xlsx$/);
+    expect(file.sortedPdfName).toMatch(/^Furni_\d{1,2}h\d{4}_\d+ đơn_Đã gom\.pdf$/);
     expect(await pageWidths(file.sortedPdfData!)).toEqual([101]);
     expect(file.pdfData).toBeNull();
   });

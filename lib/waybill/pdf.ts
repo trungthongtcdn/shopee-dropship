@@ -2,8 +2,8 @@ import { PDFDocument, clip, endPath, popGraphicsState, pushGraphicsState, rectan
 import { waybillFileStem } from "./excel";
 import type { SheetLayout } from "./layout";
 
-export function waybillSortedPdfFileName(at: Date): string {
-  return `${waybillFileStem(at)}.pdf`;
+export function waybillSortedPdfFileName(at: Date, orderCount: number): string {
+  return `${waybillFileStem(at, orderCount)}.pdf`;
 }
 
 // A copy of `source` with its pages rearranged: first `order` (0-based page

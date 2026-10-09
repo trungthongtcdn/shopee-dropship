@@ -59,8 +59,8 @@ describe("storeWaybillFiles", () => {
 
     expect(result).toEqual({ stored: true, sortedPdfStored: true });
     const file = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
-    expect(file.xlsxName).toBe("danh-sach-don-gom-nhom-20261007-1015.xlsx");
-    expect(file.sortedPdfName).toBe("danh-sach-don-gom-nhom-20261007-1015.pdf");
+    expect(file.xlsxName).toBe("Furni_10h0710_3 đơn_Đã gom.xlsx");
+    expect(file.sortedPdfName).toBe("Furni_10h0710_3 đơn_Đã gom.pdf");
     expect(await orderIdsInExcel(file.xlsxData)).toEqual(["O1", "O3", "O2"]);
     expect(await pageWidths(file.sortedPdfData!)).toEqual(SORTED_WIDTHS);
     // Not an upload, so the original isn't copied.
@@ -133,7 +133,7 @@ describe("sendWaybillExcel", () => {
     expect(result).toEqual({ sent: true });
     expect(sendFile).toHaveBeenCalledTimes(1);
     const [threadId, threadType, fileName, data, message] = sendFile.mock.calls[0] as unknown as [string, string, string, Buffer, string];
-    expect([threadId, threadType, fileName]).toEqual(["G123", "group", "danh-sach-don-gom-nhom-20261007-1015.xlsx"]);
+    expect([threadId, threadType, fileName]).toEqual(["G123", "group", "Furni_10h0710_3 đơn_Đã gom.xlsx"]);
     expect(message).toBe("Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau");
     expect(message).toBe(WAYBILL_EXCEL_MESSAGE);
     expect(await orderIdsInExcel(data)).toEqual(["O1", "O3", "O2"]);
@@ -168,7 +168,7 @@ describe("sendSortedWaybillPdf", () => {
     expect(result).toEqual({ sent: true });
     expect(sendFile).toHaveBeenCalledTimes(1);
     const [threadId, threadType, fileName, data, message] = sendFile.mock.calls[0] as unknown as [string, string, string, Buffer, string];
-    expect([threadId, threadType, fileName]).toEqual(["G123", "group", "danh-sach-don-gom-nhom-20261007-1015.pdf"]);
+    expect([threadId, threadType, fileName]).toEqual(["G123", "group", "Furni_10h0710_3 đơn_Đã gom.pdf"]);
     expect(message).toBe(WAYBILL_SORTED_PDF_MESSAGE);
     expect(await pageWidths(data)).toEqual(SORTED_WIDTHS);
   });

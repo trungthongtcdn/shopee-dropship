@@ -119,6 +119,29 @@ describe("buildWaybillExcel for labels with SKUs", () => {
     expect(rows[0]).toEqual(TEMPLATE_HEADERS);
   });
 
+  it("sets every row 25 high and every cell's text to size 12", async () => {
+    const { sheet } = await build();
+    expect(sheet.rowCount).toBe(6);
+    sheet.eachRow((row) => {
+      expect(row.height).toBe(25);
+      row.eachCell({ includeEmpty: true }, (cell) => expect(cell.font?.size).toBe(12));
+    });
+  });
+
+  it("makes each column wide enough for its header on one line", async () => {
+    const { sheet } = await build();
+    // "SKU PHÂN LOẠI HÀNG" is 18 characters; bold size 12 needs more than 1.4 digit widths each
+    expect(sheet.getColumn(7).width).toBeGreaterThanOrEqual(26);
+    expect(sheet.getColumn(12).width).toBeGreaterThanOrEqual(16);
+    expect(sheet.getColumn(19).width).toBeGreaterThanOrEqual(17);
+  });
+
+  it("widens the SKU column to the longest SKU so one 25-high line shows it all", async () => {
+    const long = "Móc 5-hyundai kèm quai da 1 lớp";
+    const { sheet } = await build([withSku("TRK_L1", [["Móc", "Đen", 1, long]])]);
+    expect(sheet.getColumn(7).width).toBeGreaterThanOrEqual(long.length);
+  });
+
   it("writes one row per product line: tracking code, SKU, quantity, shop, variant, group", async () => {
     const { rows } = await build();
     // Groups: the two "Ghế xoay" first (2 identical orders), then singles by product name.
@@ -194,12 +217,18 @@ describe("buildWaybillExcel for labels with SKUs", () => {
 });
 
 describe("waybillExcelFileName", () => {
-  it("uses Vietnam time and only filename-safe characters", () => {
-    // 2026-10-07T03:15:00Z is 10:15 in Việt Nam.
-    expect(waybillExcelFileName(new Date("2026-10-07T03:15:00Z"))).toBe("danh-sach-don-gom-nhom-20261007-1015.xlsx");
+  it("reads Furni_<hour>h<ddmm>_<orders> đơn_Đã gom, in Vietnam time", () => {
+    // 2026-10-09T02:20:00Z is 09:20 on the 9th in Việt Nam.
+    expect(waybillExcelFileName(new Date("2026-10-09T02:20:00Z"), 23)).toBe("Furni_9h0910_23 đơn_Đã gom.xlsx");
+  });
+
+  it("drops the zero of the hour only; the day and month always have two digits", () => {
+    expect(waybillExcelFileName(new Date("2026-12-25T07:05:00Z"), 4)).toBe("Furni_14h2512_4 đơn_Đã gom.xlsx");
+    expect(waybillExcelFileName(new Date("2026-03-05T01:05:00Z"), 4)).toBe("Furni_8h0503_4 đơn_Đã gom.xlsx");
   });
 
   it("rolls the date over with the VN offset, not UTC", () => {
-    expect(waybillExcelFileName(new Date("2026-10-06T20:30:00Z"))).toBe("danh-sach-don-gom-nhom-20261007-0330.xlsx");
+    // 20:30 UTC on the 6th is 03:30 on the 7th in Việt Nam.
+    expect(waybillExcelFileName(new Date("2026-10-06T20:30:00Z"), 1)).toBe("Furni_3h0710_1 đơn_Đã gom.xlsx");
   });
 });

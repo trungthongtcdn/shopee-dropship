@@ -120,6 +120,31 @@ const NOTE_HEADER = "Ghi chú";
 const SKU_WIDTHS = [13.8, 10.8, 8, 24, 14, 12, 24, 10.8, 20, 12, 12, 12, 10.8, 12, 10.8, 13.3, 20, 10.8, 12.8];
 const NOTE_WIDTH = 36;
 
+// The warehouse's format for this file: text in size 12, every row 25 high. A row that
+// high holds one line, so each column is made wide enough for its header and for the
+// longest text in it (up to a limit) — otherwise the text would be cut off.
+const FONT_SIZE = 12;
+const ROW_HEIGHT = 25;
+const MAX_TEXT_WIDTH = 60;
+// Column width is counted in digits of the default font; these are how many one character
+// of the header (bold Arial, capitals wider) and of the body (Calibri) take, plus padding.
+const HEADER_CHAR_WIDTH = { capital: 1.65, other: 1.4, space: 0.7 };
+const BODY_CHAR_WIDTH = 1.2;
+const COLUMN_PADDING = 2;
+
+function headerWidth(text: string): number {
+  let width = COLUMN_PADDING;
+  for (const char of text) {
+    width += char === " " ? HEADER_CHAR_WIDTH.space : char === char.toUpperCase() ? HEADER_CHAR_WIDTH.capital : HEADER_CHAR_WIDTH.other;
+  }
+  return Math.ceil(width);
+}
+
+function textWidth(texts: (string | null | undefined)[]): number {
+  const longest = Math.max(0, ...texts.map((text) => text?.length ?? 0));
+  return Math.min(MAX_TEXT_WIDTH, Math.ceil(longest * BODY_CHAR_WIDTH + COLUMN_PADDING));
+}
+
 // 1-based column numbers.
 const COL = {
   date: 1,
@@ -165,13 +190,25 @@ function buildSkuSheet(workbook: ExcelJS.Workbook, groups: WaybillGroup[], at: D
   const withNotes = groups.some((group) => group.pages.some((page) => page.note));
   const columnCount = SKU_HEADERS.length + (withNotes ? 1 : 0);
   const sheet = workbook.addWorksheet("Sheet1", { views: [{ state: "frozen", ySplit: 1 }] });
-  sheet.columns = [...SKU_WIDTHS, ...(withNotes ? [NOTE_WIDTH] : [])].map((width) => ({ width }));
+  const headers = [...SKU_HEADERS, ...(withNotes ? [NOTE_HEADER] : [])];
+  const pages = groups.flatMap((group) => group.pages);
+  const items = pages.flatMap((page) => page.items);
+  // Free-text columns grow to their longest text; the rest only to fit their header.
+  const wanted = new Map<number, number>([
+    [COL.tracking, textWidth(pages.map((page) => page.trackingCode))],
+    [COL.sku, textWidth(items.map((item) => item.sku))],
+    [COL.shop, textWidth(pages.map((page) => page.shopName))],
+    [COL.variant, textWidth(items.map((item) => item.variant))],
+  ]);
+  sheet.columns = headers.map((text, i) => ({
+    width: Math.max([...SKU_WIDTHS, NOTE_WIDTH][i], headerWidth(text), wanted.get(i + 1) ?? 0),
+  }));
 
   const border = { top: thin("FF000000"), bottom: thin("FF000000"), left: thin("FF000000"), right: thin("FF000000") };
-  const header = sheet.addRow([...SKU_HEADERS, ...(withNotes ? [NOTE_HEADER] : [])]);
-  header.height = 52;
+  const header = sheet.addRow(headers);
+  header.height = ROW_HEIGHT;
   header.eachCell((cell) => {
-    cell.font = { name: "Arial", size: 13, bold: true, color: { argb: "FF151515" } };
+    cell.font = { name: "Arial", size: FONT_SIZE, bold: true, color: { argb: "FF151515" } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = border;
   });
@@ -205,10 +242,10 @@ function buildSkuSheet(workbook: ExcelJS.Workbook, groups: WaybillGroup[], at: D
         const n = row.number;
         row.getCell(COL.costTotal).value = { formula: `IF(OR(J${n}="",H${n}=""),"",J${n}*H${n})`, result: "" };
 
-        row.height = 30;
+        row.height = ROW_HEIGHT;
         for (let column = 1; column <= columnCount; column++) {
           const cell = row.getCell(column);
-          cell.font = { name: "Calibri", size: 13 };
+          cell.font = { name: "Calibri", size: FONT_SIZE };
           cell.alignment = { vertical: "middle", horizontal: LEFT_COLUMNS.has(column) ? "left" : "center", wrapText: true };
           cell.border = border;
         }
@@ -227,23 +264,26 @@ function buildSkuSheet(workbook: ExcelJS.Workbook, groups: WaybillGroup[], at: D
   });
 }
 
-// Vietnam local time (not the server's UTC) — this name is what the warehouse
-// sees on the files in the Zalo group and in their downloads. The Excel and the
-// re-ordered PDF share it (only the extension differs) so the pair is obvious.
-export function waybillFileStem(at: Date): string {
+// What the warehouse's file names look like: Furni_<hour>h<day><month>_<orders> đơn_Đã gom,
+// e.g. Furni_9h0910_23 đơn_Đã gom — the hour the file was made (no leading zero) and its
+// date as ddmm, both in Vietnam time rather than the server's UTC, and how many orders it
+// holds. The Excel and the re-ordered PDF share it (only the extension differs) so the
+// pair is obvious.
+const FILE_PREFIX = "Furni";
+
+export function waybillFileStem(at: Date, orderCount: number): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
     hourCycle: "h23",
   }).formatToParts(at);
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
-  return `danh-sach-don-gom-nhom-${part("year")}${part("month")}${part("day")}-${part("hour")}${part("minute")}`;
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const twoDigits = (value: number) => String(value).padStart(2, "0");
+  return `${FILE_PREFIX}_${part("hour")}h${twoDigits(part("day"))}${twoDigits(part("month"))}_${orderCount} đơn_Đã gom`;
 }
 
-export function waybillExcelFileName(at: Date): string {
-  return `${waybillFileStem(at)}.xlsx`;
+export function waybillExcelFileName(at: Date, orderCount: number): string {
+  return `${waybillFileStem(at, orderCount)}.xlsx`;
 }
