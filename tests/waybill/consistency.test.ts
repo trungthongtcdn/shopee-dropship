@@ -35,7 +35,7 @@ describe("re-ordered PDF vs Excel", () => {
     await workbook.xlsx.load((await buildWaybillExcel(groups)) as unknown as ExcelJS.Buffer);
     const excelOrders: string[] = [];
     workbook.worksheets[0].eachRow((row, index) => {
-      if (index > 1) excelOrders.push(String(row.getCell(4).value));
+      if (index > 1) excelOrders.push(String(row.getCell(4).value).replace(/^TRK_/, ""));
     });
 
     const pdfWidths = await pageWidths(await reorderPdfPages(source, orderedPageIndexes(groups)));

@@ -306,4 +306,11 @@ describe("parseLabelText — the shop", () => {
   it("is absent when the label names no sender", () => {
     expect(parseLabelText(label("Gọi 1900 6885"), 0)!.shopName).toBeUndefined();
   });
+
+  it("reads the sender from a Viettel Post label, which prints Từ without the colon", () => {
+    const text = "Từ                                        Đến\nKho Sỉ Đồ Thể Thao                        trần thị tuyết\nĐỊA CHỈ 56 MẠC THỊ BƯỞI HBT HÀ            2.Thôn Độc Lập";
+    expect(parseLabelText(label(text), 0)!.shopName).toBe("Kho Sỉ Đồ Thể Thao");
+    // a line that merely starts with the word is not the sender block
+    expect(parseLabelText(label("Từ khóa tìm kiếm: ghế"), 0)!.shopName).toBeUndefined();
+  });
 });

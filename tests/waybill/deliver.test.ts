@@ -34,12 +34,13 @@ async function newLog() {
   });
 }
 
+// The sheet shows tracking codes (TRK_<order id> in these fixtures), not order ids.
 async function orderIdsInExcel(data: Uint8Array) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Buffer.from(data) as unknown as ExcelJS.Buffer);
   const ids: string[] = [];
   workbook.worksheets[0].eachRow((row, index) => {
-    if (index > 1) ids.push(String(row.getCell(4).value));
+    if (index > 1) ids.push(String(row.getCell(4).value).replace(/^TRK_/, ""));
   });
   return ids;
 }

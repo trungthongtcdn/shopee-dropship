@@ -147,10 +147,11 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
 }
 
 // The sender: the first line under "Từ:" (the line also carries the receiver's
-// column, cut off the same way item lines are). Empty when there is none.
+// column, cut off the same way item lines are). Viettel Post labels print "Từ" without
+// the colon, then "Đến" in the next column. Empty when there is none.
 function parseShopName(labelText: string): string {
   const lines = labelText.split("\n");
-  const from = lines.findIndex((line) => /^\s*Từ:/.test(line));
+  const from = lines.findIndex((line) => /^\s*(?:Từ:|Từ(?:\s{2,}Đến|\s*$))/.test(line));
   if (from === -1) return "";
   for (const line of lines.slice(from + 1, from + 4)) {
     const text = cutRightColumn(line);
