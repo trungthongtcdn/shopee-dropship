@@ -454,3 +454,24 @@ model User {
 
   @@map("users")
 }
+
+// The master SKU list: the "SKU FULL" tab of the warehouse's price sheet, copied here at
+// most once a day by lib/skus.ts (and when a waybill carries a SKU the copy lacks). Used to
+// replace the SKU read off a waybill — which the narrow table column cuts into pieces — by
+// the list's own spelling in the grouped Excel (lib/waybill/skuCatalog.ts). Every sync
+// replaces the whole table. One row per distinct SKU.
+model SkuMapping {
+  sku       String   @id
+  // "SKU ánh xạ": `sku` without spaces and special characters (letters and digits only,
+  // case and diacritics kept) — what a SKU read from a waybill is looked up by first.
+  mappedKey String   @map("mapped_key")
+  // The same, lower-cased and without diacritics — the second try.
+  foldKey   String   @map("fold_key")
+  // How many rows of the sheet carry this SKU; breaks ties between spellings of one key.
+  rows      Int
+  syncedAt  DateTime @map("synced_at")
+
+  @@index([mappedKey])
+  @@index([foldKey])
+  @@map("sku_mappings")
+}

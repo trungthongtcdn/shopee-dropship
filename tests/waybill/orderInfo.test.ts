@@ -35,9 +35,16 @@ function block(body: BboxWord[], x = 0, top = 310.3): BboxWord[] {
 }
 
 // A body row: its number, the lines of its SKU (x extents as printed), the product name
-// and variant (columns that must never leak into the SKU), and — when given — the
-// lines of its variation SKU.
-function row(n: number, y: number, skuLines: [string, number][], variantSkuLines: [string, number][] = [], x = 0): BboxWord[] {
+// (a column that must never leak into the SKU), the lines of its variation SKU when given,
+// and the lines of its "Phân loại hàng" (one word, "D160", unless given).
+function row(
+  n: number,
+  y: number,
+  skuLines: [string, number][],
+  variantSkuLines: [string, number][] = [],
+  x = 0,
+  variantLines: [string, number][] | null = null
+): BboxWord[] {
   const lines = (list: [string, number][], column: number) =>
     list.flatMap(([text, width], i) => {
       // "da 1": a line with two words in it; `width` is the line's whole extent
@@ -56,7 +63,7 @@ function row(n: number, y: number, skuLines: [string, number][], variantSkuLines
     word("Piston", x + 29.2, y, x + 43),
     word("ghế", x + 44.4, y, x + 54),
     ...lines(variantSkuLines, 81.5),
-    word("D160", x + 101.9, y, x + 113.8),
+    ...(variantLines ? lines(variantLines, 101.9) : [word("D160", x + 101.9, y, x + 113.8)]),
     word("1", x + 141.2, y, x + 144),
   ];
 }
@@ -86,16 +93,21 @@ describe("readOrderInfo", () => {
     expect(readOrderInfo(block([], 396, 310.3))!.top).toBeCloseTo(310.3);
   });
 
-  it("puts a SKU that the narrow column wrapped in the middle of a word back together", () => {
-    // "TyHoi_D160_Den" as the table prints it: four lines, each full to the column's edge.
+  // The column is narrow, so a SKU takes several lines. Whether a wrap fell on a space or
+  // inside a word can't be known from the PDF; the lines are run together, nothing added.
+  it("runs a wrapped SKU's lines together", () => {
     const body = row(1, 351.4, [["TyHoi", 12.7], ["_D16", 11.9], ["0_De", 11.9], ["n", 2.7]]);
     expect(readOrderInfo(block(body))!.skus.get(1)).toBe("TyHoi_D160_Den");
   });
 
-  it("keeps the spaces of a SKU that has some, and the hyphen that let it break", () => {
-    // Lines stop short where the SKU has a space; "5-" ends a line because of the hyphen.
+  it("keeps the spaces inside a line as they are printed", () => {
     const body = row(2, 377.8, [["Móc", 9.4], ["5-", 4.4], ["hyun", 10.8], ["dai", 6.6], ["kèm", 9.4], ["quai", 9.4], ["da 1", 9.6], ["lớp", 6.9]]);
-    expect(readOrderInfo(block(body))!.skus.get(2)).toBe("Móc 5-hyundai kèm quai da 1 lớp");
+    expect(readOrderInfo(block(body))!.skus.get(2)).toBe("Móc5-hyundaikèmquaida 1lớp");
+  });
+
+  it("reads a SKU that fits on one line untouched", () => {
+    expect(readOrderInfo(block(row(1, 351.4, [["ABC", 7.5]])))!.skus.get(1)).toBe("ABC");
+    expect(readOrderInfo(block(row(1, 351.4, [["da 1", 9.6]])))!.skus.get(1)).toBe("da 1");
   });
 
   it("reads each row's SKU under its own number", () => {
@@ -120,25 +132,6 @@ describe("readOrderInfo", () => {
     expect(info.top).toBeCloseTo(310.3);
   });
 
-  it("puts back the spaces of a SKU the narrow column broke at every word", () => {
-    // "Vi da nau huyndai": lines of 5, 3, 5 and 2 characters (column holds 5)
-    const body = row(1, 351.4, [["Vi da", 12.2], ["nau", 7.3], ["huynd", 12.2], ["ai", 4.9]]);
-    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("Vi da nau huyndai");
-  });
-
-  it("separates the brand when its first piece sat on a full line of its own", () => {
-    // "VÍ ĐEN HYUNDAI" printed VÍ / ĐEN / HYU / NDAI; "ĐEN" fills its line, so the room can't say
-    const body = row(1, 351.4, [["VÍ", 5.4], ["ĐEN", 11.9], ["HYU", 11.9], ["NDAI", 9.5]]);
-    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("VÍ ĐEN HYUNDAI");
-  });
-
-  it("leaves a camel-case SKU's seams alone", () => {
-    const body = row(1, 351.4, [["ChanG", 12.2], ["he", 4.9]]);
-    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("ChanGhe");
-    const seam = row(2, 377.8, [["Chan", 9.8], ["Ghe", 7.3]]);
-    expect(readOrderInfo(block(seam))!.skus.get(2)).toBe("ChanGhe");
-  });
-
   it("does not take the product name or variant for part of the SKU", () => {
     expect(readOrderInfo(block(row(1, 351.4, [["ABC", 7.5]])))!.skus.get(1)).toBe("ABC");
   });
@@ -150,60 +143,45 @@ describe("readOrderInfo", () => {
     expect(info.skus.size).toBe(0);
   });
 
+  // The "Phân loại hàng" column wraps at word boundaries, so a break is a space.
+  it("reads the variation as printed: a line break is a space", () => {
+    const body = row(1, 351.4, [["ABC", 7.5]], [], 0, [["cao su trắng 1", 30], ["cặp", 6]]);
+    expect(readOrderInfo(block(body))!.variants.get(1)).toBe("cao su trắng 1 cặp");
+  });
+
+  it("joins a variation cut after a hyphen or slash without a space", () => {
+    const hyphen = row(1, 351.4, [["ABC", 7.5]], [], 0, [["xà thanh lý 80-", 33], ["130", 6]]);
+    expect(readOrderInfo(block(hyphen))!.variants.get(1)).toBe("xà thanh lý 80-130");
+    const slash = row(1, 351.4, [["ABC", 7.5]], [], 0, [["D100/", 11], ["D120", 9]]);
+    expect(readOrderInfo(block(slash))!.variants.get(1)).toBe("D100/D120");
+    // a dash standing on its own is a word: the break after it is a space
+    const spaced = row(1, 351.4, [["ABC", 7.5]], [], 0, [["Đen -", 12], ["Nâu", 7]]);
+    expect(readOrderInfo(block(spaced))!.variants.get(1)).toBe("Đen - Nâu");
+  });
+
+  it("does not take the SKU phân loại column for the variation, nor the quantity", () => {
+    const body = row(1, 351.4, [["ABC", 7.5]], [["VV", 4.9]], 0, [["D160", 9.8]]);
+    expect(readOrderInfo(block(body))!.variants.get(1)).toBe("D160");
+    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("ABC");
+  });
+
+  it("reads the variation of each row under its own number", () => {
+    const body = [...row(1, 351.4, [["A", 2]], [], 0, [["chụp 100", 18]]), ...row(2, 377.8, [["B", 2]], [], 0, [["Đen,", 10], ["HYUNDAI", 17]])];
+    expect([...readOrderInfo(block(body))!.variants]).toEqual([
+      [1, "chụp 100"],
+      [2, "Đen, HYUNDAI"],
+    ]);
+  });
+
+  it("has no variations when the table has no \"Phân loại hàng\" header", () => {
+    const heading = block(row(1, 351.4, [["ABC", 7.5]])).filter((w) => !["loại", "hàng"].includes(w.text) || w.x0 < 100);
+    const info = readOrderInfo(heading)!;
+    expect(info.variants.size).toBe(0);
+    expect(info.skus.get(1)).toBe("ABC");
+  });
+
   it("works for the second label on a sheet, whose table starts at the cell's edge", () => {
     const body = row(1, 351.4, [["TyHoi", 12.7], ["_D10", 11.9], ["0", 2.7]], [], 396);
     expect(readOrderInfo(block(body, 396))!.skus.get(1)).toBe("TyHoi_D100");
-  });
-});
-
-// A SKU is wrapped by the same rule a browser uses — break at a space (the space is
-// eaten), after a hyphen or slash, and anywhere in a word too long for a line — and
-// must come back as it was typed. Characters 2.45 pt wide, five to a line.
-describe("readOrderInfo round trip", () => {
-  const CHAR = 2.45;
-  const PER_LINE = 5;
-
-  function wrap(text: string): string[] {
-    const lines: string[] = [];
-    let line = "";
-    text.split(" ").forEach((spaced, i) => {
-      (spaced.match(/[^-/]+[-/]?|[-/]/g) ?? [spaced]).forEach((part, j) => {
-        const separator = i > 0 && j === 0 ? " " : "";
-        if (line !== "" && (line + separator + part).length <= PER_LINE) {
-          line += separator + part;
-          return;
-        }
-        if (line !== "") lines.push(line);
-        let rest = part;
-        while (rest.length > PER_LINE) {
-          lines.push(rest.slice(0, PER_LINE));
-          rest = rest.slice(PER_LINE);
-        }
-        line = rest;
-      });
-    });
-    if (line !== "") lines.push(line);
-    return lines;
-  }
-
-  it.each([
-    "TyHoi_D160_Den",
-    "chup100",
-    "Móc 5-hyundai kèm quai da 1 lớp",
-    "AB-1 CD",
-    "X 1",
-    "A/B/C12345",
-    "ĐEN-XL",
-    "Bộ 3 món",
-  ])("returns %j as typed", (sku) => {
-    const lines: [string, number][] = wrap(sku).map((text) => [text, text.replace(/ /g, "").length * CHAR]);
-    expect(readOrderInfo(block(row(1, 351.4, lines)))!.skus.get(1)).toBe(sku);
-  });
-
-  // The one thing a printed table can't tell: a line that ends exactly where the column
-  // does looks the same whether the next word was cut off or followed a space.
-  it("cannot tell a space after a full line from a word cut in two", () => {
-    const lines: [string, number][] = wrap("ABCDE FGH").map((text) => [text, text.length * CHAR]);
-    expect(readOrderInfo(block(row(1, 351.4, lines)))!.skus.get(1)).toBe("ABCDEFGH");
   });
 });

@@ -304,7 +304,7 @@ describe("labels followed by an order-info table", () => {
 
   // rows: [SKU lines, (variation SKU lines)] — one entry per product line. Every
   // character is 2.45 pt wide and a line holds 5 of them, like the print's narrow column.
-  function infoTable(x: number, top: number, rows: { sku?: string[]; variantSku?: string[] }[]): BboxWord[] {
+  function infoTable(x: number, top: number, rows: { sku?: string[]; variantSku?: string[]; variant?: string[] }[]): BboxWord[] {
     const words = [
       ...line("THÔNG TIN ĐƠN HÀNG", x + 2, top, 1.3),
       ...line("OrderSN: X package 1", x + 2, top + 13),
@@ -315,6 +315,8 @@ describe("labels followed by an order-info table", () => {
       word("phẩm", x + 50, top + 25, x + 63.9),
       word("SKU", x + 81.5, top + 25, x + 92),
       word("Phân", x + 101.9, top + 25, x + 114.1),
+      word("loại", x + 115.4, top + 25, x + 124.6),
+      word("hàng", x + 126, top + 25, x + 137.9),
       word("SL", x + 141.2, top + 25, x + 147.6),
     ];
     let y = top + 41;
@@ -324,7 +326,8 @@ describe("labels followed by an order-info table", () => {
         list.forEach((text, i) => words.push(word(text, x + column, y + 5 * i, x + column + text.length * 2.45)));
       lines(spec.sku, 14.3);
       lines(spec.variantSku, 81.5);
-      y += 5 * Math.max(1, spec.sku?.length ?? 0, spec.variantSku?.length ?? 0) + 6;
+      lines(spec.variant, 101.9);
+      y += 5 * Math.max(1, spec.sku?.length ?? 0, spec.variantSku?.length ?? 0, spec.variant?.length ?? 0) + 6;
     });
     return words;
   }
@@ -332,7 +335,7 @@ describe("labels followed by an order-info table", () => {
   // The label at ~0.93 scale (≈190 pt wide); its table starts 310 pt down, past the middle
   // of the page, as on the real print — so the sheet can't be read as two rows of cells.
   const TABLE_TOP = 310;
-  const cell = (cellX: number, n: number, rows: { sku?: string[]; variantSku?: string[] }[], extra: Partial<LabelSpec> = {}) => [
+  const cell = (cellX: number, n: number, rows: { sku?: string[]; variantSku?: string[]; variant?: string[] }[], extra: Partial<LabelSpec> = {}) => [
     ...label(cellX - 8, 0, simple(n, extra), 0.93),
     ...infoTable(cellX, TABLE_TOP, rows),
   ];
@@ -350,7 +353,7 @@ describe("labels followed by an order-info table", () => {
     expect(result.labels.map((l) => l.pageIndex)).toEqual([0, 1, 2]);
   });
 
-  it("attaches each product line's SKU", () => {
+  it("attaches each product line's SKU, as printed: every line break a space", () => {
     const { labels } = extractTiledLabels(pages)!;
     expect(labels.map((l) => l.items.map((item) => item.sku))).toEqual([["TyHoi_D160_Den"], ["Bo_05BanhXe"], ["ConThu"]]);
     // the rest of the line is read as before
@@ -368,6 +371,19 @@ describe("labels followed by an order-info table", () => {
     const { labels } = extractTiledLabels([two])!;
     expect(labels[0].items.map((item) => item.sku)).toEqual(["AAAAAB", "CC"]);
     expect(labels[1].items.map((item) => item.sku)).toEqual(["Z"]);
+  });
+
+  it("takes the variation from the table, not from the label's own wrapped text", () => {
+    // The label's variation is wrapped character by character ("than" / "h lý"); the table
+    // keeps the seller's words whole.
+    const sheetWithTable = landscape([
+      cell(0, 0, [{ sku: ["A"], variant: ["xà thanh lý 80-", "130"] }], { itemLines: ["1. Xà đơn, xà than h lý 80-130, SL: 1"] }),
+      cell(396, 1, [{ sku: ["B"] }], { itemLines: ["1. Hộp, Loại B, SL: 1"] }),
+    ]);
+    const { labels } = extractTiledLabels([sheetWithTable])!;
+    expect(labels[0].items[0].variant).toBe("xà thanh lý 80-130");
+    // an empty cell in the table leaves the label's own variation alone
+    expect(labels[1].items[0].variant).toBe("Loại B");
   });
 
   it("records where each label ends, just above its table", () => {

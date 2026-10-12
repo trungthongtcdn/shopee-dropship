@@ -88,56 +88,35 @@ Nội dung hàng (Tổng SL sản phẩm: 7)
 const join = (...pages: string[]) => pages.join("\f");
 
 describe("joinWrappedLines", () => {
-  it("rejoins a word the label broke in the middle", () => {
-    expect(joinWrappedLines(["1. Piston hàng loại 1 chấ", "t lượng cao"])).toBe("1. Piston hàng loại 1 chất lượng cao");
-  });
-
-  it("keeps a space where the wrap fell between two words", () => {
+  // The PDF can't say whether a wrap fell on a space or inside a word, so no guess is made:
+  // every line break is one space.
+  it("puts one space at every line break, inside a word or not", () => {
+    expect(joinWrappedLines(["1. Piston hàng loại 1 chấ", "t lượng cao"])).toBe("1. Piston hàng loại 1 chấ t lượng cao");
     expect(joinWrappedLines(["Sỉ Côn Thu Phễu Thu Ống Quạt Thông", "Gió Hút Mùi"])).toBe("Sỉ Côn Thu Phễu Thu Ống Quạt Thông Gió Hút Mùi");
+    expect(joinWrappedLines(["GHẾ VĂN PHÒNG FREESHI", "P ghế xoay"])).toBe("GHẾ VĂN PHÒNG FREESHI P ghế xoay");
+    expect(joinWrappedLines(["…Tại Nhà, Thước", "dây, SL: 1"])).toBe("…Tại Nhà, Thước dây, SL: 1");
   });
 
-  it("does not split an ALL-CAPS word that the wrap cut in two", () => {
-    expect(joinWrappedLines(["GHẾ VĂN PHÒNG FREESHI", "P ghế xoay"])).toBe("GHẾ VĂN PHÒNG FREESHIP ghế xoay");
+  it("does not look at letters or case to decide", () => {
+    expect(joinWrappedLines(["xe tải k", "hông cần"])).toBe("xe tải k hông cần");
+    expect(joinWrappedLines(["20", "40 vít"])).toBe("20 40 vít");
+    expect(joinWrappedLines(["Ví đen MAZ", "DA"])).toBe("Ví đen MAZ DA");
   });
 
-  it("rejoins \"SL:\" when the label broke it between the S and the L", () => {
-    expect(joinWrappedLines(["1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, S", "L: 1"])).toBe(
-      "1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, SL: 1"
-    );
-  });
-
-  it("puts a space after a line that ends in a comma", () => {
+  it("puts one space — not two — after a line that ends in a comma", () => {
     expect(joinWrappedLines(["logo xe,", "VÍ ĐEN,VINFAST, SL: 1"])).toBe("logo xe, VÍ ĐEN,VINFAST, SL: 1");
   });
 
-  it("puts back the space a wrap ate between two Vietnamese syllables", () => {
-    expect(joinWrappedLines(["…Dụng Cụ Tập GYM Thể Dục Tại Nhà, Thước", "dây, SL: 1"])).toBe("…Dụng Cụ Tập GYM Thể Dục Tại Nhà, Thước dây, SL: 1");
-    expect(joinWrappedLines(["Túi 40 vít hỗn", "hợp, SL: 1"])).toBe("Túi 40 vít hỗn hợp, SL: 1");
-    expect(joinWrappedLines(["xà đơn", "gắn tường"])).toBe("xà đơn gắn tường");
+  it("keeps \"SL:\" whole when the label broke it, the one thing that must not gain a space", () => {
+    expect(joinWrappedLines(["1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, S", "L: 1"])).toBe(
+      "1. [COMBO] 5 Bánh Xe Chân Ghế Xoay, combo 2 bánh, SL: 1"
+    );
+    expect(joinWrappedLines(["…, combo 2 bánh, SL", ": 1"])).toBe("…, combo 2 bánh, SL: 1");
   });
 
-  it("still glues a word the wrap cut inside a syllable", () => {
-    expect(joinWrappedLines(["xe tải k", "hông cần"])).toBe("xe tải không cần");
-    expect(joinWrappedLines(["R", "EN ẤN"])).toBe("REN ẤN");
-  });
-
-  it("takes the label's geometry over the letters when it knows there was a space", () => {
-    // not syllable-shaped on either side, so only the room left on the line can tell
-    expect(joinWrappedLines(["dung cu GYMX", "ZETA"], [false, true])).toBe("dung cu GYMX ZETA");
-    expect(joinWrappedLines(["dung cu GYMX", "ZETA"])).toBe("dung cu GYMXZETA");
-  });
-
-  it("still never splits the quantity marker, whatever the geometry says", () => {
-    expect(joinWrappedLines(["…, Túi 20 Vít To, S", "L: 1"], [false, true])).toBe("…, Túi 20 Vít To, SL: 1");
-  });
-
-  it("separates a car brand a wrap glued to the word before it", () => {
-    expect(joinWrappedLines(["Ví đen MAZ", "DA"])).toBe("Ví đen MAZDA");
-    expect(joinWrappedLines(["Ví ĐEN", "HYU", "NDAI"])).toBe("Ví ĐEN HYUNDAI");
-  });
-
-  it("keeps a borrowed word whole across a wrap", () => {
-    expect(joinWrappedLines(["dập lo", "go đầy đủ"])).toBe("dập logo đầy đủ");
+  it("only treats a lone S or SL at the end of the line as the marker", () => {
+    expect(joinWrappedLines(["Hộp Kit S", "Lớn"])).toBe("Hộp Kit S Lớn");
+    expect(joinWrappedLines(["Combos", "L: 1"])).toBe("Combos L: 1");
   });
 });
 
@@ -149,7 +128,7 @@ describe("extractWaybillPagesFromText", () => {
     expect(page.declaredTotalQuantity).toBe(1);
     expect(page.items).toEqual([
       {
-        name: "Piston ghế/ Ben hơi ghế xoay văn phòng D100 D120 D160 INOX KHÔNG GỈ, Piston hàng loại 1 chất lượng cao",
+        name: "Piston ghế/ Ben hơi ghế xoay văn phòng D100 D120 D160 INOX KHÔNG GỈ, Piston hàng loại 1 chấ t lượng cao",
         variant: "D100",
         quantity: 1,
       },
@@ -159,7 +138,7 @@ describe("extractWaybillPagesFromText", () => {
   it("splits the variant off the end even when the name itself contains commas", () => {
     const [page] = extractWaybillPagesFromText(PAGE_WALLET);
     expect(page.items).toHaveLength(1);
-    expect(page.items[0].name).toBe("Ví đựng thẻ cao cấp 4K, ví da đựng đăng kiểm giấy tờ ô tô da bò chống thấm nước nhiều logo xe");
+    expect(page.items[0].name).toBe("Ví đựng thẻ cao cấp 4K, ví da đựng đăn g kiểm giấy tờ ô tô da bò chống thấm nước nhiều logo xe");
     expect(page.items[0].variant).toBe("VÍ ĐEN,VINFAST");
   });
 

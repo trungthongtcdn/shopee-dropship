@@ -4,8 +4,6 @@
 // Pure text in, plain objects out (no PDF / DB / network), so it is unit
 // tested against real `pdftotext -layout` output.
 
-import { separateBrands, syllableBreak } from "./vietnamese";
-
 export interface WaybillItem {
   name: string;
   variant: string;
@@ -43,54 +41,28 @@ export interface WaybillGroup {
 }
 
 // The label hard-wraps item text by pixel width, in the MIDDLE of words
-// ("chấ" / "t lượng cao"), and `pdftotext` loses the space when the wrap
-// happened to fall on one. There is no way to tell the two apart from the
-// text alone, so this is a best guess for DISPLAY only — grouping compares
-// whitespace-stripped text (see itemKey) and never depends on it:
-//  - after a comma → a space (the wrap ate it);
-//  - next line starts lowercase → same word ("chấ"+"t"): mid-word breaks are
-//    far likelier than a break that lands exactly on a space;
-//  - next line starts uppercase → a new word, EXCEPT when the previous word is
-//    ALL CAPS ("FREESHI"+"P"), where a cut word is again the likelier story;
-//  - digit directly after a digit → same number.
-// When the label's geometry is known, `spaceBefore[i]` says line i can only have
-// started after a space: the line before it stopped with room to spare for line i's
-// first character, and a wrap that is forced by width never leaves that much room
-// (see cellLayout in layout.ts). That settles it, whatever the letters look like.
-export function joinWrappedLines(lines: string[], spaceBefore?: boolean[]): string {
+// ("chấ" / "t lượng cao") as well as at spaces, and the space a wrap lands on is
+// lost. There is no telling the two apart from the PDF, and guessing puts wrong text
+// in the file, so none is made: the text is taken exactly as printed and every line
+// break counts as one space — a comma already followed by its space, or a "SL:"
+// marker cut in two ("…, S" / "L: 1"), being the only things that must stay whole for
+// the line to be read at all. Grouping compares whitespace-stripped text (see itemKey),
+// so identical products group together whatever their wraps did.
+export function joinWrappedLines(lines: string[]): string {
   let result = "";
-  // Where two lines were glued without a space, for separateBrands.
-  const joins: number[] = [];
-  lines.forEach((line, i) => {
+  for (const line of lines) {
     if (result === "") {
       result = line;
-      return;
+      continue;
     }
-    if (needsSpace(result, line, spaceBefore?.[i] ?? false)) {
-      result += ` ${line}`;
-    } else {
-      joins.push(result.length);
-      result += line;
-    }
-  });
-  return separateBrands(result, joins);
+    result += isSplitQuantityMarker(result, line) ? line : ` ${line}`;
+  }
+  return result;
 }
 
-function needsSpace(previous: string, next: string, forced = false): boolean {
-  if (previous.endsWith(",")) return true;
-  // The quantity marker itself can be what gets cut: "…, S" / "L: 1".
-  if (/(^|\s)S$/.test(previous) && /^L:/.test(next)) return false;
-  if (forced) return true;
-  if (/\d$/.test(previous) && /^\d/.test(next)) return false;
-  // Vietnamese syllables are separated by spaces, so what the two halves make up says
-  // whether the wrap fell on a space or inside a syllable (vietnamese.ts).
-  const verdict = syllableBreak(previous.split(/\s+/).pop() ?? "", next.split(/\s+/)[0] ?? "");
-  if (verdict) return verdict === "space";
-  if (!/^[\p{Lu}\d]/u.test(next)) return false;
-
-  const lastWord = previous.split(/\s+/).pop() ?? "";
-  if (/^\p{Lu}{3,}$/u.test(lastWord) && /^\p{Lu}/u.test(next)) return false;
-  return true;
+// The quantity marker "SL:" itself can be what gets cut: "…, S" / "L: 1" or "…, SL" / ": 1".
+function isSplitQuantityMarker(previous: string, next: string): boolean {
+  return (/(^|\s)S$/.test(previous) && /^L:/.test(next)) || (/(^|\s)SL$/.test(previous) && /^:/.test(next));
 }
 
 // Pre-orders print "Mã đơn đặt trước:" where every other label has "Mã đơn hàng:".
@@ -124,9 +96,7 @@ function parseItem(joined: string): WaybillItem | null {
   };
 }
 
-// `spaceAfter[i]` (optional): text line i is certainly followed by a space when the next
-// line continues it — the geometry-based answer cellLayout works out for tiled labels.
-function parseItemBlock(pageText: string, spaceAfter?: boolean[]): { declaredTotalQuantity: number | null; items: WaybillItem[] } {
+function parseItemBlock(pageText: string): { declaredTotalQuantity: number | null; items: WaybillItem[] } {
   const lines = pageText.split("\n");
   const headerIndex = lines.findIndex((line) => ITEM_BLOCK_RE.test(line));
   if (headerIndex === -1) return { declaredTotalQuantity: null, items: [] };
@@ -134,11 +104,8 @@ function parseItemBlock(pageText: string, spaceAfter?: boolean[]): { declaredTot
   const declaredTotalQuantity = Number(ITEM_BLOCK_RE.exec(lines[headerIndex])![1]);
   const items: WaybillItem[] = [];
   let current: string[] | null = null;
-  // For each line of `current`: did it start after a space (see joinWrappedLines)?
-  let spaceBefore: boolean[] = [];
 
-  for (const [offset, line] of lines.slice(headerIndex + 1).entries()) {
-    const lineIndex = headerIndex + 1 + offset;
+  for (const line of lines.slice(headerIndex + 1)) {
     const text = cutRightColumn(line);
     if (text === "") {
       // A blank line ends the block — or, mid-item, means the label cut the
@@ -154,13 +121,11 @@ function parseItemBlock(pageText: string, spaceAfter?: boolean[]): { declaredTot
       const start = ITEM_START_RE.exec(text);
       if (!start || Number(start[1]) !== items.length + 1) break;
       current = [start[2]];
-      spaceBefore = [false];
     } else {
       current.push(text);
-      spaceBefore.push(spaceAfter?.[lineIndex - 1] ?? false);
     }
 
-    const joined = joinWrappedLines(current, spaceBefore);
+    const joined = joinWrappedLines(current);
     if (ITEM_END_RE.test(joined)) {
       const item = parseItem(joined);
       if (item) items.push(item);
@@ -187,11 +152,11 @@ function parseShopName(labelText: string): string {
 
 // One label's text → the order it names, or null if it names none. `labelText`
 // is what `pdftotext -layout` prints for that label alone.
-export function parseLabelText(labelText: string, pageIndex: number, spaceAfter?: boolean[]): WaybillPage | null {
+export function parseLabelText(labelText: string, pageIndex: number): WaybillPage | null {
   const orderId = ORDER_ID_RE.exec(labelText)?.[1];
   if (!orderId) return null;
 
-  const { declaredTotalQuantity, items } = parseItemBlock(labelText, spaceAfter);
+  const { declaredTotalQuantity, items } = parseItemBlock(labelText);
   const shopName = parseShopName(labelText);
   return {
     pageIndex,

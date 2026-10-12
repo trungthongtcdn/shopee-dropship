@@ -1,5 +1,4 @@
 import type { BboxWord } from "./layout";
-import { looksCamelCase, separateBrands, syllableBreak } from "./vietnamese";
 
 // Some waybill prints put, under each shipping label, a "THÔNG TIN ĐƠN HÀNG" block:
 // a table of the order's lines with the seller's SKUs. The shipping label proper
@@ -13,9 +12,12 @@ import { looksCamelCase, separateBrands, syllableBreak } from "./vietnamese";
 //   1  TyHoi  Piston ghế …                   D160 đen         1    170,000   170,000
 //      _D16
 //
-// The table wraps by pixel width, in the middle of a word when it has to, and its SKU
-// column is narrow — a SKU takes several lines — so it is read from the words'
-// positions, not from `-layout` text.
+// The table wraps by pixel width and its SKU column is narrow — a SKU takes several
+// lines — so it is read from the words' positions, not from `-layout` text. Two columns
+// are read: "SKU" and "Phân loại hàng" (the variation), both exactly as printed, with no
+// guessing about whether a wrap fell on a space or inside a word. The label's own text
+// wraps character by character and loses the space at each wrap; the table is the
+// seller's text as it is, so when there is a table it is the source of both.
 
 export interface OrderInfo {
   // Where the block starts: the y of its heading, in page points from the top.
@@ -23,6 +25,8 @@ export interface OrderInfo {
   // Row number printed in the "#" column (1-based) → the "SKU" of that line. Rows whose
   // SKU is empty are left out.
   skus: Map<number, string>;
+  // The same rows → the "Phân loại hàng" (variation) of that line, left out when empty.
+  variants: Map<number, string>;
 }
 
 const HEADING = ["THÔNG", "TIN", "ĐƠN", "HÀNG"];
@@ -50,44 +54,6 @@ export function hasOrderInfoHeading(text: string): boolean {
   return text.includes(HEADING.join(" "));
 }
 
-// Advance widths of Arial/Helvetica (what the tables are set in) per 1000 units of
-// font size; accented letters count as their base letter. Only used to guess how wide
-// a character is relative to its neighbours, so a rough table is enough.
-const WIDTHS: Record<string, number> = {};
-const widthTable = [
-  ["0123456789", 556],
-  ["abdeghnopquđ", 556],
-  ["cksvxyz", 500],
-  ["ijl", 222],
-  ["ft", 278],
-  ["r", 333],
-  ["m", 833],
-  ["w", 722],
-  ["ABCDEĐHNRUV", 700],
-  ["FLPSTXYZ", 620],
-  ["GOQ", 778],
-  ["IJ", 278],
-  ["KM", 760],
-  ["W", 944],
-  ["_#", 556],
-  ["-()", 333],
-  [".,/ ", 278],
-  ["+", 584],
-] as const;
-for (const [chars, width] of widthTable) for (const char of chars) WIDTHS[char] = width;
-
-function glyphWidth(char: string): number {
-  const base = char.normalize("NFD")[0] ?? char;
-  return WIDTHS[base] ?? WIDTHS[base.toLowerCase()] ?? 556;
-}
-
-// How wide the first character of `word` is, going by how wide the whole word is on the page.
-export function firstCharWidth(word: BboxWord): number {
-  const chars = [...word.text];
-  const total = chars.reduce((sum, char) => sum + glyphWidth(char), 0);
-  return total === 0 ? word.x1 - word.x0 : ((word.x1 - word.x0) * glyphWidth(chars[0])) / total;
-}
-
 // The lines of one wrapped table cell: words on the same baseline, top to bottom.
 function linesOf(words: BboxWord[]): BboxWord[][] {
   const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
@@ -100,63 +66,51 @@ function linesOf(words: BboxWord[]): BboxWord[][] {
   return lines.map((line) => line.sort((a, b) => a.x0 - b.x0));
 }
 
-const lineWidth = (line: BboxWord[]) => line[line.length - 1].x1 - line[0].x0;
+// The words of one wrapped line.
+const lineText = (line: BboxWord[]) => line.map((w) => w.text).join(" ");
 
-// A wrapped cell's lines glued back together. The browser fills each line to the
-// column's width and breaks inside a word when it has to, so a line that stops well
-// short of full did NOT break mid-word: the next word started a new line because of a
-// space. A line that is full could have broken either way, and a break inside a word
-// is by far the likelier. A hyphen or slash is itself a place to break, so a line
-// ending in one goes on without a space. `width` is the room a line has; when it is
-// too generous a space appears inside a SKU, too tight and one goes missing, so it is
-// kept on the tight side (see readOrderInfo).
-function joinLines(lines: BboxWord[][], width: number): string {
-  let text = "";
-  const joins: number[] = [];
-  lines.forEach((line, i) => {
-    const lineText = line.map((w) => w.text).join(" ");
-    if (i === 0) {
-      text = lineText;
-      return;
-    }
-    const breakable = /[-/]$/.test(text);
-    let space = false;
-    if (!breakable) {
-      if (lineWidth(lines[i - 1]) + firstCharWidth(line[0]) <= width) {
-        // the line had room for the next character: the break fell on a space
-        space = true;
-      } else {
-        // The line was full, so the break could be either; the shape of the syllables on
-        // both sides can still tell ("nau" / "huyn" is two syllables, "chấ" / "t" is one) —
-        // except at a camel-case seam ("Chan" / "Ghe"), which sellers write without a space.
-        const last = text.split(/\s+/).pop() ?? "";
-        space = !looksCamelCase(last, line[0].text) && syllableBreak(last, line[0].text) === "space";
-      }
-    }
-    if (space) {
-      text += ` ${lineText}`;
-    } else {
-      joins.push(text.length);
-      text += lineText;
-    }
-  });
-  return separateBrands(text, joins).trim();
+// A wrapped SKU cell's lines as one text: what is printed, with nothing added at a line
+// break. The narrow column cuts SKU codes mid-word far more often than it breaks them at
+// a space, and the PDF can't say which it was — a space would split most codes — so the
+// lines are simply run together; spaces that are printed inside a line are kept.
+function joinSkuLines(lines: BboxWord[][]): string {
+  return lines.map(lineText).join("").trim();
 }
 
-// Total horizontal padding of a table cell (both sides), in points, and how far under
-// the room the header suggests a line is assumed to hold (it is an estimate, and a
-// space that appears where there is none does more harm than one that goes missing).
-const CELL_PADDING = 1.8;
-const ROOM_MARGIN = 0.6;
+// A wrapped "Phân loại hàng" cell's lines as one text. This column wraps at word
+// boundaries (a word moves whole to the next line), so a line break is a space — except
+// right after a hyphen or slash that closes a word ("80-" / "130" is "80-130"), where the
+// break is only the place the text is allowed to wrap.
+function joinVariantLines(lines: BboxWord[][]): string {
+  let text = "";
+  for (const line of lines) {
+    const next = lineText(line);
+    text = text === "" ? next : /[^\s\-/][-/]$/.test(text) ? text + next : `${text} ${next}`;
+  }
+  return text.trim();
+}
+
 // Header and body text start at the same x; a body word may sit this far left of it.
 const COLUMN_SLACK = 1.5;
+
+// The "Phân loại hàng" column: from its header's first word to the next header word. The
+// column before it, "SKU phân loại", has no "hàng" after its "loại", so the three words
+// in a row are what tell the two apart.
+function variantColumn(header: BboxWord[]): { from: number; to: number } | null {
+  for (let i = 0; i + 2 < header.length; i++) {
+    if (header[i].text.toLowerCase() === "phân" && header[i + 1].text === "loại" && header[i + 2].text === "hàng") {
+      return { from: header[i].x0, to: header[i + 3]?.x0 ?? Number.POSITIVE_INFINITY };
+    }
+  }
+  return null;
+}
 
 // `words` are one label's words (a label alone on its page, or one cell of a tiled
 // sheet). Null when the label has no order-info block.
 export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
   const heading = findOrderInfoHeadings(words)[0];
   if (!heading) return null;
-  const info: OrderInfo = { top: heading.y0, skus: new Map() };
+  const info: OrderInfo = { top: heading.y0, skus: new Map(), variants: new Map() };
 
   const below = words.filter((w) => w.y0 > heading.y1 && w.x0 >= heading.x0 - 40);
   const hash = below.filter((w) => w.text === "#").sort((a, b) => a.y0 - b.y0)[0];
@@ -167,8 +121,8 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
   const sku = header.find((w) => w.text === "SKU");
   const name = header.find((w) => w.text === "Tên");
   if (!sku || !name) return info;
-  // Only the "SKU" column is read — not "SKU phân loại", which sits further right.
-  const { from, to } = { from: sku.x0, to: name.x0 };
+  // The "SKU" column is read, not "SKU phân loại", which sits further right.
+  const variant = variantColumn(header);
 
   // Body rows start at each number in the "#" column.
   const body = below.filter((w) => w.y0 > hash.y1);
@@ -176,18 +130,18 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
     .filter((w) => /^\d+$/.test(w.text) && w.x0 >= hash.x0 - COLUMN_SLACK && w.x0 < sku.x0 - COLUMN_SLACK)
     .sort((a, b) => a.y0 - b.y0);
 
-  // Every row's lines of the SKU column, so the room a line has can be checked against
-  // the fullest line actually printed: a line can't be wider than its column.
-  const cells = rows.map((row, i) => {
+  // Each row's lines of the SKU column and of the variation column.
+  rows.forEach((row, i) => {
     const bottom = rows[i + 1]?.y0 ?? Infinity;
     const inRow = body.filter((w) => w.y0 >= row.y0 - 1 && w.y0 < bottom - 1);
-    return linesOf(inRow.filter((w) => w.x0 >= from - COLUMN_SLACK && w.x0 < to - COLUMN_SLACK));
-  });
-  const room = Math.max(to - from - CELL_PADDING - ROOM_MARGIN, ...cells.flatMap((lines) => lines.map(lineWidth)));
+    const cell = (from: number, to: number) => linesOf(inRow.filter((w) => w.x0 >= from - COLUMN_SLACK && w.x0 < to - COLUMN_SLACK));
 
-  rows.forEach((row, i) => {
-    const text = joinLines(cells[i], room);
-    if (text) info.skus.set(Number(row.text), text);
+    const skuText = joinSkuLines(cell(sku.x0, name.x0));
+    if (skuText) info.skus.set(Number(row.text), skuText);
+    if (variant) {
+      const variantText = joinVariantLines(cell(variant.from, variant.to));
+      if (variantText) info.variants.set(Number(row.text), variantText);
+    }
   });
   return info;
 }

@@ -1,5 +1,5 @@
 import { parseLabelText, type WaybillPage } from "./items";
-import { findOrderInfoHeadings, firstCharWidth, readOrderInfo } from "./orderInfo";
+import { findOrderInfoHeadings, readOrderInfo } from "./orderInfo";
 
 // Waybill PDFs come in two shapes: one label per page (the usual A6 download —
 // handled by items.ts on plain `pdftotext -layout` text), or several labels
@@ -232,23 +232,6 @@ function detectGrid(pages: BboxPage[], anchors: Anchor[][]): Grid | null {
 // spaces items.ts cuts the label's right-hand column on, and a vertical gap of
 // more than a line becomes a blank line.
 export function cellText(words: BboxWord[]): string {
-  return cellLayout(words).text;
-}
-
-const ITEM_HEADER_RE = /Nội dung hàng\s*\(Tổng SL sản phẩm:/;
-// How much more than a character's estimated width the room left at the end of a line
-// must be before the next line is taken to have started after a space. The estimate is
-// rough (a table of Arial's widths), and a missed space is milder than an invented one.
-const WRAP_ROOM_FACTOR = 1.15;
-
-// The text of `cellText`, plus where the label's own wrapping tells that a space was
-// eaten. The item text is hard-wrapped by pixel width, character by character, so every
-// line is filled until the next character no longer fits. A line that stops with room for
-// the next line's first character therefore did not stop for lack of room: the break was
-// at a space, which `-layout` then loses ("Thước" / "dây" must read "Thước dây", not
-// "Thướcdây"). `spaceAfter[i]` is true for such a line i, indexed like the text's lines.
-// The room is measured against the fullest line of the item block (the wrap width).
-export function cellLayout(words: BboxWord[]): { text: string; spaceAfter: boolean[] } {
   const sorted = [...words].sort((a, b) => a.y0 + a.y1 - (b.y0 + b.y1) || a.x0 - b.x0);
 
   const lines: BboxWord[][] = [];
@@ -260,47 +243,21 @@ export function cellLayout(words: BboxWord[]): { text: string; spaceAfter: boole
   }
 
   const out: string[] = [];
-  // Per output line: its first word and where its text ends (before any wide gap, which is
-  // the label's right-hand column, not the item text); null for a blank line.
-  const geometry: ({ first: BboxWord; right: number } | null)[] = [];
   let previous: { top: number; height: number } | null = null;
   for (const line of lines) {
     line.sort((a, b) => a.x0 - b.x0);
     const height = Math.max(...line.map((w) => w.y1 - w.y0));
     const top = Math.min(...line.map((w) => w.y0));
-    if (previous && top - previous.top > 1.7 * previous.height) {
-      out.push("");
-      geometry.push(null);
-    }
+    if (previous && top - previous.top > 1.7 * previous.height) out.push("");
     previous = { top, height };
 
     let text = line[0].text;
-    let right = line[0].x1;
-    let inColumn = true;
     for (let i = 1; i < line.length; i++) {
-      const wide = line[i].x0 - line[i - 1].x1 > 1.2 * height;
-      if (wide) inColumn = false;
-      text += (wide ? "   " : " ") + line[i].text;
-      if (inColumn) right = line[i].x1;
+      text += (line[i].x0 - line[i - 1].x1 > 1.2 * height ? "   " : " ") + line[i].text;
     }
     out.push(text);
-    geometry.push({ first: line[0], right });
   }
-
-  const spaceAfter = new Array<boolean>(out.length).fill(false);
-  const header = out.findIndex((line) => ITEM_HEADER_RE.test(line));
-  if (header !== -1) {
-    let end = header + 1;
-    while (end < out.length && out[end] !== "") end++;
-    const block = geometry.slice(header + 1, end) as { first: BboxWord; right: number }[];
-    const limit = Math.max(...block.map((g) => g.right));
-    for (let i = header + 1; i + 1 < end; i++) {
-      const line = geometry[i]!;
-      const next = geometry[i + 1]!;
-      spaceAfter[i] = limit - line.right >= WRAP_ROOM_FACTOR * firstCharWidth(next.first);
-    }
-  }
-  return { text: out.join("\n"), spaceAfter };
+  return out.join("\n");
 }
 
 export interface TiledCell {
@@ -347,18 +304,22 @@ export function extractTiledLabels(pages: BboxPage[]): { labels: WaybillPage[]; 
       if (words.length === 0) return;
       const slot = sheet * perSheet + cell;
       occupied.push(slot);
-      const { text, spaceAfter } = cellLayout(words);
+      const text = cellText(words);
       texts.push({ slot, text });
-      const label = parseLabelText(text, slot, spaceAfter);
+      const label = parseLabelText(text, slot);
       if (label) labels.push(label);
 
       const info = readOrderInfo(words);
       if (!info) return;
       labelHeights[slot] = Math.max(0, info.top - LABEL_BOTTOM_GAP - Math.floor(cell / grid.cols) * (page.height / grid.rows));
-      // The table's row n lists the label's n-th product.
+      // The table's row n lists the label's n-th product. Its SKU and variation are the
+      // seller's text as it is; the label's own variation (wrapped character by character,
+      // a space lost at each wrap) is only kept for a row whose cell is empty.
       label?.items.forEach((item, i) => {
         const sku = info.skus.get(i + 1);
         if (sku) item.sku = sku;
+        const variant = info.variants.get(i + 1);
+        if (variant) item.variant = variant;
       });
     });
   });
