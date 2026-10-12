@@ -4,7 +4,9 @@ import type { WaybillGroup } from "./items";
 // The sheet is the warehouse's accounting file ("FILE CONVERT FULL THÔNG TIN ĐƠN SHOPEE"):
 // its 19 columns in its order, whatever kind of label the PDF had. What a label can't tell
 // (Kiot code and warehouse, cost, the cancelled / duplicate / payout bookkeeping, the group
-// the warehouse works out afterwards) is left truly empty — not "" — so ISBLANK and "fill
+// the warehouse works out afterwards) — and GIAN, the shop, which the warehouse asked to
+// leave for itself (the sender printed on the label is read as `shopName` but not written) —
+// is left truly empty — not "" — so ISBLANK and "fill
 // the blanks" work for whoever maps it later.
 const HEADERS = [
   "NGÀY IN",
@@ -119,7 +121,6 @@ export async function buildWaybillExcel(groups: WaybillGroup[], at: Date = new D
   const wanted = new Map<number, number>([
     [COL.tracking, textWidth(pages.map((page) => page.trackingCode))],
     [COL.sku, textWidth(items.map((item) => item.sku))],
-    [COL.shop, textWidth(pages.map((page) => page.shopName))],
     [COL.variant, textWidth(items.map((item) => item.variant))],
   ]);
   sheet.columns = headers.map((text, i) => ({
@@ -151,7 +152,6 @@ export async function buildWaybillExcel(groups: WaybillGroup[], at: Date = new D
         cells[COL.tracking - 1] = page.trackingCode || null;
         cells[COL.sku - 1] = item?.sku || null;
         cells[COL.quantity - 1] = item?.quantity ?? null;
-        cells[COL.shop - 1] = page.shopName || null;
         cells[COL.variant - 1] = item?.variant || null;
         cells[COL.groupSize - 1] = group.pages.length;
         if (withNotes) cells[COL.note - 1] = (lineIndex === 0 && page.note) || null;

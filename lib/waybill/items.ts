@@ -4,6 +4,8 @@
 // Pure text in, plain objects out (no PDF / DB / network), so it is unit
 // tested against real `pdftotext -layout` output.
 
+import { separateBrands, syllableBreak } from "./vietnamese";
+
 export interface WaybillItem {
   name: string;
   variant: string;
@@ -51,23 +53,39 @@ export interface WaybillGroup {
 //  - next line starts uppercase → a new word, EXCEPT when the previous word is
 //    ALL CAPS ("FREESHI"+"P"), where a cut word is again the likelier story;
 //  - digit directly after a digit → same number.
-export function joinWrappedLines(lines: string[]): string {
+// When the label's geometry is known, `spaceBefore[i]` says line i can only have
+// started after a space: the line before it stopped with room to spare for line i's
+// first character, and a wrap that is forced by width never leaves that much room
+// (see cellLayout in layout.ts). That settles it, whatever the letters look like.
+export function joinWrappedLines(lines: string[], spaceBefore?: boolean[]): string {
   let result = "";
-  for (const line of lines) {
+  // Where two lines were glued without a space, for separateBrands.
+  const joins: number[] = [];
+  lines.forEach((line, i) => {
     if (result === "") {
       result = line;
-      continue;
+      return;
     }
-    result += needsSpace(result, line) ? ` ${line}` : line;
-  }
-  return result;
+    if (needsSpace(result, line, spaceBefore?.[i] ?? false)) {
+      result += ` ${line}`;
+    } else {
+      joins.push(result.length);
+      result += line;
+    }
+  });
+  return separateBrands(result, joins);
 }
 
-function needsSpace(previous: string, next: string): boolean {
+function needsSpace(previous: string, next: string, forced = false): boolean {
   if (previous.endsWith(",")) return true;
-  if (/\d$/.test(previous) && /^\d/.test(next)) return false;
   // The quantity marker itself can be what gets cut: "…, S" / "L: 1".
   if (/(^|\s)S$/.test(previous) && /^L:/.test(next)) return false;
+  if (forced) return true;
+  if (/\d$/.test(previous) && /^\d/.test(next)) return false;
+  // Vietnamese syllables are separated by spaces, so what the two halves make up says
+  // whether the wrap fell on a space or inside a syllable (vietnamese.ts).
+  const verdict = syllableBreak(previous.split(/\s+/).pop() ?? "", next.split(/\s+/)[0] ?? "");
+  if (verdict) return verdict === "space";
   if (!/^[\p{Lu}\d]/u.test(next)) return false;
 
   const lastWord = previous.split(/\s+/).pop() ?? "";
@@ -106,7 +124,9 @@ function parseItem(joined: string): WaybillItem | null {
   };
 }
 
-function parseItemBlock(pageText: string): { declaredTotalQuantity: number | null; items: WaybillItem[] } {
+// `spaceAfter[i]` (optional): text line i is certainly followed by a space when the next
+// line continues it — the geometry-based answer cellLayout works out for tiled labels.
+function parseItemBlock(pageText: string, spaceAfter?: boolean[]): { declaredTotalQuantity: number | null; items: WaybillItem[] } {
   const lines = pageText.split("\n");
   const headerIndex = lines.findIndex((line) => ITEM_BLOCK_RE.test(line));
   if (headerIndex === -1) return { declaredTotalQuantity: null, items: [] };
@@ -114,8 +134,11 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
   const declaredTotalQuantity = Number(ITEM_BLOCK_RE.exec(lines[headerIndex])![1]);
   const items: WaybillItem[] = [];
   let current: string[] | null = null;
+  // For each line of `current`: did it start after a space (see joinWrappedLines)?
+  let spaceBefore: boolean[] = [];
 
-  for (const line of lines.slice(headerIndex + 1)) {
+  for (const [offset, line] of lines.slice(headerIndex + 1).entries()) {
+    const lineIndex = headerIndex + 1 + offset;
     const text = cutRightColumn(line);
     if (text === "") {
       // A blank line ends the block — or, mid-item, means the label cut the
@@ -131,11 +154,13 @@ function parseItemBlock(pageText: string): { declaredTotalQuantity: number | nul
       const start = ITEM_START_RE.exec(text);
       if (!start || Number(start[1]) !== items.length + 1) break;
       current = [start[2]];
+      spaceBefore = [false];
     } else {
       current.push(text);
+      spaceBefore.push(spaceAfter?.[lineIndex - 1] ?? false);
     }
 
-    const joined = joinWrappedLines(current);
+    const joined = joinWrappedLines(current, spaceBefore);
     if (ITEM_END_RE.test(joined)) {
       const item = parseItem(joined);
       if (item) items.push(item);
@@ -162,11 +187,11 @@ function parseShopName(labelText: string): string {
 
 // One label's text → the order it names, or null if it names none. `labelText`
 // is what `pdftotext -layout` prints for that label alone.
-export function parseLabelText(labelText: string, pageIndex: number): WaybillPage | null {
+export function parseLabelText(labelText: string, pageIndex: number, spaceAfter?: boolean[]): WaybillPage | null {
   const orderId = ORDER_ID_RE.exec(labelText)?.[1];
   if (!orderId) return null;
 
-  const { declaredTotalQuantity, items } = parseItemBlock(labelText);
+  const { declaredTotalQuantity, items } = parseItemBlock(labelText, spaceAfter);
   const shopName = parseShopName(labelText);
   return {
     pageIndex,

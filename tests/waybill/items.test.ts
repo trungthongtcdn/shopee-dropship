@@ -109,6 +109,36 @@ describe("joinWrappedLines", () => {
   it("puts a space after a line that ends in a comma", () => {
     expect(joinWrappedLines(["logo xe,", "VÍ ĐEN,VINFAST, SL: 1"])).toBe("logo xe, VÍ ĐEN,VINFAST, SL: 1");
   });
+
+  it("puts back the space a wrap ate between two Vietnamese syllables", () => {
+    expect(joinWrappedLines(["…Dụng Cụ Tập GYM Thể Dục Tại Nhà, Thước", "dây, SL: 1"])).toBe("…Dụng Cụ Tập GYM Thể Dục Tại Nhà, Thước dây, SL: 1");
+    expect(joinWrappedLines(["Túi 40 vít hỗn", "hợp, SL: 1"])).toBe("Túi 40 vít hỗn hợp, SL: 1");
+    expect(joinWrappedLines(["xà đơn", "gắn tường"])).toBe("xà đơn gắn tường");
+  });
+
+  it("still glues a word the wrap cut inside a syllable", () => {
+    expect(joinWrappedLines(["xe tải k", "hông cần"])).toBe("xe tải không cần");
+    expect(joinWrappedLines(["R", "EN ẤN"])).toBe("REN ẤN");
+  });
+
+  it("takes the label's geometry over the letters when it knows there was a space", () => {
+    // not syllable-shaped on either side, so only the room left on the line can tell
+    expect(joinWrappedLines(["dung cu GYMX", "ZETA"], [false, true])).toBe("dung cu GYMX ZETA");
+    expect(joinWrappedLines(["dung cu GYMX", "ZETA"])).toBe("dung cu GYMXZETA");
+  });
+
+  it("still never splits the quantity marker, whatever the geometry says", () => {
+    expect(joinWrappedLines(["…, Túi 20 Vít To, S", "L: 1"], [false, true])).toBe("…, Túi 20 Vít To, SL: 1");
+  });
+
+  it("separates a car brand a wrap glued to the word before it", () => {
+    expect(joinWrappedLines(["Ví đen MAZ", "DA"])).toBe("Ví đen MAZDA");
+    expect(joinWrappedLines(["Ví ĐEN", "HYU", "NDAI"])).toBe("Ví ĐEN HYUNDAI");
+  });
+
+  it("keeps a borrowed word whole across a wrap", () => {
+    expect(joinWrappedLines(["dập lo", "go đầy đủ"])).toBe("dập logo đầy đủ");
+  });
 });
 
 describe("extractWaybillPagesFromText", () => {

@@ -1,4 +1,5 @@
 import type { BboxWord } from "./layout";
+import { looksCamelCase, separateBrands, syllableBreak } from "./vietnamese";
 
 // Some waybill prints put, under each shipping label, a "THÔNG TIN ĐƠN HÀNG" block:
 // a table of the order's lines with the seller's SKUs. The shipping label proper
@@ -81,7 +82,7 @@ function glyphWidth(char: string): number {
 }
 
 // How wide the first character of `word` is, going by how wide the whole word is on the page.
-function firstCharWidth(word: BboxWord): number {
+export function firstCharWidth(word: BboxWord): number {
   const chars = [...word.text];
   const total = chars.reduce((sum, char) => sum + glyphWidth(char), 0);
   return total === 0 ? word.x1 - word.x0 : ((word.x1 - word.x0) * glyphWidth(chars[0])) / total;
@@ -111,6 +112,7 @@ const lineWidth = (line: BboxWord[]) => line[line.length - 1].x1 - line[0].x0;
 // kept on the tight side (see readOrderInfo).
 function joinLines(lines: BboxWord[][], width: number): string {
   let text = "";
+  const joins: number[] = [];
   lines.forEach((line, i) => {
     const lineText = line.map((w) => w.text).join(" ");
     if (i === 0) {
@@ -118,9 +120,27 @@ function joinLines(lines: BboxWord[][], width: number): string {
       return;
     }
     const breakable = /[-/]$/.test(text);
-    text += !breakable && lineWidth(lines[i - 1]) + firstCharWidth(line[0]) <= width ? ` ${lineText}` : lineText;
+    let space = false;
+    if (!breakable) {
+      if (lineWidth(lines[i - 1]) + firstCharWidth(line[0]) <= width) {
+        // the line had room for the next character: the break fell on a space
+        space = true;
+      } else {
+        // The line was full, so the break could be either; the shape of the syllables on
+        // both sides can still tell ("nau" / "huyn" is two syllables, "chấ" / "t" is one) —
+        // except at a camel-case seam ("Chan" / "Ghe"), which sellers write without a space.
+        const last = text.split(/\s+/).pop() ?? "";
+        space = !looksCamelCase(last, line[0].text) && syllableBreak(last, line[0].text) === "space";
+      }
+    }
+    if (space) {
+      text += ` ${lineText}`;
+    } else {
+      joins.push(text.length);
+      text += lineText;
+    }
   });
-  return text.trim();
+  return separateBrands(text, joins).trim();
 }
 
 // Total horizontal padding of a table cell (both sides), in points, and how far under

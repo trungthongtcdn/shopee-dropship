@@ -120,6 +120,25 @@ describe("readOrderInfo", () => {
     expect(info.top).toBeCloseTo(310.3);
   });
 
+  it("puts back the spaces of a SKU the narrow column broke at every word", () => {
+    // "Vi da nau huyndai": lines of 5, 3, 5 and 2 characters (column holds 5)
+    const body = row(1, 351.4, [["Vi da", 12.2], ["nau", 7.3], ["huynd", 12.2], ["ai", 4.9]]);
+    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("Vi da nau huyndai");
+  });
+
+  it("separates the brand when its first piece sat on a full line of its own", () => {
+    // "VÍ ĐEN HYUNDAI" printed VÍ / ĐEN / HYU / NDAI; "ĐEN" fills its line, so the room can't say
+    const body = row(1, 351.4, [["VÍ", 5.4], ["ĐEN", 11.9], ["HYU", 11.9], ["NDAI", 9.5]]);
+    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("VÍ ĐEN HYUNDAI");
+  });
+
+  it("leaves a camel-case SKU's seams alone", () => {
+    const body = row(1, 351.4, [["ChanG", 12.2], ["he", 4.9]]);
+    expect(readOrderInfo(block(body))!.skus.get(1)).toBe("ChanGhe");
+    const seam = row(2, 377.8, [["Chan", 9.8], ["Ghe", 7.3]]);
+    expect(readOrderInfo(block(seam))!.skus.get(2)).toBe("ChanGhe");
+  });
+
   it("does not take the product name or variant for part of the SKU", () => {
     expect(readOrderInfo(block(row(1, 351.4, [["ABC", 7.5]])))!.skus.get(1)).toBe("ABC");
   });

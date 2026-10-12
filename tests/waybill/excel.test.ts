@@ -55,9 +55,9 @@ describe("buildWaybillExcel", () => {
     const { rows, sheet } = await build(plain);
     expect(rows[0]).toEqual(TEMPLATE_HEADERS);
     // singles are listed by product name: "Bàn" before "Ghế"
-    expect(rows.slice(1).map((r) => [r[2], r[3], r[6] ?? null, r[7], r[8]])).toEqual([
-      [1, "TRK_P2", null, 2, "Kho Sỉ"],
-      [2, "TRK_P1", null, 1, "Kho Sỉ"],
+    expect(rows.slice(1).map((r) => [r[2], r[3], r[6] ?? null, r[7]])).toEqual([
+      [1, "TRK_P2", null, 2],
+      [2, "TRK_P1", null, 1],
     ]);
     expect(sheet.name).toBe("Sheet1");
   });
@@ -85,16 +85,22 @@ describe("buildWaybillExcel", () => {
     expect(sheet.getColumn(7).width).toBeGreaterThanOrEqual(long.length);
   });
 
-  it("writes one row per product line: STT, tracking code, SKU, quantity, shop, identical orders", async () => {
+  it("writes one row per product line: STT, tracking code, SKU, quantity, identical orders", async () => {
     const { rows } = await build();
     // Groups: the two "Ghế xoay" first (2 identical orders), then singles by product name.
-    expect(rows.slice(1).map((r) => [r[2], r[3], r[6] ?? null, r[7], r[8], r[18]])).toEqual([
-      [1, "TRK_A1", "GX_DEN", 1, "Kho Sỉ", 2],
-      [2, "TRK_A2", "GX_DEN", 1, "Kho Sỉ", 2],
-      [3, "TRK_M1", "ONG100", 4, "Kho Sỉ", 1],
-      [3, "TRK_M1", "OC_M6", 1, "Kho Sỉ", 1],
-      [4, "TRK_N1", null, 2, "Kho Sỉ", 1],
+    expect(rows.slice(1).map((r) => [r[2], r[3], r[6] ?? null, r[7], r[18]])).toEqual([
+      [1, "TRK_A1", "GX_DEN", 1, 2],
+      [2, "TRK_A2", "GX_DEN", 1, 2],
+      [3, "TRK_M1", "ONG100", 4, 1],
+      [3, "TRK_M1", "OC_M6", 1, 1],
+      [4, "TRK_N1", null, 2, 1],
     ]);
+  });
+
+  it("leaves GIAN (I) empty even though the label names a sender", async () => {
+    const { rows, sheet } = await build();
+    expect(sheet.getCell("I1").value).toBe("GIAN");
+    expect(rows.slice(1).every((r) => r[8] === null || r[8] === undefined)).toBe(true);
   });
 
   it("merges the order's own cells over its lines, so a tracking code appears once", async () => {
