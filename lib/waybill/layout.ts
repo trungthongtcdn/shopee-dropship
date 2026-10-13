@@ -312,12 +312,14 @@ export function extractTiledLabels(pages: BboxPage[]): { labels: WaybillPage[]; 
       const info = readOrderInfo(words);
       if (!info) return;
       labelHeights[slot] = Math.max(0, info.top - LABEL_BOTTOM_GAP - Math.floor(cell / grid.cols) * (page.height / grid.rows));
-      // The table's row n lists the label's n-th product. Its SKU and variation are the
-      // seller's text as it is; the label's own variation (wrapped character by character,
-      // a space lost at each wrap) is only kept for a row whose cell is empty.
+      // The table's row n lists the label's n-th product. Its SKU, name and variation are
+      // the seller's text as it is; the label's own name and variation (wrapped character
+      // by character, a space lost at each wrap) are only kept for a row whose cell is empty.
       label?.items.forEach((item, i) => {
         const sku = info.skus.get(i + 1);
         if (sku) item.sku = sku;
+        const name = info.names.get(i + 1);
+        if (name) item.name = name;
         const variant = info.variants.get(i + 1);
         if (variant) item.variant = variant;
       });

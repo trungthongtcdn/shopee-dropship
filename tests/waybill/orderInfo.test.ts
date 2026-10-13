@@ -159,6 +159,26 @@ describe("readOrderInfo", () => {
     expect(readOrderInfo(block(spaced))!.variants.get(1)).toBe("Đen - Nâu");
   });
 
+  it("reads the product name of each row, from the name column only", () => {
+    const body = [...row(1, 351.4, [["ABC", 7.5]], [["VV", 4.9]], 0, [["D160", 9.8]]), ...row(2, 377.8, [["B", 2]])];
+    const info = readOrderInfo(block(body))!;
+    // "Piston" "ghế": the words of the name column; not the SKU, SKU phân loại, variation or SL
+    expect([...info.names]).toEqual([
+      [1, "Piston ghế"],
+      [2, "Piston ghế"],
+    ]);
+  });
+
+  it("joins a product name's wrapped lines with a space, except after a closing hyphen or slash", () => {
+    // `row` writes the name as two words on the row's first line; add the lines that wrap
+    const wrapped = (...lines: [string, number][]) =>
+      lines.map(([text, x], i) => word(text, 29.2, 351.4 + 5 * (i + 1), 29.2 + x));
+    const spaced = [...row(1, 351.4, [["ABC", 7.5]]), ...wrapped(["xà đơn gắn cửa", 40])];
+    expect(readOrderInfo(block(spaced))!.names.get(1)).toBe("Piston ghế xà đơn gắn cửa");
+    const hyphen = [word("60-", 29.2, 351.4, 36), word("130cm", 29.2, 356.4, 45), word("1", 0.8, 351.4, 3.6)];
+    expect(readOrderInfo(block(hyphen))!.names.get(1)).toBe("60-130cm");
+  });
+
   it("does not take the SKU phân loại column for the variation, nor the quantity", () => {
     const body = row(1, 351.4, [["ABC", 7.5]], [["VV", 4.9]], 0, [["D160", 9.8]]);
     expect(readOrderInfo(block(body))!.variants.get(1)).toBe("D160");

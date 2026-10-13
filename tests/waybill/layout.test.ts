@@ -302,9 +302,11 @@ describe("2 and 6 labels per sheet", () => {
 describe("labels followed by an order-info table", () => {
   const word = (text: string, x0: number, y0: number, x1: number): BboxWord => ({ text, x0, y0, x1, y1: y0 + 5.6 });
 
-  // rows: [SKU lines, (variation SKU lines)] — one entry per product line. Every
-  // character is 2.45 pt wide and a line holds 5 of them, like the print's narrow column.
-  function infoTable(x: number, top: number, rows: { sku?: string[]; variantSku?: string[]; variant?: string[] }[]): BboxWord[] {
+  // rows: one entry per product line, each column's lines (the name is "Hộp" unless
+  // given). Every character is 2.45 pt wide and a line holds 5 of them, like the print's
+  // narrow column.
+  type TableRow = { sku?: string[]; variantSku?: string[]; variant?: string[]; name?: string[] };
+  function infoTable(x: number, top: number, rows: TableRow[]): BboxWord[] {
     const words = [
       ...line("THÔNG TIN ĐƠN HÀNG", x + 2, top, 1.3),
       ...line("OrderSN: X package 1", x + 2, top + 13),
@@ -321,13 +323,15 @@ describe("labels followed by an order-info table", () => {
     ];
     let y = top + 41;
     rows.forEach((spec, n) => {
-      words.push(word(String(n + 1), x + 0.8, y, x + 3.6), word("Hộp", x + 29.2, y, x + 40), word("1", x + 141.2, y, x + 144));
+      words.push(word(String(n + 1), x + 0.8, y, x + 3.6), word("1", x + 141.2, y, x + 144));
       const lines = (list: string[] = [], column: number) =>
         list.forEach((text, i) => words.push(word(text, x + column, y + 5 * i, x + column + text.length * 2.45)));
+      const name = spec.name ?? ["Hộp"];
       lines(spec.sku, 14.3);
+      lines(name, 29.2);
       lines(spec.variantSku, 81.5);
       lines(spec.variant, 101.9);
-      y += 5 * Math.max(1, spec.sku?.length ?? 0, spec.variantSku?.length ?? 0, spec.variant?.length ?? 0) + 6;
+      y += 5 * Math.max(1, spec.sku?.length ?? 0, name.length, spec.variantSku?.length ?? 0, spec.variant?.length ?? 0) + 6;
     });
     return words;
   }
@@ -335,7 +339,7 @@ describe("labels followed by an order-info table", () => {
   // The label at ~0.93 scale (≈190 pt wide); its table starts 310 pt down, past the middle
   // of the page, as on the real print — so the sheet can't be read as two rows of cells.
   const TABLE_TOP = 310;
-  const cell = (cellX: number, n: number, rows: { sku?: string[]; variantSku?: string[]; variant?: string[] }[], extra: Partial<LabelSpec> = {}) => [
+  const cell = (cellX: number, n: number, rows: TableRow[], extra: Partial<LabelSpec> = {}) => [
     ...label(cellX - 8, 0, simple(n, extra), 0.93),
     ...infoTable(cellX, TABLE_TOP, rows),
   ];
@@ -356,8 +360,8 @@ describe("labels followed by an order-info table", () => {
   it("attaches each product line's SKU, as printed: every line break a space", () => {
     const { labels } = extractTiledLabels(pages)!;
     expect(labels.map((l) => l.items.map((item) => item.sku))).toEqual([["TyHoi_D160_Den"], ["Bo_05BanhXe"], ["ConThu"]]);
-    // the rest of the line is read as before
-    expect(labels[0].items[0]).toMatchObject({ name: "Hộp vít số 0", variant: "Loại A", quantity: 1 });
+    // the rest of the line is read as before (the name is the table's, "Hộp")
+    expect(labels[0].items[0]).toMatchObject({ name: "Hộp", variant: "Loại A", quantity: 1 });
   });
 
   it("matches the table's rows to the label's product lines by number (the SKU column, not SKU phân loại)", () => {
@@ -384,6 +388,19 @@ describe("labels followed by an order-info table", () => {
     expect(labels[0].items[0].variant).toBe("xà thanh lý 80-130");
     // an empty cell in the table leaves the label's own variation alone
     expect(labels[1].items[0].variant).toBe("Loại B");
+  });
+
+  it("takes the product name from the table, not from the label's own wrapped text", () => {
+    // The label cuts "phụ kiện" and "chất" at its wrap ("ph ụ", "ch ất"); the table
+    // keeps whole words and wraps between them.
+    const sheetWithTable = landscape([
+      cell(0, 0, [{ sku: ["A"], name: ["Piston phụ kiện", "chất lượng"] }], { itemLines: ["1. Piston ph ụ kiện ch ất lượng, Loại A, SL: 1"] }),
+      cell(396, 1, [{ sku: ["B"], name: [] }], { itemLines: ["1. Hộp vít, Loại B, SL: 1"] }),
+    ]);
+    const { labels } = extractTiledLabels([sheetWithTable])!;
+    expect(labels[0].items[0].name).toBe("Piston phụ kiện chất lượng");
+    // an empty cell in the table leaves the label's own name alone
+    expect(labels[1].items[0].name).toBe("Hộp vít");
   });
 
   it("records where each label ends, just above its table", () => {

@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { skuCatalog } from "@/lib/skus";
 import { sendFile } from "@/lib/zalo/bridge";
 import { buildWaybillExcel, waybillExcelFileName } from "./excel";
 import { groupWaybillPages, orderedPageIndexes, type WaybillPage } from "./items";
@@ -24,11 +23,7 @@ export const WAYBILL_SORTED_PDF_MESSAGE = "Đây là file PDF phiếu gửi hàn
 async function buildExcel(label: string, pages: WaybillPage[], at: Date): Promise<{ xlsx: Buffer; fileName: string } | null> {
   if (pages.length === 0) return null;
   try {
-    // The SKUs read off the labels become the master list's spelling (skuCatalog never
-    // throws; what it couldn't match stays as read).
-    const mapped = await skuCatalog().mapPages(pages);
-    for (const notice of mapped.notices) console.warn(`[waybill-excel] ${label}: ${notice}`);
-    return { xlsx: await buildWaybillExcel(groupWaybillPages(mapped.pages), at), fileName: waybillExcelFileName(at, pages.length) };
+    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages)), fileName: waybillExcelFileName(at, pages.length) };
   } catch (error) {
     console.error(`[waybill-excel] build failed (${label}):`, error);
     return null;

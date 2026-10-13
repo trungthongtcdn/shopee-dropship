@@ -3,8 +3,8 @@ import type { BboxWord } from "./layout";
 // Some waybill prints put, under each shipping label, a "THÔNG TIN ĐƠN HÀNG" block:
 // a table of the order's lines with the seller's SKUs. The shipping label proper
 // ends above that heading — the block is for the packer, not for the courier — so
-// this file finds where it starts (the PDF is cut there) and reads the SKU column
-// out of it (they go to the Excel).
+// this file finds where it starts (the PDF is cut there) and reads the SKU, name and
+// variation columns out of it (they go to the Excel).
 //
 //   THÔNG TIN ĐƠN HÀNG
 //   OrderSN: 2610083P8CNR1Q package 1
@@ -13,11 +13,12 @@ import type { BboxWord } from "./layout";
 //      _D16
 //
 // The table wraps by pixel width and its SKU column is narrow — a SKU takes several
-// lines — so it is read from the words' positions, not from `-layout` text. Two columns
-// are read: "SKU" and "Phân loại hàng" (the variation), both exactly as printed, with no
-// guessing about whether a wrap fell on a space or inside a word. The label's own text
-// wraps character by character and loses the space at each wrap; the table is the
-// seller's text as it is, so when there is a table it is the source of both.
+// lines — so it is read from the words' positions, not from `-layout` text. Three columns
+// are read: "SKU", "Tên sản phẩm" and "Phân loại hàng" (the variation), all exactly as
+// printed, with no guessing about whether a wrap fell on a space or inside a word. The
+// label's own text wraps character by character and loses the space at each wrap; the
+// table is the seller's text as it is, so when there is a table it is the source of all
+// three.
 
 export interface OrderInfo {
   // Where the block starts: the y of its heading, in page points from the top.
@@ -27,6 +28,8 @@ export interface OrderInfo {
   skus: Map<number, string>;
   // The same rows → the "Phân loại hàng" (variation) of that line, left out when empty.
   variants: Map<number, string>;
+  // The same rows → the "Tên sản phẩm" (product name) of that line, left out when empty.
+  names: Map<number, string>;
 }
 
 const HEADING = ["THÔNG", "TIN", "ĐƠN", "HÀNG"];
@@ -77,11 +80,11 @@ function joinSkuLines(lines: BboxWord[][]): string {
   return lines.map(lineText).join("").trim();
 }
 
-// A wrapped "Phân loại hàng" cell's lines as one text. This column wraps at word
-// boundaries (a word moves whole to the next line), so a line break is a space — except
-// right after a hyphen or slash that closes a word ("80-" / "130" is "80-130"), where the
-// break is only the place the text is allowed to wrap.
-function joinVariantLines(lines: BboxWord[][]): string {
+// A wrapped "Phân loại hàng" or "Tên sản phẩm" cell's lines as one text. These columns
+// wrap at word boundaries (a word moves whole to the next line), so a line break is a
+// space — except right after a hyphen or slash that closes a word ("80-" / "130" is
+// "80-130"), where the break is only the place the text is allowed to wrap.
+function joinTextLines(lines: BboxWord[][]): string {
   let text = "";
   for (const line of lines) {
     const next = lineText(line);
@@ -105,12 +108,19 @@ function variantColumn(header: BboxWord[]): { from: number; to: number } | null 
   return null;
 }
 
+// The "Tên sản phẩm" column: from its header's "Tên" to the first header word after
+// "sản phẩm" (the "SKU" of "SKU phân loại").
+function nameColumn(header: BboxWord[], name: BboxWord): { from: number; to: number } {
+  const next = header.find((w) => w.x0 > name.x0 && !["sản", "phẩm"].includes(w.text.toLowerCase()));
+  return { from: name.x0, to: next?.x0 ?? Number.POSITIVE_INFINITY };
+}
+
 // `words` are one label's words (a label alone on its page, or one cell of a tiled
 // sheet). Null when the label has no order-info block.
 export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
   const heading = findOrderInfoHeadings(words)[0];
   if (!heading) return null;
-  const info: OrderInfo = { top: heading.y0, skus: new Map(), variants: new Map() };
+  const info: OrderInfo = { top: heading.y0, skus: new Map(), variants: new Map(), names: new Map() };
 
   const below = words.filter((w) => w.y0 > heading.y1 && w.x0 >= heading.x0 - 40);
   const hash = below.filter((w) => w.text === "#").sort((a, b) => a.y0 - b.y0)[0];
@@ -123,6 +133,7 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
   if (!sku || !name) return info;
   // The "SKU" column is read, not "SKU phân loại", which sits further right.
   const variant = variantColumn(header);
+  const product = nameColumn(header, name);
 
   // Body rows start at each number in the "#" column.
   const body = below.filter((w) => w.y0 > hash.y1);
@@ -130,7 +141,7 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
     .filter((w) => /^\d+$/.test(w.text) && w.x0 >= hash.x0 - COLUMN_SLACK && w.x0 < sku.x0 - COLUMN_SLACK)
     .sort((a, b) => a.y0 - b.y0);
 
-  // Each row's lines of the SKU column and of the variation column.
+  // Each row's lines of the SKU, product name and variation columns.
   rows.forEach((row, i) => {
     const bottom = rows[i + 1]?.y0 ?? Infinity;
     const inRow = body.filter((w) => w.y0 >= row.y0 - 1 && w.y0 < bottom - 1);
@@ -138,8 +149,10 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
 
     const skuText = joinSkuLines(cell(sku.x0, name.x0));
     if (skuText) info.skus.set(Number(row.text), skuText);
+    const nameText = joinTextLines(cell(product.from, product.to));
+    if (nameText) info.names.set(Number(row.text), nameText);
     if (variant) {
-      const variantText = joinVariantLines(cell(variant.from, variant.to));
+      const variantText = joinTextLines(cell(variant.from, variant.to));
       if (variantText) info.variants.set(Number(row.text), variantText);
     }
   });
