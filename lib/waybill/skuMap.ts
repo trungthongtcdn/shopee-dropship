@@ -83,7 +83,7 @@ export class SkuMap {
 }
 
 // Minimal RFC 4180: quoted cells may hold commas, doubled quotes and line breaks.
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";

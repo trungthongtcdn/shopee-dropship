@@ -12,6 +12,12 @@ export interface WaybillItem {
   // order-info table — see orderInfo.ts. Never part of the grouping: the
   // same product always has the same SKU.
   sku?: string;
+  // What the warehouse's price sheet says about that SKU (kiotMap.ts): the Kiot product
+  // code, the Kiot store it is kept in and the cost of one unit. Each is absent when the
+  // sheet has none. Never part of the grouping either.
+  kiotCode?: string;
+  kiotStore?: string;
+  cost?: number;
 }
 
 export interface WaybillPage {
