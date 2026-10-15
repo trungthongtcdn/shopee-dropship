@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
 import { storeWaybillFiles } from "@/lib/waybill/deliver";
+import { labelMismatchMessage } from "@/lib/waybill/items";
 import { parsePerPage, type PerPage } from "@/lib/waybill/compose";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "lỗi khi đọc file PDF" }, { status: 400 });
   }
 
-  const { orders, pages, layout } = parsed;
+  const { orders, pages, layout, labelCount } = parsed;
   if (orders.length === 0) {
     return NextResponse.json({ error: "không tìm thấy mã đơn hàng nào trong file", orderIds: [] }, { status: 422 });
   }
@@ -86,7 +87,16 @@ export async function POST(request: NextRequest) {
     uploadedPdfName,
     layout,
     perPage,
+    labelCount,
   });
 
-  return NextResponse.json({ orderIds: orders.map((o) => o.shopeeOrderId), matchedCount, createdCount, hasExcel, hasSortedPdf });
+  return NextResponse.json({
+    orderIds: orders.map((o) => o.shopeeOrderId),
+    matchedCount,
+    createdCount,
+    hasExcel,
+    hasSortedPdf,
+    // Red line for the page: set when the PDF has more labels than orders were read.
+    alert: labelMismatchMessage(pages.length, labelCount),
+  });
 }

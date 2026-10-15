@@ -109,9 +109,16 @@ FASTFIX.VN                               Hoàng Tú
 describe("parseWaybillText", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it("counts the labels of the document, so a label that wasn't read shows", async () => {
+    const withUnread = `${SAMPLE_TEXT}\fMã vận đơn: SPXVN0000000000\nMã đơn: không đọc được`;
+    const parsed = await parseWaybillText(withUnread, vi.fn());
+    expect(parsed.labelCount).toBe(parsed.pages.length + 1);
+  });
+
   it("reads a one-label-per-page document from the text alone", async () => {
     const readBboxXml = vi.fn();
     const parsed = await parseWaybillText(SAMPLE_TEXT, readBboxXml);
+    expect(parsed.labelCount).toBe(parsed.pages.length);
 
     expect(readBboxXml).not.toHaveBeenCalled();
     expect(parsed.layout).toBeUndefined();

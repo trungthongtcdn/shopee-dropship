@@ -30,6 +30,8 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
     }
   }
   const [status, setStatus] = useState<string | null>(null);
+  // Red line: the PDF has more labels than orders were read.
+  const [alert, setAlert] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -47,6 +49,7 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
 
     setSubmitting(true);
     setStatus("Đang xử lý...");
+    setAlert(null);
 
     const form = new FormData();
     form.set("sentAt", new Date(sentAt).toISOString());
@@ -64,6 +67,7 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
         ? `. Đã tạo file excel gom nhóm${json.hasSortedPdf ? " và PDF đã xếp lại" : ""} — bấm nút ở lịch sử bên dưới để xem`
         : "";
       setStatus(`Đã khớp ${json.matchedCount}/${json.orderIds.length} đơn trong file${createdNote}${excelNote}`);
+      setAlert(typeof json.alert === "string" ? json.alert : null);
       setPdfUrl("");
       setSentAt("");
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -132,6 +136,11 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
         </button>
         {status && <span className="editor-status">{status}</span>}
       </div>
+      {alert ? (
+        <p role="alert" style={{ margin: 0, color: "#c00000", fontWeight: 700 }}>
+          {alert}
+        </p>
+      ) : null}
     </form>
   );
 }

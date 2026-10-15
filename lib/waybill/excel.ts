@@ -40,6 +40,8 @@ const ROW_PADDING = 6;
 const HEADER_FILL = "FF1F2937";
 const BAND_FILLS = ["FFFFFFFF", "FFD6E4FA"];
 const BATCH_COLOR = "FFB45309";
+const ALERT_COLOR = "FFC00000";
+const ALERT_FILL = "FFFFE5E5";
 const BLACK = "FF000000";
 
 // Estimating the width of text in Calibri 12: em widths of the character classes (a
@@ -87,12 +89,21 @@ const thin = { style: "thin", color: { argb: BLACK } } as const;
 const batchRule = { style: "medium", color: { argb: BLACK } } as const;
 
 // `groups` as groupWaybillPages() makes them; the rows follow their order, which is the
-// order of the re-ordered PDF's pages.
-export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer> {
+// order of the re-ordered PDF's pages. `alert` — set when fewer orders were read than the
+// PDF has labels — is written in red across the first row, above the header, so nobody
+// packs from the sheet without seeing it; without one the sheet is exactly the template.
+export async function buildWaybillExcel(groups: WaybillGroup[], alert: string | null = null): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
+  const headerRow = alert ? 2 : 1;
   const sheet = workbook.addWorksheet("Danh sách đơn", {
-    views: [{ state: "frozen", ySplit: 1 }],
-    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1" },
+    views: [{ state: "frozen", ySplit: headerRow }],
+    pageSetup: {
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printTitlesRow: `${headerRow}:${headerRow}`,
+    },
   });
 
   const pages = groups.flatMap((group) => group.pages);
@@ -105,6 +116,16 @@ export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer>
   widths[COL.name - 1] = longest(COL.name, items.map((item) => item.name));
   widths[COL.note - 1] = longest(COL.note, pages.map((page) => page.note));
   sheet.columns = widths.map((width) => ({ width }));
+
+  if (alert) {
+    const row = sheet.addRow([alert]);
+    sheet.mergeCells(1, 1, 1, HEADERS.length);
+    row.height = ROW_HEIGHT;
+    const cell = row.getCell(1);
+    cell.font = { name: "Calibri", size: FONT_SIZE, bold: true, color: { argb: ALERT_COLOR } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALERT_FILL } };
+    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  }
 
   const header = sheet.addRow([...HEADERS]);
   header.height = ROW_HEIGHT;
@@ -166,7 +187,7 @@ export async function buildWaybillExcel(groups: WaybillGroup[]): Promise<Buffer>
     }
   });
 
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: HEADERS.length } };
+  sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: headerRow, column: HEADERS.length } };
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 

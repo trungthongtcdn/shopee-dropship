@@ -181,6 +181,35 @@ describe("buildWaybillExcel", () => {
     expect(sheet.pageSetup).toMatchObject({ orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
   });
 
+  it("writes the alert in red above the header, and moves the freeze, filter and print title down one row", async () => {
+    const message = "CẢNH BÁO: file PDF có 5 phiếu nhưng chỉ đọc được 4 đơn (thiếu 1). Hãy kiểm tra lại file.";
+    const { rows, sheet, merges } = await readBack(await buildWaybillExcel(groupWaybillPages(pages), message)).then((r) => ({
+      ...r,
+      merges: ((r.sheet.model as { merges?: string[] }).merges ?? []).slice(),
+    }));
+
+    expect(rows[0][0]).toBe(message);
+    expect(rows[1]).toEqual(HEADERS);
+    expect(rows).toHaveLength((await build()).rows.length + 1);
+    expect(merges).toContain("A1:H1");
+    expect(fontOf(sheet, "A1")).toMatchObject({ bold: true, color: { argb: "FFC00000" } });
+    expect(argb(sheet.getCell("A1").fill)).toBe("FFFFE5E5");
+    expect(sheet.views[0]).toMatchObject({ state: "frozen", ySplit: 2 });
+    expect(JSON.stringify(sheet.autoFilter)).toMatch(/A2.*H2/);
+    expect(sheet.pageSetup.printTitlesRow).toBe("2:2");
+  });
+
+  it("has no alert row unless asked: the sheet is the template", async () => {
+    const { rows } = await build();
+    expect(rows[0]).toEqual(HEADERS);
+  });
+
+  it("lists orders whose label hides products after all the others, in a group of their own", async () => {
+    const hidden = order("TRK_H1", [["Ốc", "M6", 1]], { declaredTotalQuantity: 6 });
+    const { rows } = await build([hidden, ...pages]);
+    expect(rows.at(-1)).toEqual([4, 1, 5, "TRK_H1", "M6", 1, "Ốc", expect.stringMatching(/ẩn bớt/)]);
+  });
+
   it("still produces a valid workbook with only a header for an empty list", async () => {
     const { rows } = await readBack(await buildWaybillExcel([]));
     expect(rows).toEqual([HEADERS]);

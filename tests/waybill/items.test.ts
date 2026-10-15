@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  countLabels,
   extractWaybillPagesFromText,
   joinWrappedLines,
   groupWaybillPages,
+  labelMismatchMessage,
+  looksLikeLabel,
   orderedPageIndexes,
   parseLabelText,
   type WaybillPage,
@@ -308,6 +311,85 @@ describe("groupWaybillPages", () => {
   it("raises no note when the quantities add up", () => {
     const [group] = groupWaybillPages(pages(PAGE_TWO_ITEMS));
     expect(group.pages[0].note).toBeNull();
+  });
+});
+
+describe("groupWaybillPages — orders whose label hides products", () => {
+  const order = (pageIndex: number, id: string, name: string, quantity: number, declared: number): WaybillPage => ({
+    pageIndex,
+    shopeeOrderId: id,
+    trackingCode: `TRK_${id}`,
+    declaredTotalQuantity: declared,
+    items: [{ name, variant: "V", quantity }],
+  });
+
+  it("lists them after every ordinary group — even a bigger one — and before unreadable ones", () => {
+    const unreadable: WaybillPage = { pageIndex: 9, shopeeOrderId: "OU", trackingCode: "TRK_OU", declaredTotalQuantity: null, items: [] };
+    const groups = groupWaybillPages([
+      order(0, "H1", "Ốc", 1, 6),
+      order(1, "H2", "Ốc", 1, 6),
+      order(2, "H3", "Ốc", 1, 6),
+      unreadable,
+      order(4, "N1", "Piston", 1, 1),
+      order(5, "N2", "Ví", 1, 1),
+    ]);
+
+    expect(groups.map((g) => g.pages.map((p) => p.shopeeOrderId))).toEqual([["N1"], ["N2"], ["H1", "H2", "H3"], ["OU"]]);
+    expect(groups.map((g) => g.hidden)).toEqual([false, false, true, false]);
+  });
+
+  it("keeps identical hidden-product orders next to each other", () => {
+    const groups = groupWaybillPages([
+      order(0, "H1", "Ốc", 1, 6),
+      order(1, "H2", "Đinh", 1, 6),
+      order(2, "H3", "Ốc", 1, 6),
+    ]);
+    expect(groups.map((g) => g.pages.map((p) => p.shopeeOrderId))).toEqual([["H1", "H3"], ["H2"]]);
+  });
+
+  it("doesn't mix one with an ordinary order that shows the same lines", () => {
+    const groups = groupWaybillPages([order(0, "N1", "Ốc", 1, 1), order(1, "H1", "Ốc", 1, 6), order(2, "N2", "Ốc", 1, 1)]);
+    expect(groups.map((g) => [g.hidden, g.pages.map((p) => p.shopeeOrderId)])).toEqual([
+      [false, ["N1", "N2"]],
+      [true, ["H1"]],
+    ]);
+  });
+
+  it("keeps two hidden-product orders apart when they declare different totals", () => {
+    const groups = groupWaybillPages([order(0, "H1", "Ốc", 1, 6), order(1, "H2", "Ốc", 1, 9)]);
+    expect(groups).toHaveLength(2);
+  });
+
+  it("puts them in the PDF order list after the ordinary ones too", () => {
+    const groups = groupWaybillPages([order(0, "H1", "Ốc", 1, 6), order(1, "N1", "Piston", 1, 1)]);
+    expect(orderedPageIndexes(groups)).toEqual([1, 0]);
+  });
+});
+
+describe("counting labels", () => {
+  it("counts pages that carry a tracking code, an order id or the product block", () => {
+    const texts = join(PAGE_PISTON, PAGE_NO_ITEMS, "Trang bìa\nDanh sách đơn").split("\f");
+    expect(countLabels(texts)).toBe(2);
+  });
+
+  it("counts a label that names no order as a label, so its absence from the orders shows", () => {
+    expect(looksLikeLabel("Mã vận đơn: SPXVN0601\nKhông có mã đơn")).toBe(true);
+    expect(looksLikeLabel("THÔNG TIN ĐƠN HÀNG\n1  SKU  Hộp")).toBe(false);
+  });
+});
+
+describe("labelMismatchMessage", () => {
+  it("is silent when every label was read, or when nothing was counted", () => {
+    expect(labelMismatchMessage(25, 25)).toBeNull();
+    expect(labelMismatchMessage(25, null)).toBeNull();
+    expect(labelMismatchMessage(25, undefined)).toBeNull();
+  });
+
+  it("says how many labels the PDF has, how many orders were read, and how many are missing", () => {
+    const message = labelMismatchMessage(24, 25)!;
+    expect(message).toMatch(/25 phiếu/);
+    expect(message).toMatch(/24 đơn/);
+    expect(message).toMatch(/thiếu 1/);
   });
 });
 

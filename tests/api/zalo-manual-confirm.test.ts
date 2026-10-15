@@ -18,6 +18,8 @@ vi.mock("@/lib/zalo/parseWaybill", () => ({
     if (requestedUrl?.includes("empty")) return { orders: [], pages: [] };
     const orderId = requestedUrl ? "SP002" : "SP001";
     return {
+      // "extra-label" is a PDF with one more label than the parser could read as an order.
+      labelCount: requestedUrl?.includes("extra-label") ? 2 : 1,
       orders: [{ shopeeOrderId: orderId, trackingCode: null }],
       pages: [
         {
@@ -101,6 +103,14 @@ describe("POST /api/zalo/manual-confirm", () => {
       makeFormRequest({ pdfUrl: "https://example.com/waybill.pdf", sentAt: "not-a-date" })
     );
     expect(response.status).toBe(400);
+  });
+
+  it("returns the red alert when the PDF has more labels than orders were read, and none otherwise", async () => {
+    const short = await POST(makeFormRequest({ pdfUrl: "https://example.com/extra-label.pdf", sentAt: "2026-06-25T10:00" }));
+    expect((await short.json()).alert).toMatch(/2 phiếu.*1 đơn.*thiếu 1/);
+
+    const whole = await POST(makeFormRequest({ pdfUrl: "https://example.com/waybill.pdf", sentAt: "2026-06-25T10:00" }));
+    expect((await whole.json()).alert).toBeNull();
   });
 
   it("keeps a grouped Excel and a re-ordered PDF for a pasted link, but not a copy of the original (the link still opens it)", async () => {

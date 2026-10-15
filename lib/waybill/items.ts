@@ -37,6 +37,9 @@ export interface GroupedPage extends WaybillPage {
 export interface WaybillGroup {
   // false only for the trailing group of pages whose items couldn't be read.
   readable: boolean;
+  // true for orders whose label can't show every product (see hidesItems): they are
+  // grouped among themselves and listed after every ordinary group.
+  hidden: boolean;
   pages: GroupedPage[];
 }
 
@@ -218,11 +221,21 @@ function signature(page: WaybillPage): string {
   return page.items.map(itemKey).sort().join("¦");
 }
 
+function readQuantity(page: WaybillPage): number {
+  return page.items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+// The label's product box is only so tall: an order with many products prints the first
+// few and the label's own "Tổng SL sản phẩm" then exceeds what can be read. Such an
+// order can't be told apart from a smaller one by its visible lines alone.
+function hidesItems(page: WaybillPage): boolean {
+  return page.items.length > 0 && page.declaredTotalQuantity !== null && page.declaredTotalQuantity !== readQuantity(page);
+}
+
 function noteFor(page: WaybillPage): string | null {
   if (page.items.length === 0) return "Không đọc được nội dung hàng trên nhãn";
-  const total = page.items.reduce((sum, item) => sum + item.quantity, 0);
-  if (page.declaredTotalQuantity !== null && page.declaredTotalQuantity !== total) {
-    return `Nhãn ẩn bớt sản phẩm (tổng SL ${page.declaredTotalQuantity}, đọc được ${total})`;
+  if (hidesItems(page)) {
+    return `Nhãn ẩn bớt sản phẩm (tổng SL ${page.declaredTotalQuantity}, đọc được ${readQuantity(page)})`;
   }
   return null;
 }
@@ -236,11 +249,14 @@ function sortText(page: WaybillPage): string {
 
 // Orders with the same set of (name, variant, quantity) lines form one group.
 // Largest groups first — the warehouse packs the big batches in one go — then
-// by product name so near-identical singles land close together. Pages whose
-// items couldn't be read go last in their own group rather than disappearing.
-// Inside a group the original PDF order is kept.
+// by product name so near-identical singles land close together. Orders whose label
+// hides some of their products come after all of those (still grouped with each other,
+// by what they show and the total they declare), and pages whose items couldn't be read
+// go last in their own group rather than disappearing. Inside a group the original PDF
+// order is kept.
 export function groupWaybillPages(pages: WaybillPage[]): WaybillGroup[] {
-  const bySignature = new Map<string, GroupedPage[]>();
+  const ordinary = new Map<string, GroupedPage[]>();
+  const hidden = new Map<string, GroupedPage[]>();
   const unreadable: GroupedPage[] = [];
 
   for (const page of pages) {
@@ -249,17 +265,43 @@ export function groupWaybillPages(pages: WaybillPage[]): WaybillGroup[] {
       unreadable.push(grouped);
       continue;
     }
-    const key = signature(page);
-    bySignature.set(key, [...(bySignature.get(key) ?? []), grouped]);
+    const target = hidesItems(page) ? hidden : ordinary;
+    // What is hidden is unknown, but two labels that show the same lines out of
+    // different declared totals are surely different orders.
+    const key = target === hidden ? `${signature(page)}¦total ${page.declaredTotalQuantity}` : signature(page);
+    target.set(key, [...(target.get(key) ?? []), grouped]);
   }
 
-  const readable = [...bySignature.values()].sort(
-    (a, b) => b.length - a.length || collator.compare(sortText(a[0]), sortText(b[0]))
-  );
+  const bySize = (a: GroupedPage[], b: GroupedPage[]) =>
+    b.length - a.length || collator.compare(sortText(a[0]), sortText(b[0]));
 
-  const groups: WaybillGroup[] = readable.map((groupPages) => ({ readable: true, pages: groupPages }));
-  if (unreadable.length > 0) groups.push({ readable: false, pages: unreadable });
+  const groups: WaybillGroup[] = [
+    ...[...ordinary.values()].sort(bySize).map((groupPages) => ({ readable: true, hidden: false, pages: groupPages })),
+    ...[...hidden.values()].sort(bySize).map((groupPages) => ({ readable: true, hidden: true, pages: groupPages })),
+  ];
+  if (unreadable.length > 0) groups.push({ readable: false, hidden: false, pages: unreadable });
   return groups;
+}
+
+// Whether a page (or one cell of a tiled sheet) is a shipping label at all: it carries
+// the tracking code, the order id or the product block. A sheet can hold more than
+// the labels it was made for (a cover, the rest of an order-info table), and those are
+// not orders to find.
+export function looksLikeLabel(text: string): boolean {
+  return TRACKING_RE.test(text) || ITEM_BLOCK_RE.test(text) || findOrderId(text) !== null;
+}
+
+// How many of these texts are labels — the number of orders the file should hold.
+export function countLabels(texts: string[]): number {
+  return texts.filter(looksLikeLabel).length;
+}
+
+// The red line the user is shown when fewer orders were read than the PDF has labels:
+// a label that wasn't read is missing from the Excel and from the sorted PDF's order, and
+// must be looked at by hand. Null when nothing is missing.
+export function labelMismatchMessage(orderCount: number, labelCount: number | null | undefined): string | null {
+  if (labelCount === null || labelCount === undefined || labelCount <= orderCount) return null;
+  return `CẢNH BÁO: file PDF có ${labelCount} phiếu nhưng chỉ đọc được ${orderCount} đơn (thiếu ${labelCount - orderCount}). Hãy kiểm tra lại file.`;
 }
 
 // Source-PDF page numbers in the exact order the groups list their orders — the

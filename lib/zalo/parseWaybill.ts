@@ -4,7 +4,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { extractWaybillPagesFromText, findOrderId, type WaybillPage } from "@/lib/waybill/items";
+import { countLabels, extractWaybillPagesFromText, findOrderId, type WaybillPage } from "@/lib/waybill/items";
 import { extractTiledLabels, looksTiled, parseBboxXml, type SheetLayout } from "@/lib/waybill/layout";
 import { hasOrderInfoHeading } from "@/lib/waybill/orderInfo";
 
@@ -83,6 +83,10 @@ export interface ParsedWaybill {
   // The same pages with their product lines, for the grouped Excel. Empty when
   // the document's layout couldn't be read (the confirmation still goes ahead).
   pages: WaybillPage[];
+  // How many shipping labels the PDF holds (pages, or cells of a tiled sheet, carrying a
+  // tracking code, an order id or the product block). More than `pages.length` means some
+  // label wasn't read as an order — the Excel and the Zalo caption then say so.
+  labelCount: number;
   // Set when several labels are tiled on each sheet, or when each label has an
   // order-info table under it to be cut off: `pages` are then labels, not PDF pages,
   // and the re-ordered PDF has to be built label by label.
@@ -100,8 +104,9 @@ export interface ParsedWaybill {
 // tiled document just `pages` stays empty.
 export async function parseWaybillText(text: string, readBboxXml: () => Promise<string>): Promise<ParsedWaybill> {
   const tiledSheets = looksTiled(text);
+  const pageLabels = countLabels(text.split("\f"));
   if (!tiledSheets && !hasOrderInfoHeading(text)) {
-    return { orders: extractOrdersFromWaybillText(text), pages: extractWaybillPagesFromText(text) };
+    return { orders: extractOrdersFromWaybillText(text), pages: extractWaybillPagesFromText(text), labelCount: pageLabels };
   }
 
   try {
@@ -110,6 +115,7 @@ export async function parseWaybillText(text: string, readBboxXml: () => Promise<
       return {
         orders: tiled.cells.flatMap((cell) => extractOrdersFromWaybillText(cell.text)),
         pages: tiled.labels,
+        labelCount: countLabels(tiled.cells.map((cell) => cell.text)),
         layout: tiled.layout,
       };
     }
@@ -119,7 +125,11 @@ export async function parseWaybillText(text: string, readBboxXml: () => Promise<
   }
   // One label per page whose sheets can't be read by position: as plain text, the
   // order-info table stays in the PDF and the SKUs stay out of the Excel.
-  return { orders: extractOrdersFromWaybillText(text), pages: tiledSheets ? [] : extractWaybillPagesFromText(text) };
+  return {
+    orders: extractOrdersFromWaybillText(text),
+    pages: tiledSheets ? [] : extractWaybillPagesFromText(text),
+    labelCount: pageLabels,
+  };
 }
 
 export async function parseWaybillPdf(buffer: Buffer): Promise<ParsedWaybill> {

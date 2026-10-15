@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { sendFile } from "@/lib/zalo/bridge";
 import { buildWaybillExcel, waybillExcelFileName } from "./excel";
-import { groupWaybillPages, orderedPageIndexes, type WaybillPage } from "./items";
+import { groupWaybillPages, labelMismatchMessage, orderedPageIndexes, type WaybillPage } from "./items";
 import { composeLabelsPdf, type PerPage } from "./compose";
 import type { SheetLayout } from "./layout";
 import { reorderPdfLabels, reorderPdfPages, waybillSortedPdfFileName } from "./pdf";
@@ -9,6 +9,12 @@ import { reorderPdfLabels, reorderPdfPages, waybillSortedPdfFileName } from "./p
 // Captions the warehouse sees with the files in the Zalo group.
 export const WAYBILL_EXCEL_MESSAGE = "Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau";
 export const WAYBILL_SORTED_PDF_MESSAGE = "Đây là file PDF phiếu gửi hàng đã sắp xếp lại theo đúng thứ tự trong file Excel";
+
+// What goes with a file in the Zalo group: the caption, and under it the warning when the
+// PDF has more labels than orders were read (the Excel carries the same line in red).
+function captionWith(caption: string, alert: string | null): string {
+  return alert ? `${caption}\n⚠️ ${alert}` : caption;
+}
 
 // Every entry point below NEVER throws. They run next to flows that must not be
 // derailed by a bad PDF layout, Zalo being down or a deleted log row: the Zalo
@@ -20,10 +26,16 @@ export const WAYBILL_SORTED_PDF_MESSAGE = "Đây là file PDF phiếu gửi hàn
 // — the Excel rows and the PDF pages walk the very same group list — so the two
 // can never disagree about the order.
 
-async function buildExcel(label: string, pages: WaybillPage[], at: Date): Promise<{ xlsx: Buffer; fileName: string } | null> {
+async function buildExcel(
+  label: string,
+  pages: WaybillPage[],
+  at: Date,
+  labelCount?: number | null
+): Promise<{ xlsx: Buffer; fileName: string } | null> {
   if (pages.length === 0) return null;
   try {
-    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages)), fileName: waybillExcelFileName(at, pages.length) };
+    const alert = labelMismatchMessage(pages.length, labelCount);
+    return { xlsx: await buildWaybillExcel(groupWaybillPages(pages), alert), fileName: waybillExcelFileName(at, pages.length) };
   } catch (error) {
     console.error(`[waybill-excel] build failed (${label}):`, error);
     return null;
@@ -61,6 +73,8 @@ export interface StoreWaybillFilesParams {
   logId: number;
   pages: WaybillPage[];
   at: Date;
+  // Labels the PDF holds (see ParsedWaybill); more than pages.length raises the red alert.
+  labelCount?: number | null;
   // The PDF the pages were read from; the re-ordered copy is made from it.
   sourcePdf: Buffer;
   // Set when the PDF has several labels tiled on each sheet (see ParsedWaybill).
@@ -83,10 +97,10 @@ export interface StoreWaybillFilesResult {
 // later. The Excel is the anchor: if it can't be built nothing is stored; if
 // only the PDF can't be re-ordered, the Excel is still kept.
 export async function storeWaybillFiles(params: StoreWaybillFilesParams): Promise<StoreWaybillFilesResult> {
-  const { logId, pages, at, sourcePdf, uploadedPdfName, layout, perPage } = params;
+  const { logId, pages, at, sourcePdf, uploadedPdfName, layout, perPage, labelCount } = params;
   const label = `log ${logId}`;
 
-  const excel = await buildExcel(label, pages, at);
+  const excel = await buildExcel(label, pages, at, labelCount);
   if (!excel) return { stored: false, sortedPdfStored: false };
   const sorted = await buildSortedPdf(label, pages, sourcePdf, at, layout, perPage);
 
@@ -120,16 +134,19 @@ export interface SendWaybillExcelParams {
   pages: WaybillPage[];
   at: Date;
   thread: ZaloThread;
+  // Labels the PDF holds; more than pages.length adds the warning to the caption.
+  labelCount?: number | null;
 }
 
 // Posts the grouped Excel into the Zalo thread the PDF arrived in.
 export async function sendWaybillExcel(params: SendWaybillExcelParams): Promise<{ sent: boolean }> {
-  const { pages, at, thread } = params;
-  const built = await buildExcel(`thread ${thread.id}`, pages, at);
+  const { pages, at, thread, labelCount } = params;
+  const built = await buildExcel(`thread ${thread.id}`, pages, at, labelCount);
   if (!built) return { sent: false };
 
   try {
-    await sendFile(thread.id, thread.type, built.fileName, built.xlsx, WAYBILL_EXCEL_MESSAGE);
+    const caption = captionWith(WAYBILL_EXCEL_MESSAGE, labelMismatchMessage(pages.length, labelCount));
+    await sendFile(thread.id, thread.type, built.fileName, built.xlsx, caption);
     return { sent: true };
   } catch (error) {
     console.error(`[waybill-excel] sending to Zalo thread ${thread.id} failed:`, error);
@@ -145,12 +162,13 @@ export interface SendSortedWaybillPdfParams extends SendWaybillExcelParams {
 
 // Posts the PDF, its pages re-ordered like the Excel rows, into the same thread.
 export async function sendSortedWaybillPdf(params: SendSortedWaybillPdfParams): Promise<{ sent: boolean }> {
-  const { pages, at, sourcePdf, thread, layout, perPage } = params;
+  const { pages, at, sourcePdf, thread, layout, perPage, labelCount } = params;
   const built = await buildSortedPdf(`thread ${thread.id}`, pages, sourcePdf, at, layout, perPage);
   if (!built) return { sent: false };
 
   try {
-    await sendFile(thread.id, thread.type, built.fileName, built.pdf, WAYBILL_SORTED_PDF_MESSAGE);
+    const caption = captionWith(WAYBILL_SORTED_PDF_MESSAGE, labelMismatchMessage(pages.length, labelCount));
+    await sendFile(thread.id, thread.type, built.fileName, built.pdf, caption);
     return { sent: true };
   } catch (error) {
     console.error(`[waybill-pdf] sending to Zalo thread ${thread.id} failed:`, error);

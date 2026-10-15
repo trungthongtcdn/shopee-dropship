@@ -68,6 +68,16 @@ describe("storeWaybillFiles", () => {
     expect(file.pdfData).toBeNull();
   });
 
+  it("stores the Excel with the red row when the PDF has more labels than orders read", async () => {
+    const log = await newLog();
+    await storeWaybillFiles({ logId: log.id, pages: PAGES, at: AT, sourcePdf: await makePdf(3), labelCount: 5 });
+
+    const file = await prisma.waybillFile.findUniqueOrThrow({ where: { confirmationLogId: log.id } });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(file.xlsxData) as unknown as ExcelJS.Buffer);
+    expect(String(workbook.worksheets[0].getCell("A1").value)).toMatch(/5 phiếu.*3 đơn.*thiếu 2/);
+  });
+
   it("keeps the original PDF too when it was uploaded by hand", async () => {
     const log = await newLog();
     const sourcePdf = await makePdf(3);
@@ -138,6 +148,22 @@ describe("sendWaybillExcel", () => {
     expect(message).toBe("Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau");
     expect(message).toBe(WAYBILL_EXCEL_MESSAGE);
     expect(await orderIdsInExcel(data)).toEqual(["O1", "O3", "O2"]);
+  });
+
+  it("adds the warning to the caption, and the red row to the Excel, when the PDF has more labels than orders read", async () => {
+    await sendWaybillExcel({ pages: PAGES, at: AT, thread: { id: "G123", type: "group" }, labelCount: 4 });
+
+    const [, , , data, message] = sendFile.mock.calls[0] as unknown as [string, string, string, Buffer, string];
+    expect(message).toBe(`${WAYBILL_EXCEL_MESSAGE}\n⚠️ CẢNH BÁO: file PDF có 4 phiếu nhưng chỉ đọc được 3 đơn (thiếu 1). Hãy kiểm tra lại file.`);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(data) as unknown as ExcelJS.Buffer);
+    expect(String(workbook.worksheets[0].getCell("A1").value)).toMatch(/4 phiếu.*3 đơn.*thiếu 1/);
+  });
+
+  it("keeps the plain caption when every label was read", async () => {
+    await sendWaybillExcel({ pages: PAGES, at: AT, thread: { id: "G123", type: "group" }, labelCount: 3 });
+    const [, , , , message] = sendFile.mock.calls[0] as unknown as [string, string, string, Buffer, string];
+    expect(message).toBe(WAYBILL_EXCEL_MESSAGE);
   });
 
   it("does not throw when Zalo refuses the file", async () => {

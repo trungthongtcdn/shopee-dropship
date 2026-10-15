@@ -247,11 +247,11 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     if (!markPdfMessageHandled(`${config.threadId}:${pdfMessage.msgId}`)) continue;
     if (isStalePdfMessage(pdfMessage.ts)) continue;
     try {
-      const { pages, pdf, layout } = await loadWaybill(pdfMessage.pdfUrl);
+      const { pages, pdf, layout, labelCount } = await loadWaybill(pdfMessage.pdfUrl);
       // One timestamp so the two files share a name stem and pair up visibly.
       const at = new Date();
-      await sendWaybillExcel({ pages, at, thread });
-      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread });
+      await sendWaybillExcel({ pages, at, thread, labelCount });
+      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread, labelCount });
     } catch (error) {
       console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
     }
@@ -259,7 +259,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
 
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const { orders, pages, pdf, layout } = await loadWaybill(confirmation.pdfUrl);
+    const { orders, pages, pdf, layout, labelCount } = await loadWaybill(confirmation.pdfUrl);
     if (orders.length === 0) continue;
 
     // Uses processing time, not the message's own `ts` — the bridge API
@@ -280,7 +280,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // Keep the Excel and the re-ordered PDF with the log row for the buttons on
     // the Đóng đơn page. Both were already posted to the group when the PDF
     // arrived, so no second post.
-    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout });
+    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout, labelCount });
   }
 
   await prisma.zaloWatchConfig.update({
