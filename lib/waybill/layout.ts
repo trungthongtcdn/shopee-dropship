@@ -1,5 +1,5 @@
-import { parseLabelText, type WaybillPage } from "./items";
-import { findOrderInfoHeadings, readOrderInfo } from "./orderInfo";
+import { BARE_ORDER_ID_RE, parseLabelText, type WaybillPage } from "./items";
+import { findOrderInfoHeadings, pairOrderInfoRows, readOrderInfo } from "./orderInfo";
 
 // Waybill PDFs come in two shapes: one label per page (the usual A6 download —
 // handled by items.ts on plain `pdftotext -layout` text), or several labels
@@ -77,7 +77,9 @@ interface Anchor {
 
 // Where each label says its order id ("Mã đơn hàng:" / "Mã đơn đặt trước:"):
 // the position of the "Mã" that starts it. Every label has exactly one, and it
-// sits near the label's top — which is what the grid check below relies on.
+// sits near the label's top — which is what the grid check below relies on. A label that
+// prints its id bare under the tracking code (the drop-off point label) has no caption;
+// its tracking code's "Mã" stands in for it.
 function orderAnchors(page: BboxPage): Anchor[] {
   const anchors: Anchor[] = [];
   const nextWord = (from: BboxWord, text: string) =>
@@ -90,6 +92,18 @@ function orderAnchors(page: BboxPage): Anchor[] {
     const hang = nextWord(don, "hàng:");
     const dat = hang ? undefined : nextWord(don, "đặt");
     if (hang || (dat && nextWord(dat, "trước:"))) anchors.push({ x: ma.x0, y: ma.y0 });
+  }
+
+  for (const ma of page.words) {
+    if (ma.text !== "Mã") continue;
+    const van = nextWord(ma, "vận");
+    if (!van || !nextWord(van, "đơn:")) continue;
+    // the usual label has its caption just under the tracking code
+    if (anchors.some((a) => Math.abs(a.x - ma.x0) < 30 && a.y > ma.y0 && a.y - ma.y0 < 20)) continue;
+    const bare = page.words.some(
+      (w) => BARE_ORDER_ID_RE.test(w.text) && w.y0 > ma.y0 && w.y0 - ma.y0 < 20 && w.x0 >= ma.x0 - 5 && w.x0 - ma.x0 < 150
+    );
+    if (bare) anchors.push({ x: ma.x0, y: ma.y0 });
   }
   return anchors;
 }
@@ -312,17 +326,24 @@ export function extractTiledLabels(pages: BboxPage[]): { labels: WaybillPage[]; 
       const info = readOrderInfo(words);
       if (!info) return;
       labelHeights[slot] = Math.max(0, info.top - LABEL_BOTTOM_GAP - Math.floor(cell / grid.cols) * (page.height / grid.rows));
-      // The table's row n lists the label's n-th product. Its SKU, name and variation are
-      // the seller's text as it is; the label's own name and variation (wrapped character
-      // by character, a space lost at each wrap) are only kept for a row whose cell is empty.
-      label?.items.forEach((item, i) => {
-        const sku = info.skus.get(i + 1);
-        if (sku) item.sku = sku;
-        const name = info.names.get(i + 1);
-        if (name) item.name = name;
-        const variant = info.variants.get(i + 1);
-        if (variant) item.variant = variant;
-      });
+      // Each of the label's product lines is paired with its row of the table (the table
+      // lists them in an order of its own — see pairOrderInfoRows). The row's SKU, name and
+      // variation are the seller's text as it is; the label's own name and variation
+      // (wrapped character by character, a space lost at each wrap) are only kept where
+      // the table cell is empty. The quantity stays the label's.
+      if (label) {
+        const rows = pairOrderInfoRows(label.items, info);
+        label.items.forEach((item, i) => {
+          const row = rows[i];
+          if (row === null) return;
+          const sku = info.skus.get(row);
+          if (sku) item.sku = sku;
+          const name = info.names.get(row);
+          if (name) item.name = name;
+          const variant = info.variants.get(row);
+          if (variant) item.variant = variant;
+        });
+      }
     });
   });
 

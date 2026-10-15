@@ -188,6 +188,56 @@ Nội dung hàng (Tổng SL sản phẩm: 1)
     expect(page.items).toHaveLength(1);
   });
 
+  // The label of a parcel the seller brings to a drop-off point ("ĐIỂM NHẬN HÀNG") prints
+  // the order id bare, under the tracking code, with no "Mã đơn hàng:" caption.
+  const DROP_OFF = `
+         ĐIỂM NHẬN                                    Mã vận đơn: SPXVN06016694957A
+           HÀNG                                                  261014K819A9UP
+
+HN-20-44-DDTQU-N
+Từ:                                    Đến:
+FASTFIX.VN                             Hoàng Tú
+SĐT: 84917361369
+
+Nội dung hàng (Tổng SL sản phẩm: 1)
+1. Hộp 40 vít vá lốp xe không săm cho ô tô xe máy xe tải k
+hông cần tháo lốp xe máy lốp chân không, Túi 20 Vít hôn h
+ợp, SL: 1
+
+                                                                                           HN-20-25-
+                                                                                           HBVTU-N
+`;
+
+  it("reads a drop-off label whose order id has no caption", () => {
+    const [page] = extractWaybillPagesFromText(DROP_OFF);
+    expect(page).toMatchObject({ shopeeOrderId: "261014K819A9UP", trackingCode: "SPXVN06016694957A", declaredTotalQuantity: 1 });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].quantity).toBe(1);
+  });
+
+  it("takes the id from the order-info table when the label itself prints none", () => {
+    const text = `
+  Mã vận đơn: SPXVN06016694957A
+  HN-20-44-DDTQU-N
+Nội dung hàng (Tổng SL sản phẩm: 1)
+1. Hộp vít, Loại A, SL: 1
+
+THÔNG TIN ĐƠN HÀNG
+OrderSN: 261014K819A9UP package 1
+`;
+    expect(parseLabelText(text, 0)).toMatchObject({ shopeeOrderId: "261014K819A9UP" });
+  });
+
+  it("prefers the captioned id, and does not take a phone number under the tracking code for one", () => {
+    const text = `
+  Mã vận đơn: SPXVN06016694957A
+  Mã đơn hàng: 261014K819A9UP
+  SĐT: 84917361369
+`;
+    expect(parseLabelText(text, 0)).toMatchObject({ shopeeOrderId: "261014K819A9UP" });
+    expect(parseLabelText("Mã vận đơn: SPXVN06016694957A\nSĐT: 84917361369\n", 0)).toBeNull();
+  });
+
   it("returns nothing for text with no order id", () => {
     expect(extractWaybillPagesFromText("some unrelated pdf content")).toEqual([]);
   });

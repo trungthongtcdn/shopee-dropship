@@ -68,9 +68,31 @@ function isSplitQuantityMarker(previous: string, next: string): boolean {
 // Pre-orders print "Mã đơn đặt trước:" where every other label has "Mã đơn hàng:".
 export const ORDER_ID_RE = /Mã đơn (?:hàng|đặt trước):\s*(\S+)/;
 const TRACKING_RE = /Mã vận đơn:\s*(\S+)/;
+// An order id as Shopee writes it: a 6-digit date and 8 letters or digits ("261014K819A9UP").
+export const BARE_ORDER_ID_RE = /^\d{6}[A-Z0-9]{8}$/;
+const ORDER_SN_RE = /OrderSN:\s*(\S+)/;
 const ITEM_BLOCK_RE = /Nội dung hàng\s*\(Tổng SL sản phẩm:\s*(\d+)\)/;
 const ITEM_START_RE = /^(\d+)\.\s+(.*)$/;
 const ITEM_END_RE = /,?\s*SL:\s*(\d+)\s*$/;
+
+// The order a label names. Most labels caption it ("Mã đơn hàng: …"). The label of a
+// parcel the seller brings to a drop-off point ("ĐIỂM NHẬN HÀNG") prints the id bare, on
+// the line under the tracking code, with no caption; and a label with an order-info table
+// names it again in that table ("OrderSN: …"). Null when the text names none.
+export function findOrderId(labelText: string): string | null {
+  const captioned = ORDER_ID_RE.exec(labelText)?.[1];
+  if (captioned) return captioned;
+
+  const lines = labelText.split("\n");
+  const tracking = lines.findIndex((line) => TRACKING_RE.test(line));
+  if (tracking !== -1) {
+    for (const line of lines.slice(tracking, tracking + 3)) {
+      const bare = line.split(/\s+/).find((token) => BARE_ORDER_ID_RE.test(token));
+      if (bare) return bare;
+    }
+  }
+  return ORDER_SN_RE.exec(labelText)?.[1] ?? null;
+}
 
 // `-layout` puts the label's right-hand column (sorting codes, order date…) on
 // the same text line, separated by a wide run of spaces — item text never has
@@ -153,7 +175,7 @@ function parseShopName(labelText: string): string {
 // One label's text → the order it names, or null if it names none. `labelText`
 // is what `pdftotext -layout` prints for that label alone.
 export function parseLabelText(labelText: string, pageIndex: number): WaybillPage | null {
-  const orderId = ORDER_ID_RE.exec(labelText)?.[1];
+  const orderId = findOrderId(labelText);
   if (!orderId) return null;
 
   const { declaredTotalQuantity, items } = parseItemBlock(labelText);

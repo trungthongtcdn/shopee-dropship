@@ -4,7 +4,7 @@ import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { extractWaybillPagesFromText, type WaybillPage } from "@/lib/waybill/items";
+import { extractWaybillPagesFromText, findOrderId, type WaybillPage } from "@/lib/waybill/items";
 import { extractTiledLabels, looksTiled, parseBboxXml, type SheetLayout } from "@/lib/waybill/layout";
 import { hasOrderInfoHeading } from "@/lib/waybill/orderInfo";
 
@@ -18,15 +18,31 @@ export interface WaybillOrder {
 // Pure text-extraction — kept separate from the PDF/shell-out plumbing below
 // so it can be unit tested with plain strings, no real PDF required.
 //
-// Each waybill page has exactly one "Mã vận đơn:" line immediately followed
-// by one "Mã đơn hàng:" line (confirmed against a real sample PDF — see
-// tests/zalo/parseWaybill.test.ts), so the two match lists line up 1:1 by
-// position across the whole document; trackingCode is null only if a page
-// is missing its tracking-code line (shouldn't happen on a real waybill).
-export function extractOrdersFromWaybillText(text: string): WaybillOrder[] {
-  const trackingCodes = [...text.matchAll(/Mã vận đơn:\s*(\S+)/g)].map((match) => match[1]);
-  const shopeeOrderIds = [...text.matchAll(/Mã đơn hàng:\s*(\S+)/g)].map((match) => match[1]);
+// A waybill page has one "Mã vận đơn:" line and, right under it, one "Mã đơn hàng:"
+// line (confirmed against a real sample PDF — see tests/zalo/parseWaybill.test.ts);
+// trackingCode is null only if a page is missing its tracking-code line (shouldn't
+// happen on a real waybill). Pages are read one at a time (pdftotext ends each with a
+// form feed, and a tiled sheet's cell has none), so a page that names no order — or
+// a pre-order label, which is not confirmed — can't shift the tracking codes of the
+// pages after it. A label with no "Mã đơn hàng:" caption (the drop-off point label
+// prints the id bare under the tracking code) is read by findOrderId.
+const PRE_ORDER_RE = /Mã đơn đặt trước:/;
+
+function ordersOfPage(page: string): WaybillOrder[] {
+  const trackingCodes = [...page.matchAll(/Mã vận đơn:\s*(\S+)/g)].map((match) => match[1]);
+  const shopeeOrderIds = [...page.matchAll(/Mã đơn hàng:\s*(\S+)/g)].map((match) => match[1]);
+  if (trackingCodes.length === 1 && shopeeOrderIds.length <= 1) {
+    if (PRE_ORDER_RE.test(page)) return [];
+    const shopeeOrderId = findOrderId(page);
+    return shopeeOrderId ? [{ shopeeOrderId, trackingCode: trackingCodes[0] }] : [];
+  }
+  // Several labels interleaved line by line (a tiled sheet whose grid wasn't found):
+  // the two lists run in the same left-to-right order, so they line up by position.
   return shopeeOrderIds.map((shopeeOrderId, i) => ({ shopeeOrderId, trackingCode: trackingCodes[i] ?? null }));
+}
+
+export function extractOrdersFromWaybillText(text: string): WaybillOrder[] {
+  return text.split("\f").flatMap(ordersOfPage);
 }
 
 export function extractOrderIdsFromWaybillText(text: string): string[] {

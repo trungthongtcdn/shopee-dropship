@@ -168,6 +168,15 @@ describe("extractTiledLabels", () => {
     expect(labels.map((l) => l.shopeeOrderId)).toEqual(["ORD0", "ORD1", "261006AASITBPLDMMYM"]);
   });
 
+  it("reads a drop-off label, whose order id is printed bare under the tracking code", () => {
+    // no "Mã đơn hàng:" caption: the id stands on its own line, as on an "ĐIỂM NHẬN HÀNG" label
+    const dropOff = simple(5, { orderLine: "261014K819A9UP" });
+    const { labels, layout } = extractTiledLabels([sheet([simple(0), simple(1), dropOff, simple(3)])])!;
+    expect(layout).toMatchObject({ cols: 3, rows: 3, occupied: [0, 1, 2, 3] });
+    expect(labels.map((l) => l.shopeeOrderId)).toEqual(["ORD0", "ORD1", "261014K819A9UP", "ORD3"]);
+    expect(labels[2]).toMatchObject({ trackingCode: "TRK5", items: [{ name: "Hộp vít số 5", variant: "Loại A", quantity: 1 }] });
+  });
+
   it("keeps the cell positions when a cell in the middle is empty", () => {
     const { labels, layout } = extractTiledLabels([sheet([simple(0), simple(1), simple(2), null, simple(4)])])!;
     expect(labels.map((l) => l.pageIndex)).toEqual([0, 1, 2, 4]);
@@ -364,9 +373,9 @@ describe("labels followed by an order-info table", () => {
     expect(labels[0].items[0]).toMatchObject({ name: "Hộp", variant: "Loại A", quantity: 1 });
   });
 
-  it("matches the table's rows to the label's product lines by number (the SKU column, not SKU phân loại)", () => {
+  it("matches each table row to the label's product line of the same name (the SKU column, not SKU phân loại)", () => {
     const two = landscape([
-      cell(0, 0, [{ sku: ["AAAAA", "B"] }, { sku: ["CC"], variantSku: ["VV"] }], {
+      cell(0, 0, [{ sku: ["AAAAA", "B"], name: ["Hộp vít số 0"] }, { sku: ["CC"], variantSku: ["VV"], name: ["Đinh"] }], {
         total: 2,
         itemLines: ["1. Hộp vít số 0, Loại A, SL: 1", "2. Đinh, Loại B, SL: 1"],
       }),

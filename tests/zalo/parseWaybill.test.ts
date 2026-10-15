@@ -65,6 +65,37 @@ describe("extractOrdersFromWaybillText", () => {
     ]);
   });
 
+  // The drop-off point label ("ĐIỂM NHẬN HÀNG") prints the order id bare under the
+  // tracking code, with no "Mã đơn hàng:" caption.
+  const DROP_OFF_PAGE = `
+         ĐIỂM NHẬN                                    Mã vận đơn: SPXVN06016694957A
+           HÀNG                                                  261014K819A9UP
+
+Từ:                                      Đến:
+FASTFIX.VN                               Hoàng Tú
+`;
+
+  it("reads a label that prints its order id with no caption, keeping every tracking code in place", () => {
+    const text = [SAMPLE_TEXT.split("\f")[0], DROP_OFF_PAGE, SAMPLE_TEXT.split("\f")[1]].join("\f");
+    expect(extractOrdersFromWaybillText(text)).toEqual([
+      { shopeeOrderId: "260922P8S4YMTB", trackingCode: "SPXVN068985623989" },
+      { shopeeOrderId: "261014K819A9UP", trackingCode: "SPXVN06016694957A" },
+      { shopeeOrderId: "260922P94CFJ24", trackingCode: "SPXVN064903569589" },
+    ]);
+  });
+
+  it("does not let a pre-order label (not confirmed) shift the tracking codes after it", () => {
+    const preOrder = `
+  Mã vận đơn: SPXVN06581515206A
+  Mã đơn đặt trước: 261006AASITBPLDMMYM
+`;
+    const text = [preOrder, SAMPLE_TEXT.split("\f")[0], SAMPLE_TEXT.split("\f")[1]].join("\f");
+    expect(extractOrdersFromWaybillText(text)).toEqual([
+      { shopeeOrderId: "260922P8S4YMTB", trackingCode: "SPXVN068985623989" },
+      { shopeeOrderId: "260922P94CFJ24", trackingCode: "SPXVN064903569589" },
+    ]);
+  });
+
   it("pairs a null trackingCode when a page is missing its tracking-code line", () => {
     const text = "Mã đơn hàng: 260922P8S4YMTB";
     expect(extractOrdersFromWaybillText(text)).toEqual([{ shopeeOrderId: "260922P8S4YMTB", trackingCode: null }]);

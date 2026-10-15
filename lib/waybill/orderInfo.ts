@@ -23,6 +23,9 @@ import type { BboxWord } from "./layout";
 export interface OrderInfo {
   // Where the block starts: the y of its heading, in page points from the top.
   top: number;
+  // The row numbers of the table, in the order they are printed — including rows whose
+  // cells are all empty.
+  rows: number[];
   // Row number printed in the "#" column (1-based) → the "SKU" of that line. Rows whose
   // SKU is empty are left out.
   skus: Map<number, string>;
@@ -120,7 +123,7 @@ function nameColumn(header: BboxWord[], name: BboxWord): { from: number; to: num
 export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
   const heading = findOrderInfoHeadings(words)[0];
   if (!heading) return null;
-  const info: OrderInfo = { top: heading.y0, skus: new Map(), variants: new Map(), names: new Map() };
+  const info: OrderInfo = { top: heading.y0, rows: [], skus: new Map(), variants: new Map(), names: new Map() };
 
   const below = words.filter((w) => w.y0 > heading.y1 && w.x0 >= heading.x0 - 40);
   const hash = below.filter((w) => w.text === "#").sort((a, b) => a.y0 - b.y0)[0];
@@ -143,6 +146,7 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
 
   // Each row's lines of the SKU, product name and variation columns.
   rows.forEach((row, i) => {
+    info.rows.push(Number(row.text));
     const bottom = rows[i + 1]?.y0 ?? Infinity;
     const inRow = body.filter((w) => w.y0 >= row.y0 - 1 && w.y0 < bottom - 1);
     const cell = (from: number, to: number) => linesOf(inRow.filter((w) => w.x0 >= from - COLUMN_SLACK && w.x0 < to - COLUMN_SLACK));
@@ -157,4 +161,41 @@ export function readOrderInfo(words: BboxWord[]): OrderInfo | null {
     }
   });
   return info;
+}
+
+// Text compared whatever its wraps did to the spaces: the label wraps character by
+// character (a space lost or added at each wrap), the table at word boundaries.
+const sameText = (a: string, b: string) => squash(a) === squash(b);
+const squash = (text: string) => text.normalize("NFC").toLowerCase().replace(/\s+/g, "");
+
+// Which row of the table is each of the label's product lines — the same index as
+// `items`, null where it can't be told. The table does NOT list the products in the
+// label's order (an order of two products can be printed Quạt, Ống on the label and Ống,
+// Quạt in the table), so "row n is product n" would put one product's SKU, variation and
+// name next to another's quantity. A line is paired with the row that carries the same
+// name and variation; failing that, the same name; and a single line and a single row
+// left over when everything else is paired belong together by elimination. A line that
+// is still unpaired is left as the label printed it (no SKU) rather than guessed.
+export function pairOrderInfoRows(items: { name: string; variant: string }[], info: OrderInfo): (number | null)[] {
+  const paired: (number | null)[] = items.map(() => null);
+  const taken = new Set<number>();
+  const claim = (matches: (row: number, item: { name: string; variant: string }) => boolean) => {
+    items.forEach((item, i) => {
+      if (paired[i] !== null) return;
+      const row = info.rows.find((candidate) => !taken.has(candidate) && matches(candidate, item));
+      if (row === undefined) return;
+      paired[i] = row;
+      taken.add(row);
+    });
+  };
+  const name = (row: number) => info.names.get(row) ?? "";
+  const variant = (row: number) => info.variants.get(row) ?? "";
+
+  claim((row, item) => sameText(name(row), item.name) && sameText(variant(row), item.variant));
+  claim((row, item) => sameText(name(row), item.name));
+
+  const loose = paired.flatMap((row, i) => (row === null ? [i] : []));
+  const spare = info.rows.filter((row) => !taken.has(row));
+  if (loose.length === 1 && spare.length === 1) paired[loose[0]] = spare[0];
+  return paired;
 }
