@@ -12,11 +12,23 @@ export interface WaybillItem {
   // order-info table — see orderInfo.ts. Never part of the grouping: the
   // same product always has the same SKU.
   sku?: string;
-  // What the warehouse's price sheet says about that SKU (kiotMap.ts): the Kiot product
-  // code, the Kiot store it is kept in and the cost of one unit. Each is absent when the
-  // sheet has none. Never part of the grouping either.
+  // What the warehouse's price sheet says about that SKU (kiotMap.ts): the Kiot product(s)
+  // it stands for, one line each. Absent when the sheet knows nothing of the SKU. Never part
+  // of the grouping either.
+  kiotLines?: KiotLine[];
+}
+
+// One Kiot product of an order line. A plain SKU has one; a combined SKU written
+// "SKU1*2+SKU2" (two of SKU1 and one of SKU2 in each unit sold) has one per base SKU.
+export interface KiotLine {
+  // The SKU this line stands for: the item's own, or one base SKU of a combined one.
+  sku: string;
+  // Kiot units to take out: the item's quantity × the base SKU's count in the combined SKU.
+  quantity: number;
+  // From the price sheet; each is absent when the sheet has none for this SKU.
   kiotCode?: string;
   kiotStore?: string;
+  // Cost of one Kiot unit, in đồng.
   cost?: number;
 }
 

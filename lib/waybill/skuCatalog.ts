@@ -39,6 +39,9 @@ export interface SkuCatalogOptions {
   maxAgeMs?: number;
   // The shortest time between two attempts to fetch it.
   retryAfterMs?: number;
+  // SKUs the list isn't expected to hold (say, ones that are made of other SKUs): when the
+  // list doesn't know one, it is left as read without a notice or a new fetch.
+  quietUnmatched?: (sku: string) => boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -63,6 +66,7 @@ export class SkuCatalog {
   private readonly fetchCsv: (url: string) => Promise<string>;
   private readonly maxAgeMs: number;
   private readonly retryAfterMs: number;
+  private readonly quietUnmatched: (sku: string) => boolean;
 
   private current: { snapshot: SkuSnapshot; map: SkuMap } | null = null;
   private loading: Promise<void> | null = null;
@@ -78,6 +82,7 @@ export class SkuCatalog {
     this.fetchCsv = options.fetchCsv ?? fetchCsvText;
     this.maxAgeMs = options.maxAgeMs ?? DAY_MS;
     this.retryAfterMs = options.retryAfterMs ?? 10 * 60 * 1000;
+    this.quietUnmatched = options.quietUnmatched ?? (() => false);
   }
 
   // Replaces each page's SKUs by the master list's spelling. A SKU the list doesn't have is
@@ -96,18 +101,20 @@ export class SkuCatalog {
       return { pages, notices: ["Không tải được danh sách SKU — SKU giữ nguyên như đọc từ phiếu."] };
     }
 
+    const unknown = (mapped: { unmatched: string[] }) => mapped.unmatched.filter((sku) => !this.quietUnmatched(sku));
     let result = applySkuMap(pages, this.current.map);
-    if (result.unmatched.length > 0 && this.now() - this.lastAttempt > this.retryAfterMs && (await this.refresh())) {
+    if (unknown(result).length > 0 && this.now() - this.lastAttempt > this.retryAfterMs && (await this.refresh())) {
       result = applySkuMap(pages, this.current.map);
     }
+    const unmatched = unknown(result);
 
     if (this.now() - this.current.snapshot.syncedAt.getTime() > this.maxAgeMs) {
       notices.push(`Danh sách SKU chưa được cập nhật từ ${formatDate(this.current.snapshot.syncedAt)} (không tải được từ Google Sheets).`);
     }
-    if (result.unmatched.length > 0) {
-      const shown = result.unmatched.slice(0, MAX_LISTED_NOTICES).join(", ");
-      const more = result.unmatched.length > MAX_LISTED_NOTICES ? ` và ${result.unmatched.length - MAX_LISTED_NOTICES} SKU khác` : "";
-      notices.push(`${result.unmatched.length} SKU không có trong danh sách SKU, giữ nguyên như đọc từ phiếu: ${shown}${more}.`);
+    if (unmatched.length > 0) {
+      const shown = unmatched.slice(0, MAX_LISTED_NOTICES).join(", ");
+      const more = unmatched.length > MAX_LISTED_NOTICES ? ` và ${unmatched.length - MAX_LISTED_NOTICES} SKU khác` : "";
+      notices.push(`${unmatched.length} SKU không có trong danh sách SKU, giữ nguyên như đọc từ phiếu: ${shown}${more}.`);
     }
     return { pages: result.pages, notices };
   };
