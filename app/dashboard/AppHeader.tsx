@@ -106,7 +106,9 @@ export function AppHeader({
       <div className="app-header-inner">
         <span className="app-brand">Shopee Dropship</span>
         <details ref={shopMenuRef} className="shop-menu">
-          <summary title="Đổi shop">{currentShop?.name ?? currentSlug}</summary>
+          <summary title={`Đổi shop (đang xem: ${currentShop?.name ?? currentSlug})`}>
+            <span className="shop-menu-label">{currentShop?.name ?? currentSlug}</span>
+          </summary>
           <div className="shop-menu-panel">
             {shops.map((shop) => (
               <button

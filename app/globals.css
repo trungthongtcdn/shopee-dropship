@@ -1043,9 +1043,8 @@ a.stat-card:hover {
   list-style: none;
   user-select: none;
   cursor: pointer;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
   font-weight: 600;
   font-size: 14px;
   color: var(--color-primary);
@@ -1063,6 +1062,14 @@ a.stat-card:hover {
   content: "▾";
   font-size: 10px;
   margin-left: 6px;
+  flex: none;
+}
+
+/* Long names are cut with … so the nav keeps its room; the full name is in the tooltip. */
+.shop-menu-label {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shop-menu-panel {

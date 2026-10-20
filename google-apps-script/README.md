@@ -1,5 +1,7 @@
 # Apps Script deployment
 
+**One set of scripts per shop.** Every shop has its own Google workbooks, so every shop gets its own copy of these scripts, and each copy has its own `SYNC_SECRET` — the server files the rows under whichever shop owns that secret. The first shop's secret is the `SYNC_WEBHOOK_SECRET` from the server's `.env`; for any later shop it is the one `scripts/addShop.ts` printed when the shop was added (see `DEPLOY_VPS.md`, "Several shops"). `SYNC_WEBHOOK_URL` is the same for all shops. Everywhere below, "same `SYNC_SECRET`" means the same *within one shop*.
+
 1. Open the Shopee-owned Google Sheet, then Extensions > Apps Script.
 2. Paste the contents of `Sync.gs` into the script editor.
 3. Project Settings > Script Properties, add:

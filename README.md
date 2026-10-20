@@ -8,6 +8,10 @@
 4. `npx prisma migrate dev`
 5. `npm run dev`
 
+## Several shops
+
+One site serves several shops, each with its own data (see `docs/superpowers/specs/2026-10-20-multi-shop-design.md`): shop `shop_1` is the data in Postgres' `public` schema, every later shop has a schema of its own. Pick the shop in the header. `prisma` from `lib/db.ts` always means "the current shop's database" (the shop comes from the `shop` cookie, or from `runWithShop` in scripts and the webhook); accounts and the list of shops are shared and go through `sharedPrisma`. API routes that write go through `withShop` (`lib/shops/guard.ts`) so a stale browser tab can't write into another shop. Add a shop with `npm run shop:add -- --name "Tên shop"`; after adding a migration run `npm run shops:migrate` too. Details in [DEPLOY_VPS.md](DEPLOY_VPS.md).
+
 ## Deploying
 
 ### Option A: Vercel

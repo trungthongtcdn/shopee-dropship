@@ -82,9 +82,43 @@ Use the bridge's public HTTPS URL instead if the internal one isn't reachable fr
 
 ## Redeploying after a code change
 
+Back up the database first — a deploy can add migrations, and every shop's data is in it:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U postgres shopee_reconciliation | gzip > backup-$(date +%F-%H%M).sql.gz
+```
+
+Then:
+
 ```bash
 cd shopee-dropship
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build app
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build app zalo-poller
 docker compose -f docker-compose.prod.yml exec app npx prisma migrate deploy
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/migrateShops.ts
 ```
+
+`prisma migrate deploy` migrates the first shop (the original data, in Postgres' `public` schema); `scripts/migrateShops.ts` brings every other shop's schema up to date. Run both after every deploy, even when you think there is no new migration — the second is a no-op then.
+
+## Several shops
+
+The site serves several shops. Each has its own data (orders, cancellations, payments, SKU list, Zalo groups, waybill files), kept in a Postgres schema of its own: the first shop (`shop_1`) is the data that existed before shops, still in `public`; later shops are `shop_2`, `shop_3`… Accounts are shared — everyone who can log in can open every shop. Pick the shop in the header; the browser remembers it.
+
+The first shop's name is "Shop 1" until someone renames it at `/dashboard/accounts` → "Tên shop" (that is the only thing about a shop editable on the web).
+
+### Adding a shop
+
+```bash
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/addShop.ts --name "Tên shop" [--sku-sheet https://docs.google.com/spreadsheets/d/…/export?format=csv&gid=0]
+```
+
+This creates the schema (all migrations applied), adds the shop to the list and prints its **Apps Script secret once** — only a hash is stored, so a lost secret can't be read back; to replace it, set the shop's `secret_hash` in the `shops` table to the sha256 (hex) of a new secret and put that secret in the Apps Script. `--sku-sheet` is the shop's own SKU list; without it the default sheet (`SKU_SHEET_URL`) is used. The Zalo poller notices the new shop on its next pass, no restart needed.
+
+Then, for the new shop's two Google workbooks, install the Apps Scripts as in `google-apps-script/README.md`, with:
+
+- `SYNC_WEBHOOK_URL` — the same address as the first shop;
+- `SYNC_SECRET` — the secret the command printed (not `SYNC_WEBHOOK_SECRET`).
+
+The server tells the shops apart by that secret. The first shop keeps using `SYNC_WEBHOOK_SECRET`, so its Apps Scripts need no change.
+
+Finally pick the new shop in the header and choose its Zalo groups on `/dashboard/dong-don`, `/dashboard/don-huy` and `/dashboard/hoan-huy` — each shop has its own, on the one shared Zalo bridge.
