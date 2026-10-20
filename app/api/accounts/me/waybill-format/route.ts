@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth/currentUser";
 import { parsePerPage } from "@/lib/waybill/compose";
 
@@ -18,6 +18,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "định dạng PDF không hợp lệ (chọn 2, 4, 6 hoặc 9 phiếu mỗi trang)" }, { status: 400 });
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { waybillPerPage: perPage } });
+  await sharedPrisma.user.update({ where: { id: user.id }, data: { waybillPerPage: perPage } });
   return NextResponse.json({ waybillPerPage: perPage });
 }

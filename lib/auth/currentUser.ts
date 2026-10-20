@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { getSessionSecret, SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
 export interface CurrentUser {
@@ -14,7 +14,7 @@ export interface CurrentUser {
 async function userFromToken(token: string | undefined): Promise<CurrentUser | null> {
   const session = await verifySession(token, getSessionSecret());
   if (!session) return null;
-  return prisma.user.findUnique({ where: { id: session.userId }, select: { id: true, username: true } });
+  return sharedPrisma.user.findUnique({ where: { id: session.userId }, select: { id: true, username: true } });
 }
 
 // Server Components / layouts.

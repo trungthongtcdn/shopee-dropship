@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as createAccount } from "@/app/api/accounts/route";
 import { PATCH as updateAccount, DELETE as deleteAccount } from "@/app/api/accounts/[id]/route";
-import { prisma } from "@/lib/db";
+import { prisma, sharedPrisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { getSessionSecret, SESSION_COOKIE, signSession } from "@/lib/auth/session";
 
 async function seedUser(username: string, password = "password-123") {
-  return prisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
+  return sharedPrisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
 }
 
 async function sessionFor(userId: number) {
@@ -26,7 +26,7 @@ async function jsonRequest(method: string, path: string, body?: unknown, cookie?
 
 describe("accounts API", () => {
   beforeEach(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
   });
 
   describe("authentication", () => {
@@ -37,13 +37,13 @@ describe("accounts API", () => {
       expect((await createAccount(await jsonRequest("POST", "/api/accounts", { username: "new-one", password: "password-123" }))).status).toBe(401);
       expect((await updateAccount(await jsonRequest("PATCH", `/api/accounts/${target.id}`, { username: "renamed" }), params)).status).toBe(401);
       expect((await deleteAccount(await jsonRequest("DELETE", `/api/accounts/${target.id}`), params)).status).toBe(401);
-      expect(await prisma.user.count()).toBe(1);
+      expect(await sharedPrisma.user.count()).toBe(1);
     });
 
     it("rejects a validly signed session whose account has since been deleted", async () => {
       const ghost = await seedUser("ghost");
       const cookie = await sessionFor(ghost.id);
-      await prisma.user.delete({ where: { id: ghost.id } });
+      await sharedPrisma.user.delete({ where: { id: ghost.id } });
 
       const response = await createAccount(await jsonRequest("POST", "/api/accounts", { username: "new-one", password: "password-123" }, cookie));
       expect(response.status).toBe(401);
@@ -58,7 +58,7 @@ describe("accounts API", () => {
       );
 
       expect(response.status).toBe(201);
-      const created = await prisma.user.findUnique({ where: { username: "newuser" } });
+      const created = await sharedPrisma.user.findUnique({ where: { username: "newuser" } });
       expect(created).not.toBeNull();
       expect(created?.passwordHash).not.toContain("password-123");
       expect(await verifyPassword("password-123", created!.passwordHash)).toBe(true);
@@ -80,7 +80,7 @@ describe("accounts API", () => {
       const badUsername = await createAccount(await jsonRequest("POST", "/api/accounts", { username: "no spaces!", password: "password-123" }, cookie));
       expect(shortPassword.status).toBe(400);
       expect(badUsername.status).toBe(400);
-      expect(await prisma.user.count()).toBe(1);
+      expect(await sharedPrisma.user.count()).toBe(1);
     });
   });
 
@@ -95,7 +95,7 @@ describe("accounts API", () => {
       );
 
       expect(response.status).toBe(200);
-      const updated = await prisma.user.findUnique({ where: { id: target.id } });
+      const updated = await sharedPrisma.user.findUnique({ where: { id: target.id } });
       expect(updated?.username).toBe("renamed");
       expect(await verifyPassword("original-password", updated!.passwordHash)).toBe(true);
     });
@@ -109,7 +109,7 @@ describe("accounts API", () => {
         { params: { id: String(target.id) } }
       );
 
-      const updated = await prisma.user.findUnique({ where: { id: target.id } });
+      const updated = await sharedPrisma.user.findUnique({ where: { id: target.id } });
       expect(await verifyPassword("brand-new-password", updated!.passwordHash)).toBe(true);
       expect(await verifyPassword("original-password", updated!.passwordHash)).toBe(false);
     });
@@ -146,7 +146,7 @@ describe("accounts API", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(await prisma.user.findUnique({ where: { id: target.id } })).toBeNull();
+      expect(await sharedPrisma.user.findUnique({ where: { id: target.id } })).toBeNull();
     });
 
     it("refuses to delete the account you are logged in as", async () => {
@@ -158,7 +158,7 @@ describe("accounts API", () => {
       });
 
       expect(response.status).toBe(400);
-      expect(await prisma.user.count()).toBe(2);
+      expect(await sharedPrisma.user.count()).toBe(2);
     });
 
     it("refuses to delete the last remaining account", async () => {
@@ -166,7 +166,7 @@ describe("accounts API", () => {
       // row gets removed first, leaving exactly one account.
       const me = await seedUser("myself");
       const only = await seedUser("only");
-      await prisma.user.delete({ where: { id: me.id } });
+      await sharedPrisma.user.delete({ where: { id: me.id } });
       // A session for a now-deleted `me` is rejected outright, so exercise the
       // last-account guard through a surviving session instead:
       const survivorCookie = await sessionFor(only.id);
@@ -175,12 +175,12 @@ describe("accounts API", () => {
         params: { id: String(only.id) },
       });
       expect(response.status).toBe(400);
-      expect(await prisma.user.count()).toBe(1);
+      expect(await sharedPrisma.user.count()).toBe(1);
     });
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
     await prisma.$disconnect();
   });
 });

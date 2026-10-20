@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma, sharedPrisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { ManualConfirmForm } from "./ManualConfirmForm";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
@@ -13,7 +13,7 @@ export default async function DongDonPage() {
     prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } }),
     prisma.zaloConfirmationLog.findMany({ orderBy: { confirmedAt: "desc" }, take: 20 }),
     // This account's saved choice of PDF layout (the page sits behind the sign-in check).
-    user ? prisma.user.findUnique({ where: { id: user.id }, select: { waybillPerPage: true } }) : null,
+    user ? sharedPrisma.user.findUnique({ where: { id: user.id }, select: { waybillPerPage: true } }) : null,
   ]);
 
   // Which of these rows have a stored Excel / re-ordered PDF / uploaded PDF. Names

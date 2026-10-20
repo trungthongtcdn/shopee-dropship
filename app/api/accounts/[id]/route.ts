@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth/currentUser";
 import { hashPassword } from "@/lib/auth/password";
 import { normalizeUsername, validatePassword, validateUsername } from "@/lib/auth/accounts";
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   try {
-    const account = await prisma.user.update({
+    const account = await sharedPrisma.user.update({
       where: { id },
       data,
       select: { id: true, username: true, createdAt: true },
@@ -63,12 +63,12 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   if (id === me.id) {
     return NextResponse.json({ error: "Không thể xoá tài khoản đang đăng nhập" }, { status: 400 });
   }
-  if ((await prisma.user.count()) <= 1) {
+  if ((await sharedPrisma.user.count()) <= 1) {
     return NextResponse.json({ error: "Không thể xoá tài khoản cuối cùng" }, { status: 400 });
   }
 
   try {
-    await prisma.user.delete({ where: { id } });
+    await sharedPrisma.user.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {

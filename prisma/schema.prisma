@@ -475,3 +475,19 @@ model SkuMapping {
   @@index([foldKey])
   @@map("sku_mappings")
 }
+
+// The shops this site serves. Shared by all of them (lives in `public`). Each
+// shop's own data sits in a Postgres schema named after its slug — `shop_1` is the
+// original data, still in `public`. See docs/superpowers/specs/2026-10-20-multi-shop-design.md.
+// `secretHash` is the sha256 of the shop's Apps Script secret; the first shop has
+// none and keeps using SYNC_WEBHOOK_SECRET. `skuSheetUrl` null = the default sheet.
+model Shop {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique
+  name        String
+  secretHash  String?  @unique @map("secret_hash")
+  skuSheetUrl String?  @map("sku_sheet_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("shops")
+}

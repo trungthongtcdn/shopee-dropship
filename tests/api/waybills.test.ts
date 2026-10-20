@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/waybills/[logId]/[kind]/route";
-import { prisma } from "@/lib/db";
+import { prisma, sharedPrisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { getSessionSecret, SESSION_COOKIE, signSession } from "@/lib/auth/session";
 
 async function signedInRequest(path: string) {
-  const user = await prisma.user.upsert({
+  const user = await sharedPrisma.user.upsert({
     where: { username: "waybill-tester" },
     update: {},
     create: { username: "waybill-tester", passwordHash: await hashPassword("password-123") },
@@ -99,7 +99,7 @@ describe("GET /api/waybills/[logId]/[kind]", () => {
   afterAll(async () => {
     await prisma.waybillFile.deleteMany();
     await prisma.zaloConfirmationLog.deleteMany();
-    await prisma.user.deleteMany({ where: { username: "waybill-tester" } });
+    await sharedPrisma.user.deleteMany({ where: { username: "waybill-tester" } });
     await prisma.$disconnect();
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { POST as login } from "@/app/api/auth/login/route";
 import { POST as logout } from "@/app/api/auth/logout/route";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { getSessionSecret, SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 
@@ -19,7 +19,7 @@ describe("POST /api/auth/login", () => {
   const originalPassword = process.env.DASHBOARD_PASSWORD;
 
   beforeEach(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
     delete process.env.DASHBOARD_USER;
     delete process.env.DASHBOARD_PASSWORD;
   });
@@ -32,7 +32,7 @@ describe("POST /api/auth/login", () => {
   });
 
   async function seedUser(username: string, password: string) {
-    return prisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
+    return sharedPrisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
   }
 
   it("logs in with correct credentials and sets a signed, httpOnly session cookie for that user", async () => {
@@ -82,32 +82,32 @@ describe("POST /api/auth/login", () => {
       const response = await login(loginRequest({ username: "luan", password: "legacy-shared-password" }));
 
       expect(response.status).toBe(200);
-      const created = await prisma.user.findUnique({ where: { username: "luan" } });
+      const created = await sharedPrisma.user.findUnique({ where: { username: "luan" } });
       expect(created).not.toBeNull();
       expect(created?.passwordHash).not.toContain("legacy-shared-password");
 
       // ...and from then on it's an ordinary account.
       const again = await login(loginRequest({ username: "luan", password: "legacy-shared-password" }));
       expect(again.status).toBe(200);
-      expect(await prisma.user.count()).toBe(1);
+      expect(await sharedPrisma.user.count()).toBe(1);
     });
 
     it("does not bootstrap on a wrong env password", async () => {
       const response = await login(loginRequest({ username: "luan", password: "something-else-entirely" }));
       expect(response.status).toBe(401);
-      expect(await prisma.user.count()).toBe(0);
+      expect(await sharedPrisma.user.count()).toBe(0);
     });
 
     it("stops bootstrapping once any account exists", async () => {
       await seedUser("someone", "password-123");
       const response = await login(loginRequest({ username: "luan", password: "legacy-shared-password" }));
       expect(response.status).toBe(401);
-      expect(await prisma.user.count()).toBe(1);
+      expect(await sharedPrisma.user.count()).toBe(1);
     });
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
   });
 });
 

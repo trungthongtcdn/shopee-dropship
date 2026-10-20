@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/accounts/me/waybill-format/route";
-import { prisma } from "@/lib/db";
+import { prisma, sharedPrisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { getSessionSecret, SESSION_COOKIE, signSession } from "@/lib/auth/session";
 
 async function seedUser(username: string) {
-  return prisma.user.create({ data: { username, passwordHash: await hashPassword("password-123") } });
+  return sharedPrisma.user.create({ data: { username, passwordHash: await hashPassword("password-123") } });
 }
 
 async function post(body: unknown, userId?: number) {
@@ -15,11 +15,11 @@ async function post(body: unknown, userId?: number) {
   return POST(new NextRequest("http://localhost/api/accounts/me/waybill-format", { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }));
 }
 
-const saved = async (id: number) => (await prisma.user.findUniqueOrThrow({ where: { id } })).waybillPerPage;
+const saved = async (id: number) => (await sharedPrisma.user.findUniqueOrThrow({ where: { id } })).waybillPerPage;
 
 describe("POST /api/accounts/me/waybill-format", () => {
   beforeEach(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
   });
 
   it("needs a signed-in account", async () => {
@@ -31,7 +31,7 @@ describe("POST /api/accounts/me/waybill-format", () => {
   it("does not accept a signed session whose account has been deleted", async () => {
     const ghost = await seedUser("ghost");
     const cookieUserId = ghost.id;
-    await prisma.user.delete({ where: { id: ghost.id } });
+    await sharedPrisma.user.delete({ where: { id: ghost.id } });
     expect((await post({ perPage: "4" }, cookieUserId)).status).toBe(401);
   });
 
@@ -72,7 +72,7 @@ describe("POST /api/accounts/me/waybill-format", () => {
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany();
+    await sharedPrisma.user.deleteMany();
     await prisma.$disconnect();
   });
 });

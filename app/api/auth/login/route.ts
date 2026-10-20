@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { getSessionSecret, SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signSession } from "@/lib/auth/session";
 import { normalizeUsername } from "@/lib/auth/accounts";
@@ -36,14 +36,14 @@ async function bootstrapFirstAccount(username: string, password: string) {
   const envPassword = process.env.DASHBOARD_PASSWORD;
   if (!envUser || !envPassword) return null;
   if (!safeEqual(username, normalizeUsername(envUser)) || !safeEqual(password, envPassword)) return null;
-  if ((await prisma.user.count()) > 0) return null;
+  if ((await sharedPrisma.user.count()) > 0) return null;
 
   try {
-    return await prisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
+    return await sharedPrisma.user.create({ data: { username, passwordHash: await hashPassword(password) } });
   } catch (error) {
     // Two first logins racing: the other one won — just use its row.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return prisma.user.findUnique({ where: { username } });
+      return sharedPrisma.user.findUnique({ where: { username } });
     }
     throw error;
   }
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   const username = normalizeUsername(parsed.data.username);
   const { password } = parsed.data;
 
-  let user = await prisma.user.findUnique({ where: { username } });
+  let user = await sharedPrisma.user.findUnique({ where: { username } });
   if (user) {
     if (!(await verifyPassword(password, user.passwordHash))) {
       return NextResponse.json(INVALID_CREDENTIALS, { status: 401 });

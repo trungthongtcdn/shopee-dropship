@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { sharedPrisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth/currentUser";
 import { hashPassword } from "@/lib/auth/password";
 import { normalizeUsername, validatePassword, validateUsername } from "@/lib/auth/accounts";
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
   try {
-    const account = await prisma.user.create({
+    const account = await sharedPrisma.user.create({
       data: { username, passwordHash: await hashPassword(parsed.data.password) },
       select: { id: true, username: true, createdAt: true },
     });
