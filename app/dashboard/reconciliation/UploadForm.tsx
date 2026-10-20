@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { shopFetch } from "@/lib/shops/shopFetch";
 
 export function UploadForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -19,7 +20,7 @@ export function UploadForm() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const response = await fetch("/api/reconcile/upload", { method: "POST", body: formData });
+    const response = await shopFetch("/api/reconcile/upload", { method: "POST", body: formData });
 
     // The route always answers with JSON, but an infrastructure-level failure
     // (proxy error page, request body size limit) can return HTML or nothing at

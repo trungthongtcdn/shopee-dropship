@@ -68,6 +68,14 @@ describe("shop registry", () => {
       expect(await renameShop(other.id, "KHO HÀ NỘI")).toMatchObject({ ok: true });
     });
 
+    it("lets only one of two simultaneous renames to the same name win", async () => {
+      const other = await sharedPrisma.shop.create({ data: { slug: EXTRA, name: "Kho Hà Nội" } });
+      const first = (await getShop("shop_1"))!;
+      const results = await Promise.all([renameShop(first.id, "Cùng Tên"), renameShop(other.id, "cùng tên")]);
+      expect(results.filter((r) => r.ok)).toHaveLength(1);
+      expect(results.filter((r) => !r.ok)).toEqual([expect.objectContaining({ status: 409 })]);
+    });
+
     it("404 for an unknown id", async () => {
       expect(await renameShop(999999, "Whatever")).toMatchObject({ ok: false, status: 404 });
     });

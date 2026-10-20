@@ -4,10 +4,12 @@ import { ManualConfirmForm } from "./ManualConfirmForm";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { formatDateTimeVN } from "@/lib/format/datetime";
 import { getCurrentUser } from "@/lib/auth/currentUser";
+import { currentShopSlug } from "@/lib/shops/context";
 
 export const dynamic = "force-dynamic";
 
 export default async function DongDonPage() {
+  const shopSlug = currentShopSlug();
   const user = await getCurrentUser();
   const [config, logs, account] = await Promise.all([
     prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } }),
@@ -75,7 +77,7 @@ export default async function DongDonPage() {
                 const pdfHref = log.pdfUrl.startsWith("http")
                   ? log.pdfUrl
                   : stored?.pdfName
-                    ? `/api/waybills/${log.id}/pdf`
+                    ? `/api/waybills/${log.id}/pdf?shop=${shopSlug}`
                     : null;
                 return (
                   <tr key={log.id}>
@@ -101,12 +103,12 @@ export default async function DongDonPage() {
                           <span className="cell-muted">{log.pdfUrl}</span>
                         )}
                         {stored?.sortedPdfName ? (
-                          <a className="btn btn-info btn-sm" href={`/api/waybills/${log.id}/sorted-pdf`} target="_blank" rel="noreferrer">
+                          <a className="btn btn-info btn-sm" href={`/api/waybills/${log.id}/sorted-pdf?shop=${shopSlug}`} target="_blank" rel="noreferrer">
                             Xem PDF đã xếp
                           </a>
                         ) : null}
                         {stored ? (
-                          <a className="btn btn-success btn-sm" href={`/api/waybills/${log.id}/xlsx`}>
+                          <a className="btn btn-success btn-sm" href={`/api/waybills/${log.id}/xlsx?shop=${shopSlug}`}>
                             Xem excel
                           </a>
                         ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { shopFetch } from "@/lib/shops/shopFetch";
 import { useRouter } from "next/navigation";
 
 interface Group {
@@ -37,7 +38,7 @@ export function ZaloWatchForm({ purpose, onSelected }: { purpose: string; onSele
 
   async function select(group: Group) {
     setStatus(`Đang lưu "${group.name}"...`);
-    const response = await fetch("/api/zalo/watch", {
+    const response = await shopFetch("/api/zalo/watch", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ purpose, threadId: group.id, threadType: "group", threadName: group.name }),

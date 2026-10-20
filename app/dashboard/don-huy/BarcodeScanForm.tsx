@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { shopFetch } from "@/lib/shops/shopFetch";
 import { useRouter } from "next/navigation";
 import type { IScannerControls } from "@zxing/browser";
 
@@ -120,7 +121,7 @@ export function BarcodeScanForm() {
     setStatus("Đang xử lý...");
     try {
       const defectRate = defectRatePercent === "" ? null : Number(defectRatePercent) / 100;
-      const response = await fetch("/api/don-huy/manual-scan", {
+      const response = await shopFetch("/api/don-huy/manual-scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

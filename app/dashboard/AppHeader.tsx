@@ -17,20 +17,64 @@ const NAV_GROUPS: { href: string; label: string }[][] = [
   [{ href: "/dashboard/reconciliation", label: "Đối soát thanh toán" }],
 ];
 
-export function AppHeader({ overdueWarningCount = 0, username }: { overdueWarningCount?: number; username: string }) {
+interface ShopOption {
+  slug: string;
+  name: string;
+}
+
+export function AppHeader({
+  overdueWarningCount = 0,
+  username,
+  shops,
+  currentSlug,
+}: {
+  overdueWarningCount?: number;
+  username: string;
+  shops: ShopOption[];
+  currentSlug: string;
+}) {
   const pathname = usePathname();
   const [hidden, setHidden] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const lastScrollY = useRef(0);
   const menuRef = useRef<HTMLDetailsElement>(null);
+  const shopMenuRef = useRef<HTMLDetailsElement>(null);
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const currentShop = shops.find((shop) => shop.slug === currentSlug);
 
   function closeMenu() {
     if (menuRef.current) menuRef.current.open = false;
+    if (shopMenuRef.current) shopMenuRef.current.open = false;
+  }
+
+  async function chooseShop(slug: string) {
+    if (slug === currentSlug) {
+      closeMenu();
+      return;
+    }
+    setSwitchingTo(slug);
+    setSwitchError(null);
+    const response = await fetch("/api/shops/select", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug }),
+    }).catch(() => null);
+    if (!response?.ok) {
+      setSwitchingTo(null);
+      setSwitchError("Không đổi được shop, thử lại");
+      return;
+    }
+    // Same section of the new shop, without the old shop's filters or page number.
+    // Hard navigation, as with logout: nothing cached from the other shop may stay.
+    window.location.href = pathname;
   }
 
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) closeMenu();
+      const target = event.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) menuRef.current.open = false;
+      if (shopMenuRef.current && !shopMenuRef.current.contains(target)) shopMenuRef.current.open = false;
     }
     document.addEventListener("click", onClickOutside);
     return () => document.removeEventListener("click", onClickOutside);
@@ -61,6 +105,28 @@ export function AppHeader({ overdueWarningCount = 0, username }: { overdueWarnin
     <header className={`app-header${hidden ? " app-header-hidden" : ""}`}>
       <div className="app-header-inner">
         <span className="app-brand">Shopee Dropship</span>
+        <details ref={shopMenuRef} className="shop-menu">
+          <summary title="Đổi shop">{currentShop?.name ?? currentSlug}</summary>
+          <div className="shop-menu-panel">
+            {shops.map((shop) => (
+              <button
+                key={shop.slug}
+                type="button"
+                className={`filter-dropdown-item shop-menu-item${shop.slug === currentSlug ? " current" : ""}`}
+                onClick={() => chooseShop(shop.slug)}
+                disabled={switchingTo !== null}
+              >
+                <span className="shop-menu-name">{shop.name}</span>
+                {shop.slug === currentSlug ? <span aria-hidden="true">✓</span> : null}
+                {switchingTo === shop.slug ? <span>…</span> : null}
+              </button>
+            ))}
+            {switchError ? <p className="form-error shop-menu-error">{switchError}</p> : null}
+            <Link href="/dashboard/accounts" className="filter-dropdown-item shop-menu-rename" onClick={() => closeMenu()}>
+              Đặt tên shop…
+            </Link>
+          </div>
+        </details>
         <nav className="app-nav">
           {NAV_GROUPS.map((group, i) => (
             <span className="app-nav-group" key={i}>

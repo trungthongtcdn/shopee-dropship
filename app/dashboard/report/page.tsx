@@ -14,6 +14,7 @@ import {
   STATUS_OTHER_VALUE,
   type ReportFilters,
 } from "@/lib/report/filters";
+import { currentShopSlug } from "@/lib/shops/context";
 import { loadReportRows, loadOrderStatusFilterOptions, type StatusFilterOption } from "@/lib/report/loadReportRows";
 import { DELIVERY_RESULT_LABELS, DELIVERY_RESULT_VALUES, type DeliveryResult } from "@/lib/report/deliveryResult";
 import type { ReportRow } from "@/lib/report/buildReport";
@@ -117,7 +118,9 @@ export default async function ReportPage({
   const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseReportFilters(searchParams);
   const filterQuery = reportFiltersToSearchParams(filters).toString();
-  const exportHref = filterQuery ? `/api/report/export?${filterQuery}` : "/api/report/export";
+  // The link says which shop it was made for, so a tab left open on another shop can't
+  // download this shop's rows (see withShop).
+  const exportHref = `/api/report/export?${filterQuery ? `${filterQuery}&` : ""}shop=${currentShopSlug()}`;
 
   const [allRows, orderStatusOptions] = await Promise.all([loadReportRows(filters), loadOrderStatusFilterOptions()]);
   const totalPages = totalPagesFor(allRows.length, pageSize);

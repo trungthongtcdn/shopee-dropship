@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { shopFetch } from "@/lib/shops/shopFetch";
 import { useRouter } from "next/navigation";
 import { WAYBILL_FORMAT_OPTIONS } from "./waybillFormat";
 
@@ -57,7 +58,7 @@ export function ManualConfirmForm({ defaultPerPage = null }: { defaultPerPage?: 
     if (file) form.set("pdfFile", file);
     else form.set("pdfUrl", pdfUrl.trim());
 
-    const response = await fetch("/api/zalo/manual-confirm", { method: "POST", body: form });
+    const response = await shopFetch("/api/zalo/manual-confirm", { method: "POST", body: form });
     const json = await response.json().catch(() => null);
     setSubmitting(false);
 

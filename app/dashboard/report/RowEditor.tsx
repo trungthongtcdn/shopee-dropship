@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { shopFetch, shopRefusal } from "@/lib/shops/shopFetch";
 import { useRouter } from "next/navigation";
 
 const SEND_STATUS_BUTTON_OPTIONS = [
@@ -28,7 +29,7 @@ export function LuanCheckToggle({ orderId, luanCheck }: { orderId: number; luanC
   async function toggle(next: boolean) {
     setChecked(next);
     setSaving(true);
-    const response = await fetch(`/api/orders/${orderId}`, {
+    const response = await shopFetch(`/api/orders/${orderId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ luanCheck: next }),
@@ -38,6 +39,8 @@ export function LuanCheckToggle({ orderId, luanCheck }: { orderId: number; luanC
       router.refresh();
     } else {
       setChecked(!next);
+      const refusal = await shopRefusal(response);
+      if (refusal) window.alert(refusal);
     }
   }
 
@@ -101,7 +104,7 @@ export function RowEditorModal(props: RowEditorProps & { open: boolean; onClose:
     setStatus("Đang lưu...");
     const defectRate = defectRatePercent === "" ? null : Number(defectRatePercent) / 100;
 
-    const response = await fetch(`/api/orders/${props.orderId}`, {
+    const response = await shopFetch(`/api/orders/${props.orderId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -122,7 +125,7 @@ export function RowEditorModal(props: RowEditorProps & { open: boolean; onClose:
       props.onClose();
       router.refresh();
     } else {
-      setStatus("Lỗi khi lưu");
+      setStatus((await shopRefusal(response)) ?? "Lỗi khi lưu");
     }
   }
 

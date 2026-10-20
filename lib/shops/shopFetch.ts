@@ -8,3 +8,11 @@ export function shopFetch(input: RequestInfo | URL, init: RequestInit = {}): Pro
   if (slug) headers.set(SHOP_HEADER, slug);
   return fetch(input, { ...init, headers });
 }
+
+// The message to show when the server refused a request because this tab belongs to
+// another shop than the browser's current one (see withShop); null for any other response.
+export async function shopRefusal(response: Response): Promise<string | null> {
+  if (response.status !== 409) return null;
+  const body = await response.clone().json().catch(() => null);
+  return typeof body?.code === "string" && body.code.startsWith("shop_") ? String(body.error) : null;
+}

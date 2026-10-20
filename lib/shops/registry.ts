@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { sharedPrisma } from "@/lib/db";
 import { PRIMARY_SLUG } from "./slug";
 
@@ -48,8 +49,17 @@ export async function renameShop(id: number, raw: unknown): Promise<RenameResult
     return { ok: false, status: 409, error: "Đã có shop khác tên này" };
   }
 
-  const shop = await sharedPrisma.shop.update({ where: { id }, data: { name: normalized.name }, select });
-  return { ok: true, shop };
+  try {
+    const shop = await sharedPrisma.shop.update({ where: { id }, data: { name: normalized.name }, select });
+    return { ok: true, shop };
+  } catch (error) {
+    // Lost a race with another rename to the same name: the database's unique index on
+    // lower(name) is what actually guarantees it.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { ok: false, status: 409, error: "Đã có shop khác tên này" };
+    }
+    throw error;
+  }
 }
 
 export function hashSecret(secret: string): string {

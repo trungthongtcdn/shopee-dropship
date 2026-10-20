@@ -6,7 +6,9 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "test": "vitest run",
-    "zalo-poller": "tsx scripts/zaloPoller.ts"
+    "zalo-poller": "tsx scripts/zaloPoller.ts",
+    "shop:add": "tsx scripts/addShop.ts",
+    "shops:migrate": "tsx scripts/migrateShops.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
