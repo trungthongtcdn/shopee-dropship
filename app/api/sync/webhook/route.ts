@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { runWithShop } from "@/lib/shops/context";
+import { shopForSecret } from "@/lib/shops/registry";
 import { syncPayloadSchema, parseIncomingRows } from "@/lib/sync/validatePayload";
 import {
   applyOrdersPayload,
@@ -22,12 +24,17 @@ const APPLY_BY_TAB = {
   products: applyProductsPayload,
 } as const;
 
+// Apps Script has no login: it proves itself with the secret, and the secret also says
+// which shop's data the rows belong to (one secret per shop — see lib/shops/registry.ts).
 export async function POST(request: NextRequest) {
-  const secret = request.headers.get("x-sync-secret");
-  if (secret !== process.env.SYNC_WEBHOOK_SECRET) {
+  const shop = await shopForSecret(request.headers.get("x-sync-secret"));
+  if (!shop) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  return runWithShop(shop.slug, () => applySync(request));
+}
 
+async function applySync(request: NextRequest) {
   const body = await request.json();
   const parsedBody = syncPayloadSchema.safeParse(body);
   if (!parsedBody.success) {

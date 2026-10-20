@@ -1,12 +1,18 @@
-import { prisma } from "@/lib/db";
+import { clientFor, prisma, type ShopClient } from "@/lib/db";
+import { currentShopSlug } from "@/lib/shops/context";
+import { getShop } from "@/lib/shops/registry";
 import { SkuCatalog, SKU_SHEET_URL, type SkuSnapshot, type SkuStore } from "@/lib/waybill/skuCatalog";
 
 // The master SKU list (see waybill/skuCatalog.ts) as this app keeps it: the sku_mappings
 // table. A sync replaces all of it, in one transaction, so a reader sees the old list or
 // the new one and never half of each.
 export class PrismaSkuStore implements SkuStore {
+  // `client` is the shop whose list this is; by default the shop of the code that
+  // calls (the list is per shop, like everything else).
+  constructor(private readonly client: ShopClient = prisma) {}
+
   async load(): Promise<SkuSnapshot | null> {
-    const rows = await prisma.skuMapping.findMany({ orderBy: { sku: "asc" } });
+    const rows = await this.client.skuMapping.findMany({ orderBy: { sku: "asc" } });
     if (rows.length === 0) return null;
     const syncedAt = rows.reduce((latest, row) => (row.syncedAt > latest ? row.syncedAt : latest), rows[0].syncedAt);
     return {
@@ -23,13 +29,23 @@ export class PrismaSkuStore implements SkuStore {
       rows: record.rows,
       syncedAt: snapshot.syncedAt,
     }));
-    await prisma.$transaction([prisma.skuMapping.deleteMany(), prisma.skuMapping.createMany({ data })]);
+    await this.client.$transaction([this.client.skuMapping.deleteMany(), this.client.skuMapping.createMany({ data })]);
   }
 }
 
-let shared: SkuCatalog | undefined;
+// One catalog per shop (and per sheet link): each shop has its own SKU sheet and its own
+// stored copy of it. A shop with no link of its own uses the default sheet.
+const catalogs = new Map<string, SkuCatalog>();
 
-export function skuCatalog(): SkuCatalog {
-  shared ??= new SkuCatalog(new PrismaSkuStore(), { url: process.env.SKU_SHEET_URL || SKU_SHEET_URL });
-  return shared;
+export async function skuCatalog(): Promise<SkuCatalog> {
+  const slug = currentShopSlug();
+  const shop = await getShop(slug);
+  const url = shop?.skuSheetUrl || process.env.SKU_SHEET_URL || SKU_SHEET_URL;
+  const key = `${slug}|${url}`;
+  let catalog = catalogs.get(key);
+  if (!catalog) {
+    catalog = new SkuCatalog(new PrismaSkuStore(clientFor(slug)), { url });
+    catalogs.set(key, catalog);
+  }
+  return catalog;
 }

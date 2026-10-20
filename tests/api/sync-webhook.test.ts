@@ -25,6 +25,15 @@ describe("POST /api/sync/webhook", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects a request with no secret header", async () => {
+    const request = new NextRequest("http://localhost/api/sync/webhook", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tab: "orders", rows: [] }),
+    });
+    expect((await POST(request)).status).toBe(401);
+  });
+
   it("applies valid rows and reports invalid rows separately", async () => {
     const response = await POST(
       makeRequest({
