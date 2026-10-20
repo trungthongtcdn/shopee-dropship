@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { z } from "zod";
 import { CancelReceiptStatus } from "@prisma/client";
 import { applyCancelReceiptCodes } from "@/lib/zalo/cancelReceiptPoller";
@@ -16,7 +17,7 @@ const scanSchema = z.object({
   defectRate: z.number().min(0).max(1).nullable().optional(),
 });
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const parsed = scanSchema.safeParse(body);
   if (!parsed.success) {
@@ -47,3 +48,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ codes, matchedCount });
 }
+
+export const POST = withShop(handlePOST, { check: "header" });

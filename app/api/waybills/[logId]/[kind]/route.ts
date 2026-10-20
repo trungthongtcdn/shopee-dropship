@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth/currentUser";
 
@@ -14,7 +15,7 @@ function contentDisposition(disposition: "inline" | "attachment", fileName: stri
 // Serves what lib/waybill/deliver.ts stored: the grouped Excel ("xlsx"), the
 // source PDF with its pages re-ordered like the Excel ("sorted-pdf"), and — for
 // hand-uploaded PDFs only — the original PDF ("pdf").
-export async function GET(request: NextRequest, { params }: { params: { logId: string; kind: string } }) {
+async function handleGET(request: NextRequest, { params }: { params: { logId: string; kind: string } }) {
   if (!(await getUserFromRequest(request))) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
@@ -68,3 +69,5 @@ export async function GET(request: NextRequest, { params }: { params: { logId: s
     },
   });
 }
+
+export const GET = withShop(handleGET, { check: "query" });

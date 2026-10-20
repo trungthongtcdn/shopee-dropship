@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
@@ -12,7 +13,7 @@ const watchSchema = z.object({
   threadName: z.string().min(1),
 });
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const purpose = request.nextUrl.searchParams.get("purpose") ?? WAYBILL_CONFIRM_PURPOSE;
   const config = await prisma.zaloWatchConfig.findUnique({ where: { purpose } });
   return NextResponse.json({ config });
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 // unconfirmed PDF link — switching what's being watched shouldn't carry
 // state over from a previous thread. Each purpose (waybill_confirm /
 // cancel_receipt_confirm) is its own independent row, picked separately.
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const body = await request.json();
   const parsed = watchSchema.safeParse(body);
   if (!parsed.success) {
@@ -38,3 +39,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ config });
 }
+
+export const GET = withShop(handleGET, { check: "none" });
+
+export const POST = withShop(handlePOST, { check: "header" });

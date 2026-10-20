@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
 import { storeWaybillFiles } from "@/lib/waybill/deliver";
 import { labelMismatchMessage } from "@/lib/waybill/items";
@@ -13,7 +14,7 @@ import { applyWaybillConfirmation } from "@/lib/zalo/poller";
 // in zalo_confirmation_logs.
 const MANUAL_THREAD_ID = "manual";
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const form = await request.formData();
 
   const sentAtRaw = form.get("sentAt");
@@ -100,3 +101,5 @@ export async function POST(request: NextRequest) {
     alert: labelMismatchMessage(pages.length, labelCount),
   });
 }
+
+export const POST = withShop(handlePOST, { check: "header" });

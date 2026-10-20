@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import * as XLSX from "xlsx";
 import { parseReportFilters } from "@/lib/report/filters";
 import { loadReportRows } from "@/lib/report/loadReportRows";
@@ -34,7 +35,7 @@ function formatPercent(value: number | null): number | string {
 
 // Same filters as the Report page (see app/dashboard/report/page.tsx) —
 // exports exactly the rows currently on screen, not the whole table.
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const raw: Record<string, string | string[]> = {};
   for (const key of SINGLE_KEYS) {
     const value = request.nextUrl.searchParams.get(key);
@@ -87,3 +88,5 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+export const GET = withShop(handleGET, { check: "query" });

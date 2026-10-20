@@ -21,6 +21,13 @@ export function clientFor(slug: string): PrismaClient {
   return client;
 }
 
+// Drops the cached client of a shop whose schema is being removed or rebuilt.
+export async function forgetClient(slug: string): Promise<void> {
+  const client = globalForShops.shopClients?.get(slug);
+  globalForShops.shopClients?.delete(slug);
+  await client?.$disconnect();
+}
+
 // Tables every shop shares (accounts, the list of shops) live in `public` only.
 // They are reached through sharedPrisma; the shop-scoped `prisma` below hides them
 // from the type so a stray `prisma.user` can't silently read an empty copy.

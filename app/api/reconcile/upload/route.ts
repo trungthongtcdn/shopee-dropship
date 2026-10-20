@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { parseReconciliationExcel } from "@/lib/reconcile/parseExcel";
 import { matchReconciliation } from "@/lib/reconcile/matcher";
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file");
 
@@ -73,3 +74,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ batchId: batch.id, resultCount: results.length });
 }
+
+export const POST = withShop(handlePOST, { check: "header" });

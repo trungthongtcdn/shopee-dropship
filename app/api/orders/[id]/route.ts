@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withShop } from "@/lib/shops/guard";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 
@@ -17,7 +18,7 @@ const updateOrderSchema = z.object({
   paidAmountOverride: z.number().nullable().optional(),
 });
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+async function handlePATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const id = Number(params.id);
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "invalid order id" }, { status: 400 });
@@ -46,3 +47,5 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
 }
+
+export const PATCH = withShop(handlePATCH, { check: "header" });

@@ -15,6 +15,7 @@ export const config = {
     "/api/don-huy/:path*",
     "/api/accounts/:path*",
     "/api/waybills/:path*",
+    "/api/shops/:path*",
   ],
 };
 
