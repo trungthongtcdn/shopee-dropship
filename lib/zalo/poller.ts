@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/db";
-import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
+import { fetchMessages, sendGroupMessage, type ZaloMessage } from "@/lib/zalo/bridge";
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
 import { isBotMessage } from "@/lib/zalo/botMessage";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
 import { sendSortedWaybillPdf, sendWaybillExcel, storeWaybillFiles } from "@/lib/waybill/deliver";
 import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
+import { createPollerGuard } from "@/lib/zalo/pollerGuard";
+import { assertWaybillSize, MAX_WAYBILL_BYTES, WaybillTooLargeError, megabytes } from "@/lib/zalo/waybillLimits";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/cancelReceiptPoller.ts
 // for the other one ("cancel_receipt_confirm").
@@ -188,22 +190,20 @@ export async function applyWaybillConfirmation(
 // would spam the group.
 const EXCEL_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
-// PDF messages whose Excel was already handled by this process. A cycle that
-// fails after posting the file (say the DB hiccups while applying the
-// confirmation) leaves the cursor where it was and is retried every 20s; without
-// this the same file would be posted on every retry. Marked BEFORE the attempt,
-// so a failing send isn't retried into a flood either.
-const handledPdfMessages = new Set<string>();
-const HANDLED_PDF_MESSAGES_CAP = 500;
+// PDF messages whose Excel was already handled. A cycle that fails after posting the file
+// (say the DB hiccups while applying the confirmation) leaves the cursor where it was and is
+// retried every 20s; without this the same file would be posted on every retry. Claimed BEFORE
+// the attempt, so a failing send isn't retried into a flood either. The record lives in a file
+// (ZALO_POLLER_STATE_FILE) so it also survives the process being killed mid-cycle: a restart
+// reads the same messages again, and re-posting the Excel + PDF on every restart is how the
+// group once got the same two files 15 times in 8 minutes.
+const guard = createPollerGuard(process.env.ZALO_POLLER_STATE_FILE);
+const pdfKey = (threadId: string, msgId: string) => `${threadId}:${msgId}`;
 
-function markPdfMessageHandled(key: string): boolean {
-  if (handledPdfMessages.has(key)) return false;
-  handledPdfMessages.add(key);
-  if (handledPdfMessages.size > HANDLED_PDF_MESSAGES_CAP) {
-    handledPdfMessages.delete(handledPdfMessages.values().next().value as string);
-  }
-  return true;
-}
+// A confirmation that fails or kills the process this many times is given up on: the cursor
+// moves past it, the group is told, and staff confirm by hand (Đóng đơn → nhập tay) — one bad
+// file must not hold every shop's Zalo work hostage by restarting the poller forever.
+export const MAX_CONFIRM_ATTEMPTS = 3;
 
 function isStalePdfMessage(ts: number | string): boolean {
   const sentAt = tsToDate(ts).getTime();
@@ -231,7 +231,11 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
   const loadWaybill = (url: string) => {
     let waybill = waybills.get(url);
     if (!waybill) {
-      waybill = downloadWaybillPdf(url).then(async (pdf) => ({ ...(await parseWaybillPdf(pdf)), pdf }));
+      waybill = downloadWaybillPdf(url).then(async (pdf) => {
+        const parsed = await parseWaybillPdf(pdf);
+        assertWaybillSize(parsed);
+        return { ...parsed, pdf };
+      });
       waybills.set(url, waybill);
     }
     return waybill;
@@ -243,24 +247,73 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
   // before (and regardless of whether) anyone types "Đã in". Best effort:
   // nothing here may fail the cycle.
   const thread = { id: config.threadId, type: config.threadType as "user" | "group" };
+  // A line in the group, once per `key`. Best effort, and only where the bridge can post text.
+  const tellGroup = async (key: string, text: string) => {
+    if (thread.type !== "group" || !guard.claim(`notice:${key}`)) return;
+    try {
+      await sendGroupMessage(thread.id, text);
+    } catch (error) {
+      console.error("[zalo-poller] could not post the notice:", error);
+    }
+  };
+  const tooLargeNotice = (found: string) =>
+    `⚠️ File PDF quá lớn (${found}, bot chỉ xử lý file tối đa ${megabytes(MAX_WAYBILL_BYTES)} và 1000 phiếu) nên bot bỏ qua file này. Vui lòng chia nhỏ file rồi gửi lại.`;
+
   for (const pdfMessage of pdfMessages) {
-    if (!markPdfMessageHandled(`${config.threadId}:${pdfMessage.msgId}`)) continue;
+    if (!guard.claim(pdfKey(config.threadId, pdfMessage.msgId))) continue;
     if (isStalePdfMessage(pdfMessage.ts)) continue;
     try {
       const { pages, pdf, layout, labelCount } = await loadWaybill(pdfMessage.pdfUrl);
       // One timestamp so the two files share a name stem and pair up visibly.
       const at = new Date();
       await sendWaybillExcel({ pages, at, thread, labelCount });
-      await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread, labelCount });
+      const sentPdf = await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread, labelCount });
+      if (sentPdf.tooLarge) {
+        await tellGroup(
+          `pdf-send:${pdfKey(config.threadId, pdfMessage.msgId)}`,
+          `⚠️ File PDF đã xếp nặng ${sentPdf.tooLarge}, vượt giới hạn gửi qua Zalo nên bot chỉ gửi được file Excel. Bạn mở trang Đóng đơn để lấy PDF đã xếp.`
+        );
+      }
     } catch (error) {
-      console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
+      if (error instanceof WaybillTooLargeError) {
+        console.error(`[zalo-poller] message ${pdfMessage.msgId} skipped: ${error.message} (${error.found})`);
+        await tellGroup(pdfKey(config.threadId, pdfMessage.msgId), tooLargeNotice(error.found));
+      } else {
+        console.error(`[zalo-poller] grouped Excel for message ${pdfMessage.msgId} failed:`, error);
+      }
     }
   }
 
   let confirmedCount = 0;
   for (const confirmation of confirmations) {
-    const { orders, pages, pdf, layout, labelCount } = await loadWaybill(confirmation.pdfUrl);
-    if (orders.length === 0) continue;
+    const key = `confirm:${config.threadId}:${confirmation.pdfUrl}`;
+    // Written down before the work starts: a crash inside it (the OOM killer) still counts.
+    const attempt = guard.beginAttempt(key);
+    if (attempt > MAX_CONFIRM_ATTEMPTS) {
+      console.error(`[zalo-poller] giving up on the confirmation for ${confirmation.pdfUrl} after ${attempt - 1} attempts`);
+      await tellGroup(
+        key,
+        "⚠️ Bot không xác nhận được file này (xử lý nhiều lần vẫn lỗi). Vui lòng xác nhận tay ở trang Đóng đơn."
+      );
+      guard.finishAttempt(key);
+      continue;
+    }
+
+    let waybill: Awaited<ReturnType<typeof loadWaybill>>;
+    try {
+      waybill = await loadWaybill(confirmation.pdfUrl);
+    } catch (error) {
+      if (!(error instanceof WaybillTooLargeError)) throw error;
+      console.error(`[zalo-poller] confirmation skipped: ${error.message} (${error.found})`);
+      await tellGroup(key, `${tooLargeNotice(error.found)} Đơn của file này chưa được ghi nhận "Đã in", hãy xác nhận tay ở trang Đóng đơn.`);
+      guard.finishAttempt(key);
+      continue;
+    }
+    const { orders, pages, pdf, layout, labelCount } = waybill;
+    if (orders.length === 0) {
+      guard.finishAttempt(key);
+      continue;
+    }
 
     // Uses processing time, not the message's own `ts` — the bridge API
     // doesn't document ts's unit (seconds vs ms), and getting that wrong
@@ -281,6 +334,7 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // the Đóng đơn page. Both were already posted to the group when the PDF
     // arrived, so no second post.
     await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout, labelCount });
+    guard.finishAttempt(key);
   }
 
   await prisma.zaloWatchConfig.update({

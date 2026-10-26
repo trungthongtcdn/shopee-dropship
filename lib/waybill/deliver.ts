@@ -5,6 +5,7 @@ import { groupWaybillPages, labelMismatchMessage, orderedPageIndexes, type Waybi
 import { composeLabelsPdf, type PerPage } from "./compose";
 import type { SheetLayout } from "./layout";
 import { reorderPdfLabels, reorderPdfPages, waybillSortedPdfFileName } from "./pdf";
+import { MAX_SEND_BYTES, megabytes } from "@/lib/zalo/waybillLimits";
 
 // Captions the warehouse sees with the files in the Zalo group.
 export const WAYBILL_EXCEL_MESSAGE = "Đây là danh sách đơn đã gom các đơn giống nhau đứng gần nhau";
@@ -161,10 +162,16 @@ export interface SendSortedWaybillPdfParams extends SendWaybillExcelParams {
 }
 
 // Posts the PDF, its pages re-ordered like the Excel rows, into the same thread.
-export async function sendSortedWaybillPdf(params: SendSortedWaybillPdfParams): Promise<{ sent: boolean }> {
+export async function sendSortedWaybillPdf(params: SendSortedWaybillPdfParams): Promise<{ sent: boolean; tooLarge?: string }> {
   const { pages, at, sourcePdf, thread, layout, perPage, labelCount } = params;
   const built = await buildSortedPdf(`thread ${thread.id}`, pages, sourcePdf, at, layout, perPage);
   if (!built) return { sent: false };
+  // One file, one post: past what the bridge can carry it is not even tried (the bridge would
+  // answer 413 after the whole upload). The caller says so in the group.
+  if (built.pdf.length > MAX_SEND_BYTES) {
+    console.error(`[waybill-pdf] ${megabytes(built.pdf.length)} is over the ${megabytes(MAX_SEND_BYTES)} the bridge can send (thread ${thread.id})`);
+    return { sent: false, tooLarge: megabytes(built.pdf.length) };
+  }
 
   try {
     const caption = captionWith(WAYBILL_SORTED_PDF_MESSAGE, labelMismatchMessage(pages.length, labelCount));

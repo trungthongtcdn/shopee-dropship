@@ -27,6 +27,9 @@ services:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/shopee_reconciliation
       ZALO_BRIDGE_URL: ${ZALO_BRIDGE_URL}
       ZALO_BRIDGE_SECRET: ${ZALO_BRIDGE_SECRET}
+      # What the poller must remember across a crash (files already posted, tries at a confirmation).
+      # In the container's writable layer: survives a restart of this container, not a rebuild.
+      ZALO_POLLER_STATE_FILE: /tmp/zalo-poller-state.json
     depends_on:
       - postgres
 

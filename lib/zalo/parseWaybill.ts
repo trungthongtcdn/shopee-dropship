@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { countLabels, extractWaybillPagesFromText, findOrderId, type WaybillPage } from "@/lib/waybill/items";
 import { extractTiledLabels, looksTiled, parseBboxXml, type SheetLayout } from "@/lib/waybill/layout";
 import { hasOrderInfoHeading } from "@/lib/waybill/orderInfo";
+import { MAX_WAYBILL_BYTES, WaybillTooLargeError, megabytes } from "@/lib/zalo/waybillLimits";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,9 +138,33 @@ export async function parseWaybillPdf(buffer: Buffer): Promise<ParsedWaybill> {
 }
 
 export async function downloadWaybillPdf(pdfUrl: string): Promise<Buffer> {
-  const response = await fetch(pdfUrl);
+  const response = await fetch(pdfUrl, { signal: AbortSignal.timeout(120_000) });
   if (!response.ok) {
     throw new Error(`Failed to download waybill PDF: HTTP ${response.status}`);
   }
-  return Buffer.from(await response.arrayBuffer());
+  const tooLarge = (bytes: number) =>
+    new WaybillTooLargeError(`Waybill PDF is larger than ${MAX_WAYBILL_BYTES} bytes`, megabytes(bytes));
+
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_WAYBILL_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw tooLarge(declared);
+  }
+
+  // Counted while it streams in, so a link that lies about (or hides) its length can't fill the memory.
+  const reader = response.body?.getReader();
+  if (!reader) return Buffer.from(await response.arrayBuffer());
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > MAX_WAYBILL_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge(received);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, received);
 }
