@@ -10,6 +10,7 @@ export function Pagination({
   baseQuery = "",
   pageParam = "page",
   pageSizeParam = "pageSize",
+  unit = "đơn",
 }: {
   page: number;
   totalPages: number;
@@ -24,6 +25,8 @@ export function Pagination({
   baseQuery?: string;
   pageParam?: string;
   pageSizeParam?: string;
+  // What the rows are called in the "1–50 / 288 đơn" status text.
+  unit?: string;
 }) {
   if (totalPages <= 1 && totalCount <= PAGE_SIZE_OPTIONS[0]) return null;
 
@@ -41,7 +44,7 @@ export function Pagination({
     <div className="pagination">
       {page > 1 ? <a href={hrefFor(page - 1, pageSize)}>« Trước</a> : <span className="disabled">« Trước</span>}
       <span className="pagination-status">
-        {from}–{to} / {totalCount} đơn · Trang {page} / {totalPages}
+        {from}–{to} / {totalCount} {unit} · Trang {page} / {totalPages}
       </span>
       {page < totalPages ? <a href={hrefFor(page + 1, pageSize)}>Sau »</a> : <span className="disabled">Sau »</span>}
       <select

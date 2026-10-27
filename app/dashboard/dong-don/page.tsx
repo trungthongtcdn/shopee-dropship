@@ -1,5 +1,7 @@
 import { prisma, sharedPrisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
+import { Pagination } from "../Pagination";
+import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { ManualConfirmForm } from "./ManualConfirmForm";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { formatDateTimeVN } from "@/lib/format/datetime";
@@ -8,12 +10,25 @@ import { currentShopSlug } from "@/lib/shops/context";
 
 export const dynamic = "force-dynamic";
 
-export default async function DongDonPage() {
+export default async function DongDonPage({
+  searchParams,
+}: {
+  searchParams: { page?: string; pageSize?: string };
+}) {
   const shopSlug = currentShopSlug();
   const user = await getCurrentUser();
+  const pageSize = parsePageSize(searchParams.pageSize);
+  const totalCount = await prisma.zaloConfirmationLog.count();
+  const totalPages = totalPagesFor(totalCount, pageSize);
+  // A stale link (or a shrunk history) can point past the last page: show the last one.
+  const page = Math.min(parsePage(searchParams.page), totalPages);
   const [config, logs, account] = await Promise.all([
     prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } }),
-    prisma.zaloConfirmationLog.findMany({ orderBy: { confirmedAt: "desc" }, take: 20 }),
+    prisma.zaloConfirmationLog.findMany({
+      orderBy: [{ confirmedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
     // This account's saved choice of PDF layout (the page sits behind the sign-in check).
     user ? sharedPrisma.user.findUnique({ where: { id: user.id }, select: { waybillPerPage: true } }) : null,
   ]);
@@ -54,9 +69,11 @@ export default async function DongDonPage() {
       </div>
 
       <h3>Lịch sử xác nhận đóng hàng</h3>
-      {logs.length === 0 ? (
+      {totalCount === 0 ? (
         <p className="empty-state">Chưa có xác nhận nào.</p>
       ) : (
+        <>
+        <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={totalCount} unit="xác nhận" />
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -120,6 +137,8 @@ export default async function DongDonPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} totalPages={totalPages} pageSize={pageSize} totalCount={totalCount} unit="xác nhận" />
+        </>
       )}
     </main>
   );
