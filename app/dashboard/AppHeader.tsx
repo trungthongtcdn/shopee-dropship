@@ -102,6 +102,7 @@ export function AppHeader({
   }, []);
 
   return (
+    <>
     <header className={`app-header${hidden ? " app-header-hidden" : ""}`}>
       <div className="app-header-inner">
         <span className="app-brand">Shopee Dropship</span>
@@ -144,14 +145,8 @@ export function AppHeader({
             </span>
           ))}
         </nav>
-        {overdueWarningCount > 0 ? (
-          <Link href="/dashboard/hoan-huy" className="badge badge-danger" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
-            ⚠️ {overdueWarningCount} đơn cảnh báo quá hạn
-          </Link>
-        ) : null}
         {/* One compact dropdown instead of a name link + a button: the header is a
-            fixed 60px row, and with the overdue-warning badge showing there is
-            no horizontal room left below ~1400px for anything wider. */}
+            fixed 60px row with no horizontal room to spare for anything wider. */}
         <details ref={menuRef} className="user-menu">
           <summary className={`nav-link${pathname === "/dashboard/accounts" ? " active" : ""}`}>{username}</summary>
           <div className="user-menu-panel">
@@ -165,5 +160,15 @@ export function AppHeader({
         </details>
       </div>
     </header>
+    {/* Its own line under the header (not in the 60px row, where it pushed the nav
+        onto a second line). Not sticky: it scrolls away with the page. Only
+        rendered while there is something overdue. */}
+    {overdueWarningCount > 0 ? (
+      <Link href="/dashboard/hoan-huy" className="overdue-banner">
+        <span aria-hidden="true">⚠️</span> {overdueWarningCount} đơn cảnh báo quá hạn
+        <span className="overdue-banner-action">Xem »</span>
+      </Link>
+    ) : null}
+    </>
   );
 }
