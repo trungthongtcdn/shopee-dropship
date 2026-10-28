@@ -17,6 +17,8 @@ export interface HoanHuySummary {
   complaintStatus: string;
   respondByLabel: string;
   respondByClassName: string;
+  // "" = no receipt entered yet (cell stays empty).
+  receiptLabel: string;
 }
 
 export interface HoanHuyDetails {
@@ -69,6 +71,13 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
           <span className={summary.respondByClassName}>{summary.respondByLabel}</span>
         </td>
         <td>
+          {summary.receiptLabel ? (
+            <span className={summary.receiptLabel === "Đã nhận" ? "badge badge-success" : "badge badge-warning"}>
+              {summary.receiptLabel}
+            </span>
+          ) : null}
+        </td>
+        <td>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setExpanded((e) => !e)}>
             {expanded ? "Thu gọn" : "Chi tiết"}
           </button>
@@ -76,7 +85,7 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
       </tr>
       {expanded ? (
         <tr>
-          <td colSpan={8}>
+          <td colSpan={9}>
             <div className="cell-stack" style={{ padding: "var(--space-2) 0" }}>
               <span>
                 <strong className="cell-sub">Lí do trả hàng:</strong> {details.returnReason}
