@@ -11,6 +11,8 @@
 5. Run `syncAllTabs` once manually, confirm rows appear in the app's database.
 6. Run `createTimeTrigger` once to install the 10-minute polling trigger.
 
+Everything below up to "Shop 2" describes **shop 1's** files (`Sync.gs`, `PricingSync.gs`, `CancelReceiptSync.gs`, `PaymentSync.gs`). Shop 2's workbooks have a different layout and use their own files, described under "Shop 2".
+
 ## Second script: SKU pricing (a different workbook)
 
 `PricingSync.gs` is a **separate** container-bound script for a **different**
@@ -169,3 +171,57 @@ chunked upload needs a different backend protocol (for example, a sync session
 that the backend only finalises, and only computes deletions from, once every
 chunk of a tab has arrived). Chunking must not simply be reinstated on top of
 the current protocol.
+
+## Shop 2 ("VN_VŨ THỊ THẢO TRANG_MII")
+
+Shop 2's Google files are not laid out like shop 1's, so it has its own scripts. The server is shared and unchanged: the scripts post the same payload tabs, and the shop is told apart by `SYNC_SECRET` (the secret `scripts/addShop.ts` printed for shop 2, not `SYNC_WEBHOOK_SECRET` — see `DEPLOY_VPS.md`, "Several shops"). Shop 1's files are not touched by any of this.
+
+Two Apps Script projects, one per workbook. In both: Project Settings > Script Properties, `SYNC_WEBHOOK_URL` = same address as shop 1, `SYNC_SECRET` = shop 2's secret. The secret goes in Script Properties only, never in the script text.
+
+### 1. Order workbook "VN_VŨ THỊ THẢO TRANG_MII" — `Sync.shop2.gs`
+
+Extensions > Apps Script, paste `Sync.shop2.gs`.
+
+| Tab in the workbook | Header row | Payload tab |
+|---|---|---|
+| `4. Danh sách đơn hàng` | 2 | `orders` |
+| `5.1Đơn hủy ` | 2 | `cancelled` |
+| `5. Trả hàng hoàn tiền` | 2 | `returned_refunded` |
+| `1. Danh sách sản phẩm` | 1 | `products` |
+
+Not synced: `delivered_orders` and `delivery_failed` (shop 2 has no such tabs, and nothing in the app reads `delivered_orders`), `3. Check tồn kho dự kiến`, `6. Check tồn tháng SP bán chạy` (empty), `2. SP mới - NCC check`.
+
+Things in this workbook the script deals with, so nobody has to remember them:
+
+- The cancellation tab's real name ends with a space (`5.1Đơn hủy `). Tabs are found with surrounding space ignored; renaming the tab to anything else stops that tab from syncing.
+- `1. Danh sách sản phẩm` has about 900 padding rows (vendor name filled down, no product). Rows without a SKU (`MII - Mã phân loại`) are dropped; so are rows without `Mã đơn hàng` on the other tabs.
+- The returns tab names two columns differently from shop 1: `Kho hàng` and `NCC ghi chú`. They are also sent as `Tên kho hàng` and `NCC note`, which is what the server reads (the returns page shows "Ghi chú NCC").
+- Dates are plain text like `2026-10-10 23:13` (Vietnam time). They are sent as `2026-10-10T23:13:00+07:00` so the server's timezone cannot shift them.
+- Columns are matched by header name, not position. A tab is pushed only if all of its `required` headers exist (see `SHOP2_TABS`). If one is missing or renamed the tab is **not** pushed — a partial payload would soft-delete rows — and the reason is in View > Logs and in the `last_error` script property.
+
+Install:
+
+1. Paste the script, set the two Script Properties.
+2. Run `manualTestAllTabs`, grant permissions, check the log: the row count and first rows of each tab, and no `ERROR` line.
+3. Run `syncAllTabs` once, confirm rows appear in the app (pick shop 2 in the header).
+4. Run `createTimeTrigger` once (every 10 minutes).
+
+### 2. Pricing workbook "Top dữ liệu luân up" — `PricingSync.shop2.gs` and `PaymentSync.gs`
+
+Extensions > Apps Script. Add both files to the same project: `PricingSync.shop2.gs` (not `PricingSync.gs`) and `PaymentSync.gs` (shop 1's file, unchanged — shop 2's payment file has the same layout).
+
+`PricingSync.shop2.gs` reads tab `1.Top Thông tin hàng hoá` (header on row 1) into `sku_pricing`. It differs from `PricingSync.gs` in that the sheet repeats the headers `GIÁ MÌNH BÁO` / `GIÁ CẦN THU VỀ` in a second, empty column pair; the old script would let the empty one overwrite the price, this one keeps the first non-empty value. It only patches `kiot_code` / `collect_price` onto products that already exist, so **run the order workbook's `syncAllTabs` first**.
+
+`PaymentSync.gs` needs one more Script Property, `PAYMENT_SHEET_URL` = the URL of "[MII - TOP VALUE] - PAYMENT - VN_VŨ THỊ THẢO TRANG_MII" (it is also in tab `2.Link đối soát` of this workbook). Its tabs are one per week (named by date range) plus `Xuất hóa đơn` and an empty `01/05/2026-03/05/2026`; the last two have no `Giá trị còn lại` column and are skipped.
+
+Install:
+
+1. `manualTestPricingSync`, check the log (row count, no `ERROR`), then `syncPricing`.
+2. Run `createPricingTimeTrigger` (every 30 minutes).
+3. `manualTestPaymentSync` / `manualTestPaymentBatches`, then `syncPayment` and `syncPaymentBatches`, then `createPaymentTimeTrigger` and `createPaymentBatchTimeTrigger`.
+
+There is no "ĐƠN HUỶ" receipt log for shop 2, so `CancelReceiptSync.gs` is not used there.
+
+### Tests
+
+`tests/sync/appsScriptShop2.test.ts` runs these `.gs` files in a Node `vm` sandbox with fake `SpreadsheetApp` / `UrlFetchApp`, using the real header rows of shop 2's sheets (`tests/helpers/shop2Fixtures.ts`). `tests/sync/appsScriptShop2Apply.test.ts` feeds what they send through the server's apply functions.
