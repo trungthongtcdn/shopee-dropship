@@ -60,6 +60,7 @@ export function loadScripts(files: string[], options: LoadOptions = {}) {
   const statuses = options.statuses ?? [200];
 
   const spreadsheet = (sheets: FakeSheet[]) => ({
+    getName: () => "Test workbook",
     getSheetByName: (name: string) => sheets.find((sheet) => sheet.getName() === name) ?? null,
     getSheets: () => sheets,
   });

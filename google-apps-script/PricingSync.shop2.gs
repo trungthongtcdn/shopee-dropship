@@ -14,8 +14,8 @@
 //  - Rows without a SKU are dropped, and the tab is not pushed when a header the
 //    server reads is missing (logged, and stored in the `last_error` property).
 //
-// PaymentSync.gs works for shop 2 as it is (same layout as shop 1's payment file);
-// add it to this same Apps Script project with PAYMENT_SHEET_URL set.
+// Payments are not synced from this workbook: shop 2's payment file is editable, so
+// PaymentSync.gs is installed in that file itself (see README, "Shop 2").
 
 var PRICING_SHEET_NAME = "1.Top Thông tin hàng hoá";
 var PRICING_TAB = "sku_pricing";

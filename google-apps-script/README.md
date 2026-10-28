@@ -176,7 +176,7 @@ the current protocol.
 
 Shop 2's Google files are not laid out like shop 1's, so it has its own scripts. The server is shared and unchanged: the scripts post the same payload tabs, and the shop is told apart by `SYNC_SECRET` (the secret `scripts/addShop.ts` printed for shop 2, not `SYNC_WEBHOOK_SECRET` — see `DEPLOY_VPS.md`, "Several shops"). Shop 1's files are not touched by any of this.
 
-Two Apps Script projects, one per workbook. In both: Project Settings > Script Properties, `SYNC_WEBHOOK_URL` = same address as shop 1, `SYNC_SECRET` = shop 2's secret. The secret goes in Script Properties only, never in the script text.
+Three Apps Script projects, one per Google file (order workbook, pricing workbook, payment file). In each: Project Settings > Script Properties, `SYNC_WEBHOOK_URL` = same address as shop 1, `SYNC_SECRET` = shop 2's secret. The secret goes in Script Properties only, never in the script text.
 
 ### 1. Order workbook "VN_VŨ THỊ THẢO TRANG_MII" — `Sync.shop2.gs`
 
@@ -206,19 +206,29 @@ Install:
 3. Run `syncAllTabs` once, confirm rows appear in the app (pick shop 2 in the header).
 4. Run `createTimeTrigger` once (every 10 minutes).
 
-### 2. Pricing workbook "Top dữ liệu luân up" — `PricingSync.shop2.gs` and `PaymentSync.gs`
+### 2. Pricing workbook "Top dữ liệu luân up" — `PricingSync.shop2.gs`
 
-Extensions > Apps Script. Add both files to the same project: `PricingSync.shop2.gs` (not `PricingSync.gs`) and `PaymentSync.gs` (shop 1's file, unchanged — shop 2's payment file has the same layout).
+Extensions > Apps Script, paste `PricingSync.shop2.gs` (not `PricingSync.gs`).
 
 `PricingSync.shop2.gs` reads tab `1.Top Thông tin hàng hoá` (header on row 1) into `sku_pricing`. It differs from `PricingSync.gs` in that the sheet repeats the headers `GIÁ MÌNH BÁO` / `GIÁ CẦN THU VỀ` in a second, empty column pair; the old script would let the empty one overwrite the price, this one keeps the first non-empty value. It only patches `kiot_code` / `collect_price` onto products that already exist, so **run the order workbook's `syncAllTabs` first**.
-
-`PaymentSync.gs` needs one more Script Property, `PAYMENT_SHEET_URL` = the URL of "[MII - TOP VALUE] - PAYMENT - VN_VŨ THỊ THẢO TRANG_MII" (it is also in tab `2.Link đối soát` of this workbook). Its tabs are one per week (named by date range) plus `Xuất hóa đơn` and an empty `01/05/2026-03/05/2026`; the last two have no `Giá trị còn lại` column and are skipped.
 
 Install:
 
 1. `manualTestPricingSync`, check the log (row count, no `ERROR`), then `syncPricing`.
 2. Run `createPricingTimeTrigger` (every 30 minutes).
-3. `manualTestPaymentSync` / `manualTestPaymentBatches`, then `syncPayment` and `syncPaymentBatches`, then `createPaymentTimeTrigger` and `createPaymentBatchTimeTrigger`.
+
+### 3. Payment file "[MII - TOP VALUE] - PAYMENT - VN_VŨ THỊ THẢO TRANG_MII" — `PaymentSync.gs`
+
+Unlike shop 1's payment file (view-only, so its script had to live in another workbook and read it by URL), shop 2's payment file is editable, so `PaymentSync.gs` goes **in the payment file itself**: open that file, Extensions > Apps Script, paste `PaymentSync.gs`. Do **not** set `PAYMENT_SHEET_URL` — with it unset the script reads the spreadsheet it is bound to. (Set it and the script reads that file instead, which is how shop 1 uses it.) Only `SYNC_WEBHOOK_URL` and `SYNC_SECRET` are needed.
+
+The script must be in **that** file, not in the pricing or order workbook, and its Script Properties are per project, so `SYNC_WEBHOOK_URL` / `SYNC_SECRET` must be set in this project too. If it is in the wrong file, `syncPayment` logs `ERROR: no tab with the payment layout ... in "<file name>"` (the file name tells you where it is), stores it in `last_error`, and pushes nothing; with the properties missing it logs `ERROR: payment -> SYNC_WEBHOOK_URL or SYNC_SECRET script property is not set`.
+
+The file has one tab per week (named by date range, e.g. `12/10/2026-18/10/2026`) plus `Xuất hóa đơn` and an empty `01/05/2026-03/05/2026`; the last two have no `Giá trị còn lại` column and are skipped. The layout is the same as shop 1's, so the script is the same file.
+
+Install:
+
+1. `manualTestPaymentSync` / `manualTestPaymentBatches`, check the log (order/SKU pair count, one batch per week tab with data, no `ERROR`).
+2. `syncPayment` and `syncPaymentBatches`, then `createPaymentTimeTrigger` and `createPaymentBatchTimeTrigger` (every 30 minutes each).
 
 There is no "ĐƠN HUỶ" receipt log for shop 2, so `CancelReceiptSync.gs` is not used there.
 

@@ -356,6 +356,83 @@ describe("PaymentSync.gs against the shop 2 payment file", () => {
     expect(script.calls[0].body.batchLabel).toBe("12/10/2026-18/10/2026");
     expect(script.calls[0].body.rows).toHaveLength(3);
   });
+
+  // Shop 2's payment file is editable, so the script can live in the file itself
+  // (Extensions > Apps Script there) instead of reaching it through a URL.
+  it("works bound to the payment file itself: no PAYMENT_SHEET_URL, it reads the spreadsheet it is in", () => {
+    const script = loadScripts(["PaymentSync.gs"], { sheets: paymentSheets() });
+
+    script.run("syncPayment()");
+
+    expect(script.calls).toHaveLength(1);
+    expect(script.calls[0].body.tab).toBe("payment");
+    expect(script.calls[0].body.rows.map((row) => `${row.data["Mã đơn hàng"]}/${row.data["Mã sản phẩm"]}`).sort()).toEqual([
+      "261013H6RD7Y/311565665779",
+      "261015M9TWX1/311565665780",
+    ]);
+  });
+
+  it("sends the weekly batches too when bound to the payment file", () => {
+    const script = loadScripts(["PaymentSync.gs"], { sheets: paymentSheets() });
+
+    script.run("syncPaymentBatches()");
+
+    expect(script.calls.map((call) => call.body.batchLabel)).toEqual(["12/10/2026-18/10/2026"]);
+  });
+
+  // What happened when the script was pasted into the pricing workbook by mistake:
+  // it read that workbook, found no payment tab, then crashed on an unset URL.
+  describe("installed in the wrong spreadsheet", () => {
+    const wrongWorkbook = () => [makeSheet("1.Top Thông tin hàng hoá", [PRICING_HEADERS, ["1", "336567768206", "Móc", "Bộ Móc A Mazda", "moc5quai1lop", 28000, 27300]])];
+
+    it("syncPayment says so, records it, and pushes nothing", () => {
+      const script = loadScripts(["PaymentSync.gs"], { sheets: wrongWorkbook() });
+
+      script.run("syncPayment()");
+
+      expect(script.calls).toHaveLength(0);
+      expect(script.props.last_error).toContain("payment file");
+      expect(script.logs.some((line) => line.startsWith("ERROR") && line.includes("Test workbook"))).toBe(true);
+    });
+
+    it("syncPaymentBatches says so, records it, and pushes nothing", () => {
+      const script = loadScripts(["PaymentSync.gs"], { sheets: wrongWorkbook() });
+
+      script.run("syncPaymentBatches()");
+
+      expect(script.calls).toHaveLength(0);
+      expect(script.props.last_error).toContain("payment file");
+    });
+
+    it("the manual tests do not throw either", () => {
+      const script = loadScripts(["PaymentSync.gs"], { sheets: wrongWorkbook() });
+
+      expect(() => script.run("manualTestPaymentSync()")).not.toThrow();
+      expect(() => script.run("manualTestPaymentBatches()")).not.toThrow();
+    });
+  });
+
+  it("reports unset SYNC_WEBHOOK_URL / SYNC_SECRET instead of throwing from UrlFetchApp", () => {
+    const script = loadScripts(["PaymentSync.gs"], { sheets: paymentSheets(), props: { SYNC_WEBHOOK_URL: "" } });
+
+    expect(() => script.run("syncPayment()")).not.toThrow();
+    expect(() => script.run("syncPaymentBatches()")).not.toThrow();
+
+    expect(script.calls).toHaveLength(0);
+    expect(script.props.last_error).toContain("SYNC_WEBHOOK_URL");
+  });
+
+  it("still reads the file at PAYMENT_SHEET_URL when that is set, not the spreadsheet it is in", () => {
+    const script = loadScripts(["PaymentSync.gs"], {
+      sheets: [makeSheet("THÔNG TIN HÀNG HOÁ", [["MÃ PHÂN LOẠI (SKU)"]])],
+      external: { [PAYMENT_URL]: paymentSheets() },
+      props: { PAYMENT_SHEET_URL: PAYMENT_URL },
+    });
+
+    script.run("syncPayment()");
+
+    expect(script.calls[0].body.rows).toHaveLength(2);
+  });
 });
 
 // Keeps the fixtures honest: the product tab layout the script is built for.
