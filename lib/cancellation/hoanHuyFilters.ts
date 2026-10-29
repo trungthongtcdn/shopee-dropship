@@ -29,6 +29,12 @@ export function parseReceiptRefundFilters(raw: RawSearchParams): ReceiptRefundFi
   };
 }
 
+// "Quá hạn": only the rows behind the header's overdue banner (loadOverdueWarnings).
+// The banner links here with ?overdue=1.
+export function parseOverdueFilter(raw: RawSearchParams): boolean {
+  return strArray(raw.overdue)[0] === "1";
+}
+
 // `status` is the order-level receipt status (receiptStatusFor): null = blank.
 export function matchesReceiptFilter(status: CancelReceiptStatus | null, selected: string[]): boolean {
   return selected.length === 0 || selected.includes(status ?? NO_VALUE);

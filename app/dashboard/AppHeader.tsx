@@ -164,7 +164,7 @@ export function AppHeader({
         onto a second line). Not sticky: it scrolls away with the page. Only
         rendered while there is something overdue. */}
     {overdueWarningCount > 0 ? (
-      <Link href="/dashboard/hoan-huy" className="overdue-banner">
+      <Link href="/dashboard/hoan-huy?overdue=1" className="overdue-banner">
         <span aria-hidden="true">⚠️</span> {overdueWarningCount} đơn cảnh báo quá hạn
         <span className="overdue-banner-action">Xem »</span>
       </Link>

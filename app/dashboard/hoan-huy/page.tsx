@@ -4,12 +4,14 @@ import { Pagination } from "../Pagination";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
+import { loadOverdueWarnings } from "@/lib/cancellation/overdueWarnings";
 import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
 import { RECEIPT_LABELS, loadReceiptStatuses } from "@/lib/cancellation/receiptStatus";
 import {
   NO_VALUE,
   matchesReceiptFilter,
   matchesRefundStatusFilter,
+  parseOverdueFilter,
   parseReceiptRefundFilters,
   refundStatusOptions,
 } from "@/lib/cancellation/hoanHuyFilters";
@@ -91,6 +93,7 @@ export default async function HoanHuyPage({
   const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseCancellationFilters(searchParams);
   const { receipt, refundStatus } = parseReceiptRefundFilters(searchParams);
+  const overdueOnly = parseOverdueFilter(searchParams);
   const types = filters.types;
   // The tabs below set exactly one type; the "Loại" dropdown can set several.
   const activeType = types.length === 1 ? types[0] : undefined;
@@ -100,19 +103,24 @@ export default async function HoanHuyPage({
   // just a slice of this same set (in-memory, same convention as the other
   // computed-filter fields on the Report page).
   const includeCancelled = showsCancelledOrders(currentShopSlug());
-  const [allRows, overdueWarningConfig] = await Promise.all([
+  const [allRows, overdueWarningConfig, overdueWarnings] = await Promise.all([
     loadCancellationRows({ q: filters.q, types: [], includeCancelled }),
     prisma.zaloWatchConfig.findUnique({ where: { purpose: OVERDUE_WARNING_PURPOSE } }),
+    loadOverdueWarnings(),
   ]);
+  // The same rows the header banner counts, so "Quá hạn (n)" matches its number.
+  const overdueIds = new Set(overdueWarnings.map((warning) => warning.cancellationId));
   // "Trạng thái nhận" is derived per order from its lines, so it (like the
   // return/refund status) is filtered here rather than in the query. The tab
   // counts follow those two filters, but not the type itself.
   const receiptStatuses = await loadReceiptStatuses(allRows.map((row) => row.shopeeOrderId));
-  const facetRows = allRows.filter(
+  const receiptRefundRows = allRows.filter(
     (row) =>
       matchesReceiptFilter(receiptStatuses.get(row.shopeeOrderId) ?? null, receipt) &&
       matchesRefundStatusFilter(row.returnRefundStatus, refundStatus)
   );
+  const overdueCount = receiptRefundRows.filter((row) => overdueIds.has(row.id)).length;
+  const facetRows = overdueOnly ? receiptRefundRows.filter((row) => overdueIds.has(row.id)) : receiptRefundRows;
   const countCancelled = facetRows.filter((r) => r.type === "cancelled").length;
   const countDeliveryFailed = facetRows.filter((r) => r.type === "delivery_failed").length;
   const countReturned = facetRows.filter((r) => r.type === "returned_refunded").length;
@@ -136,12 +144,20 @@ export default async function HoanHuyPage({
   if (filters.q) otherFilterParams.set("q", filters.q);
   for (const value of receipt) otherFilterParams.append("receipt", value);
   for (const value of refundStatus) otherFilterParams.append("refundStatus", value);
+  if (overdueOnly) otherFilterParams.set("overdue", "1");
   const otherFilterQuery = otherFilterParams.toString();
   const tabHref = (type: string | undefined) => {
     const params = new URLSearchParams(otherFilterQuery);
     if (type) params.set("type", type);
     return `?${params.toString()}`;
   };
+
+  // The "Quá hạn" pill toggles the filter and keeps every other one, the types included.
+  const overdueToggleParams = new URLSearchParams(otherFilterQuery);
+  overdueToggleParams.delete("overdue");
+  for (const type of types) overdueToggleParams.append("type", type);
+  if (!overdueOnly) overdueToggleParams.set("overdue", "1");
+  const overdueToggleHref = `?${overdueToggleParams.toString()}`;
 
   const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const rows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
@@ -177,9 +193,13 @@ export default async function HoanHuyPage({
         <a className={`filter-pill${activeType === "returned_refunded" ? " active" : ""}`} href={tabHref("returned_refunded")}>
           Trả hàng hoàn tiền ({countReturned})
         </a>
+        <a className={`filter-pill${overdueOnly ? " active" : ""}`} href={overdueToggleHref}>
+          ⚠️ Quá hạn ({overdueCount})
+        </a>
       </div>
 
       <form method="get" className="toolbar" style={{ alignItems: "flex-end" }}>
+        {overdueOnly ? <input type="hidden" name="overdue" value="1" /> : null}
         <div className="field">
           <span className="field-label">Tìm kiếm</span>
           <input

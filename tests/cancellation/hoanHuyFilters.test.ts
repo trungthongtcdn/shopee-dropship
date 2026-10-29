@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   NO_VALUE,
   parseReceiptRefundFilters,
+  parseOverdueFilter,
   matchesReceiptFilter,
   matchesRefundStatusFilter,
   refundStatusOptions,
@@ -71,5 +72,19 @@ describe("refundStatusOptions", () => {
   it("keeps a selected status in the list even when no loaded row has it", () => {
     expect(refundStatusOptions(["A"], ["B"]).map((o) => o.value)).toEqual(["A", "B"]);
     expect(refundStatusOptions([], [NO_VALUE])).toEqual([{ value: NO_VALUE, label: "(Trống)" }]);
+  });
+});
+
+describe("parseOverdueFilter", () => {
+  it("is off by default and for anything but 1", () => {
+    expect(parseOverdueFilter({})).toBe(false);
+    expect(parseOverdueFilter({ overdue: "" })).toBe(false);
+    expect(parseOverdueFilter({ overdue: "0" })).toBe(false);
+    expect(parseOverdueFilter({ overdue: "true" })).toBe(false);
+  });
+
+  it("is on for overdue=1, also when the param is repeated", () => {
+    expect(parseOverdueFilter({ overdue: "1" })).toBe(true);
+    expect(parseOverdueFilter({ overdue: ["1", "1"] })).toBe(true);
   });
 });
