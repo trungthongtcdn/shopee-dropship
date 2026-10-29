@@ -136,10 +136,24 @@ export default async function ReportPage({
       <ReportFilterForm filters={filters} orderStatusOptions={orderStatusOptions} />
 
       <div className="toolbar" style={{ justifyContent: "space-between" }}>
-        <ColumnVisibilityMenu />
-        <a className="btn btn-secondary btn-sm" href={exportHref}>
-          Xuất Excel
-        </a>
+        <div className="toolbar" style={{ margin: 0 }}>
+          <p className="cell-muted" style={{ margin: 0 }}>
+            {allRows.length} đơn
+          </p>
+          <ColumnVisibilityMenu />
+        </div>
+        <div className="toolbar" style={{ margin: 0 }}>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalCount={allRows.length}
+            baseQuery={filterQuery}
+          />
+          <a className="btn btn-secondary btn-sm" href={exportHref}>
+            Xuất Excel
+          </a>
+        </div>
       </div>
 
       <div className="table-wrap">
