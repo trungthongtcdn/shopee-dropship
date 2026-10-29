@@ -217,6 +217,32 @@ a:hover {
   text-underline-offset: 4px;
 }
 
+/* One line under the header, only while orders are overdue (not sticky: scrolls
+   away with the page, so the sticky header + table headers keep their offsets). */
+.overdue-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 24px;
+  background: var(--color-danger-bg);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-destructive);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.overdue-banner:hover {
+  text-decoration: none;
+  filter: brightness(0.97);
+}
+
+.overdue-banner-action {
+  margin-left: var(--space-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* ---------- Page shell ---------- */
 
 .page {

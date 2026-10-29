@@ -4,6 +4,7 @@ import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
 import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
+import { loadReceiptLabels } from "@/lib/cancellation/receiptStatus";
 import { currentShopSlug } from "@/lib/shops/context";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
@@ -36,7 +37,7 @@ function respondByClassName(respondByAt: Date | null): string {
   return "cell-muted";
 }
 
-function toSummary(row: Cancellation): HoanHuySummary {
+function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
   return {
     id: row.id,
     typeLabel: typeLabel(row.type),
@@ -52,6 +53,7 @@ function toSummary(row: Cancellation): HoanHuySummary {
     complaintStatus: row.complaintStatus ?? "-",
     respondByLabel: formatDate(row.respondByAt),
     respondByClassName: respondByClassName(row.respondByAt),
+    receiptLabel,
   };
 }
 
@@ -101,6 +103,9 @@ export default async function HoanHuyPage({
 
   const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const rows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  // Only this page's orders: "đã nhận" comes from the receipt typed in the Zalo group
+  // or on the Nhận đơn huỷ page (stored on the order's lines).
+  const receiptLabels = await loadReceiptLabels(rows.map((row) => row.shopeeOrderId));
   const baseQueryParams = new URLSearchParams(filterQuery);
   if (activeType) baseQueryParams.set("type", activeType);
   const baseQuery = baseQueryParams.toString();
@@ -180,12 +185,13 @@ export default async function HoanHuyPage({
               <th>Số tiền hoàn</th>
               <th>Khiếu nại</th>
               <th>Phản hồi trước</th>
+              <th>Trạng thái nhận</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <HoanHuyRow key={row.id} summary={toSummary(row)} details={toDetails(row)} />
+              <HoanHuyRow key={row.id} summary={toSummary(row, receiptLabels.get(row.shopeeOrderId) ?? "")} details={toDetails(row)} />
             ))}
           </tbody>
         </table>
