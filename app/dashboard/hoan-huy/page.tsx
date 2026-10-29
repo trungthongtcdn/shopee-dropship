@@ -5,6 +5,7 @@ import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
 import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
 import { loadReceiptLabels } from "@/lib/cancellation/receiptStatus";
+import { allReturnTrackingCodes } from "@/lib/cancellation/returnTrackingCodes";
 import { currentShopSlug } from "@/lib/shops/context";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
@@ -46,7 +47,7 @@ function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
     trackingCode: row.trackingCode ?? "-",
     productName: row.productName ?? "-",
     quantityMeta: `SL ${row.lineQuantity ?? "-"} · Hoàn ${row.returnedQuantity ?? "-"}`,
-    returnTrackingCode: row.returnTrackingCode ?? "-",
+    returnTrackingCode: allReturnTrackingCodes(row).join(", ") || "-",
     returnMeta: `${row.returnStatus ?? "-"} · ${formatDate(row.returnCompletedAt)}`,
     refundAmountLabel: formatAmount(row.refundAmount),
     complaintReason: row.complaintReason ?? "-",

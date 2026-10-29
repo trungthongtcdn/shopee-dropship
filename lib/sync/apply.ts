@@ -1,6 +1,7 @@
 import { Prisma, CancellationType, CancelReceiptStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { computeSyncDiff } from "@/lib/sync/diff";
+import { collapseRowsByOrder, returnTrackingCodesOf } from "@/lib/sync/collapseRows";
 import { getByHeader, getString, getDate, getInt } from "@/lib/sync/headerLookup";
 import type { IncomingRow, SyncTab } from "@/lib/sync/types";
 
@@ -227,6 +228,7 @@ function mapCancellationRow(type: CancellationType) {
     refundedAt: getDate(row.data, "Thời gian hoàn tiền"),
     returnCarrier: getString(row.data, "Đơn vị vận chuyển trả hàng"),
     returnTrackingCode: getString(row.data, "Mã vận đơn trả hàng"),
+    returnTrackingCodes: returnTrackingCodesOf(row),
     returnStatus: getString(row.data, "Trạng thái trả hàng"),
     returnCompletedAt: getDate(row.data, "Thời gian hoàn trả hàng thành công"),
     totalValue: getInt(row.data, "Tổng Giá Trị"),
@@ -380,7 +382,8 @@ function applyCancellationTabPayload(tab: SyncTab, type: CancellationType, rows:
     keyOfCancellationRow(type),
     whereOfCancellationRow(type),
     mapCancellationRow(type),
-    rows,
+    // One stored row per (order, type): rows of the same order are merged first.
+    collapseRowsByOrder(rows),
     { type }
   );
 }

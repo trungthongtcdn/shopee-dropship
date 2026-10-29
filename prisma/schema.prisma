@@ -172,6 +172,12 @@ model Cancellation {
   refundedAt           DateTime?        @map("refunded_at")
   returnCarrier        String?          @map("return_carrier")
   returnTrackingCode   String?          @map("return_tracking_code")
+  // Every return tracking code the sheet lists for this order, newest first and
+  // starting with returnTrackingCode. Sheet 5 can have two rows for one order (a
+  // return the buyer cancelled, then a new one), but this table keeps one row per
+  // order and type, so the extra codes live here — they are what a "đã nhận" scan
+  // or message gets matched against.
+  returnTrackingCodes  String[]         @default([]) @map("return_tracking_codes")
   returnStatus         String?          @map("return_status")
   returnCompletedAt    DateTime?        @map("return_completed_at")
   totalValue           Float?           @map("total_value")

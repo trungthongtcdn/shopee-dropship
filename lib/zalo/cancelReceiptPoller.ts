@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
 import { isBotMessage } from "@/lib/zalo/botMessage";
+import { returnCodeMatchClauses } from "@/lib/cancellation/returnTrackingCodes";
 
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/poller.ts for the
 // other one ("waybill_confirm").
@@ -123,7 +124,7 @@ export interface ApplyCancelReceiptCodesResult {
 // pattern as loadReportRows.ts's return-tracking-code search.
 export async function orderMatchWhere(codes: string[]): Promise<Prisma.OrderWhereInput> {
   const returnTrackingMatches = await prisma.cancellation.findMany({
-    where: { isActive: true, returnTrackingCode: { in: codes } },
+    where: { isActive: true, OR: returnCodeMatchClauses(codes) },
     select: { shopeeOrderId: true },
   });
   const returnMatchedOrderIds = [...new Set(returnTrackingMatches.map((c) => c.shopeeOrderId))];

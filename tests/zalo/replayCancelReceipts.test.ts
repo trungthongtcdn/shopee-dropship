@@ -104,6 +104,25 @@ describe("replayCancelReceipts", () => {
     expect(result.mappedOrders).toEqual(["SP003"]);
   });
 
+  it("finds a returned order by any of the return tracking codes it has had", async () => {
+    await seedOrder("SP006", { trackingCode: "OUT-CODE" });
+    await prisma.cancellation.create({
+      data: {
+        shopeeOrderId: "SP006",
+        type: "returned_refunded",
+        returnTrackingCode: "GYM344XL",
+        returnTrackingCodes: ["GYM344XL", "GYMCLK9Q"],
+        rawRowHash: "h",
+        sheetRowIndex: 1,
+      },
+    });
+    await seedLog(["GYMCLK9Q"], "2026-10-22T03:00:00.000Z");
+
+    const result = await replayCancelReceipts({ until: UNTIL, apply: true });
+
+    expect(result.mappedOrders).toEqual(["SP006"]);
+  });
+
   it("covers every line of a multi-line order", async () => {
     await seedOrder("SP004", { categoryName: "A", sheetRowIndex: 1 });
     await seedOrder("SP004", { categoryName: "B", sheetRowIndex: 2 });

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { CancellationType } from "@prisma/client";
+import { returnCodeSearchClauses } from "@/lib/cancellation/returnTrackingCodes";
 
 export interface CancellationFilters {
   // Empty = no filter (show every type).
@@ -49,7 +50,7 @@ export function loadCancellationRows(filters: CancellationFilters) {
             OR: [
               { shopeeOrderId: { contains: filters.q, mode: "insensitive" as const } },
               { trackingCode: { contains: filters.q, mode: "insensitive" as const } },
-              { returnTrackingCode: { contains: filters.q, mode: "insensitive" as const } },
+              ...returnCodeSearchClauses(filters.q),
             ],
           }
         : {}),

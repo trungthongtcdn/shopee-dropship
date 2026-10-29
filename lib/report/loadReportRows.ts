@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildReportRows, type ReportRow } from "@/lib/report/buildReport";
 import { loadCancellationSummaries } from "@/lib/report/cancellationLookup";
+import { returnCodeSearchClauses } from "@/lib/cancellation/returnTrackingCodes";
 import {
   buildOrderWhere,
   isNoiseCancelledOrder,
@@ -25,7 +26,7 @@ export async function loadReportRows(filters: ReportFilters): Promise<ReportRow[
   // buildOrderWhere can fold the matching shopeeOrderIds into its OR.
   const returnTrackingMatches = filters.q
     ? await prisma.cancellation.findMany({
-        where: { isActive: true, returnTrackingCode: { contains: filters.q, mode: "insensitive" } },
+        where: { isActive: true, OR: returnCodeSearchClauses(filters.q) },
         select: { shopeeOrderId: true },
       })
     : [];

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { allReturnTrackingCodes } from "@/lib/cancellation/returnTrackingCodes";
 
 export interface CancellationSummary {
   types: string[];
@@ -18,15 +19,17 @@ export async function loadCancellationSummaries(shopeeOrderIds: string[]): Promi
 
   const rows = await prisma.cancellation.findMany({
     where: { shopeeOrderId: { in: shopeeOrderIds }, isActive: true },
-    select: { shopeeOrderId: true, type: true, returnTrackingCode: true },
+    select: { shopeeOrderId: true, type: true, returnTrackingCode: true, returnTrackingCodes: true },
   });
 
   const map = new Map<string, CancellationSummary>();
   for (const row of rows) {
     const existing = map.get(row.shopeeOrderId) ?? { types: [], returnTrackingCode: null };
     existing.types.push(row.type);
-    if (row.type === "returned_refunded" && row.returnTrackingCode) {
-      existing.returnTrackingCode = row.returnTrackingCode;
+    if (row.type === "returned_refunded") {
+      // An order can have been returned more than once; show every code.
+      const codes = allReturnTrackingCodes(row);
+      if (codes.length > 0) existing.returnTrackingCode = codes.join(", ");
     }
     map.set(row.shopeeOrderId, existing);
   }
