@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 // Multi-select filter rendered as a closed-by-default dropdown instead of a
-// wall of pills — the checkboxes inside are real form inputs (name/value/
-// defaultChecked), so the surrounding <form method="get"> still submits
-// them as repeated query params with zero extra JS; this component only
-// adds the open/close UX and the live "(n)" count in the summary label.
+// wall of pills — the checkboxes inside are real form inputs (name/value),
+// so the surrounding <form method="get"> still submits them as repeated
+// query params with zero extra JS; this component only adds the open/close
+// UX, the live "(n)" count in the summary label, and a "Tất cả" box that
+// ticks / clears every option at once.
 export function FilterDropdown({
   name,
   label,
@@ -18,8 +19,13 @@ export function FilterDropdown({
   options: { value: string; label: string }[];
   selected: string[];
 }) {
-  const [count, setCount] = useState(selected.length);
+  const [checked, setChecked] = useState<string[]>(() => selected.filter((value) => options.some((option) => option.value === value)));
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const allChecked = options.length > 0 && checked.length === options.length;
+
+  function toggle(value: string, on: boolean) {
+    setChecked((current) => (on ? [...current, value] : current.filter((v) => v !== value)));
+  }
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -34,24 +40,34 @@ export function FilterDropdown({
   return (
     <details ref={detailsRef} className="filter-dropdown">
       <summary className="filter-dropdown-summary" aria-label={label}>
-        {count > 0 ? `${count} đã chọn` : "Tất cả"}
+        {checked.length > 0 && !allChecked ? `${checked.length} đã chọn` : "Tất cả"}
       </summary>
       <div className="filter-dropdown-menu">
         {options.length === 0 ? (
           <p className="filter-dropdown-empty">Không có lựa chọn</p>
         ) : (
-          options.map((option) => (
-            <label key={option.value} className="filter-dropdown-item">
+          <>
+            <label className="filter-dropdown-item filter-dropdown-all">
               <input
                 type="checkbox"
-                name={name}
-                value={option.value}
-                defaultChecked={selected.includes(option.value)}
-                onChange={(e) => setCount((c) => (e.target.checked ? c + 1 : c - 1))}
+                checked={allChecked}
+                onChange={(e) => setChecked(e.target.checked ? options.map((option) => option.value) : [])}
               />
-              {option.label}
+              Tất cả
             </label>
-          ))
+            {options.map((option) => (
+              <label key={option.value} className="filter-dropdown-item">
+                <input
+                  type="checkbox"
+                  name={name}
+                  value={option.value}
+                  checked={checked.includes(option.value)}
+                  onChange={(e) => toggle(option.value, e.target.checked)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </>
         )}
       </div>
     </details>
