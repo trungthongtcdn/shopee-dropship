@@ -49,6 +49,7 @@ function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
     quantityMeta: `SL ${row.lineQuantity ?? "-"} · Hoàn ${row.returnedQuantity ?? "-"}`,
     returnTrackingCode: allReturnTrackingCodes(row).join(", ") || "-",
     returnMeta: `${row.returnStatus ?? "-"} · ${formatDate(row.returnCompletedAt)}`,
+    returnRefundStatus: row.returnRefundStatus ?? "-",
     refundAmountLabel: formatAmount(row.refundAmount),
     complaintReason: row.complaintReason ?? "-",
     complaintStatus: row.complaintStatus ?? "-",
@@ -183,6 +184,7 @@ export default async function HoanHuyPage({
               <th>Đơn hàng</th>
               <th>Sản phẩm</th>
               <th>Trả hàng</th>
+              <th>Trạng thái Trả hàng/Hoàn tiền</th>
               <th>Số tiền hoàn</th>
               <th>Khiếu nại</th>
               <th>Phản hồi trước</th>

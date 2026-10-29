@@ -12,6 +12,8 @@ export interface HoanHuySummary {
   quantityMeta: string;
   returnTrackingCode: string;
   returnMeta: string;
+  // "Trạng thái Trả hàng/Hoàn tiền" straight from the sheet ("-" when empty).
+  returnRefundStatus: string;
   refundAmountLabel: string;
   complaintReason: string;
   complaintStatus: string;
@@ -28,6 +30,14 @@ export interface HoanHuyDetails {
   supplierNote: string;
   complaintAtLabel: string;
   cancelledAtLabel: string;
+}
+
+// Same colours as the report page's receipt badge: received is green, "không
+// cần nhận" is plain (nothing to do), anything partial / outstanding is amber.
+function receiptClassName(label: string): string {
+  if (label === "Đã nhận") return "badge badge-success";
+  if (label === "Không cần nhận") return "badge";
+  return "badge badge-warning";
 }
 
 // "Nút mở rộng" from the design — the low-traffic free-text fields (return
@@ -60,6 +70,7 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
             <span className="cell-sub">{summary.returnMeta}</span>
           </div>
         </td>
+        <td>{summary.returnRefundStatus}</td>
         <td className="num">{summary.refundAmountLabel}</td>
         <td className="cell-truncate" title={summary.complaintReason}>
           <div className="cell-stack">
@@ -72,9 +83,7 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
         </td>
         <td>
           {summary.receiptLabel ? (
-            <span className={summary.receiptLabel === "Đã nhận" ? "badge badge-success" : "badge badge-warning"}>
-              {summary.receiptLabel}
-            </span>
+            <span className={receiptClassName(summary.receiptLabel)}>{summary.receiptLabel}</span>
           ) : null}
         </td>
         <td>
@@ -85,7 +94,7 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
       </tr>
       {expanded ? (
         <tr>
-          <td colSpan={9}>
+          <td colSpan={10}>
             <div className="cell-stack" style={{ padding: "var(--space-2) 0" }}>
               <span>
                 <strong className="cell-sub">Lí do trả hàng:</strong> {details.returnReason}

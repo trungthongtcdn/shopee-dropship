@@ -1,5 +1,6 @@
 import { Prisma, CancellationType, CancelReceiptStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { markBuyerCancelledReturnsNotNeeded } from "@/lib/cancellation/buyerCancelledReturn";
 import { computeSyncDiff } from "@/lib/sync/diff";
 import { collapseRowsByOrder, returnTrackingCodesOf } from "@/lib/sync/collapseRows";
 import { getByHeader, getString, getDate, getInt } from "@/lib/sync/headerLookup";
@@ -357,6 +358,9 @@ export async function applyOrdersPayload(rows: IncomingRow[]) {
     await prisma.order.updateMany({ where: { shopeeOrderId: placeholder.shopeeOrderId, isActive: true }, data });
   }
 
+  // The return row may have synced in before its order line existed.
+  await markBuyerCancelledReturnsNotNeeded();
+
   return result;
 }
 
@@ -396,8 +400,11 @@ export function applyDeliveryFailedPayload(rows: IncomingRow[]) {
   return applyCancellationTabPayload("delivery_failed", CancellationType.delivery_failed, rows);
 }
 
-export function applyReturnedRefundedPayload(rows: IncomingRow[]) {
-  return applyCancellationTabPayload("returned_refunded", CancellationType.returned_refunded, rows);
+export async function applyReturnedRefundedPayload(rows: IncomingRow[]) {
+  const result = await applyCancellationTabPayload("returned_refunded", CancellationType.returned_refunded, rows);
+  // A return the buyer withdrew needs no receipt — see lib/cancellation/buyerCancelledReturn.ts.
+  await markBuyerCancelledReturnsNotNeeded();
+  return result;
 }
 
 export function applyProductsPayload(rows: IncomingRow[]) {
