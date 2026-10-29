@@ -1,16 +1,24 @@
 import { prisma } from "@/lib/db";
+import { FilterDropdown } from "../FilterDropdown";
 import { Pagination } from "../Pagination";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
 import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
-import { loadReceiptLabels } from "@/lib/cancellation/receiptStatus";
+import { RECEIPT_LABELS, loadReceiptStatuses } from "@/lib/cancellation/receiptStatus";
+import {
+  NO_VALUE,
+  matchesReceiptFilter,
+  matchesRefundStatusFilter,
+  parseReceiptRefundFilters,
+  refundStatusOptions,
+} from "@/lib/cancellation/hoanHuyFilters";
 import { allReturnTrackingCodes } from "@/lib/cancellation/returnTrackingCodes";
 import { currentShopSlug } from "@/lib/shops/context";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
 import { OVERDUE_WARNING_PURPOSE } from "@/lib/zalo/overdueWarningPoller";
-import type { Cancellation } from "@prisma/client";
+import type { Cancellation, CancelReceiptStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +44,10 @@ function respondByClassName(respondByAt: Date | null): string {
   if (hoursLeft < 24) return "badge badge-danger";
   if (hoursLeft < 48) return "badge badge-warning";
   return "cell-muted";
+}
+
+function receiptLabelOf(status: CancelReceiptStatus | undefined): string {
+  return status ? RECEIPT_LABELS[status] : "";
 }
 
 function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
@@ -78,7 +90,10 @@ export default async function HoanHuyPage({
   const page = parsePage(Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page);
   const pageSize = parsePageSize(Array.isArray(searchParams.pageSize) ? searchParams.pageSize[0] : searchParams.pageSize);
   const filters = parseCancellationFilters(searchParams);
-  const activeType = filters.types[0];
+  const { receipt, refundStatus } = parseReceiptRefundFilters(searchParams);
+  const types = filters.types;
+  // The tabs below set exactly one type; the "Loại" dropdown can set several.
+  const activeType = types.length === 1 ? types[0] : undefined;
 
   // Loaded once, unfiltered by type — the tab counts need every type's
   // count regardless of which tab is active, and the active tab's rows are
@@ -89,27 +104,51 @@ export default async function HoanHuyPage({
     loadCancellationRows({ q: filters.q, types: [], includeCancelled }),
     prisma.zaloWatchConfig.findUnique({ where: { purpose: OVERDUE_WARNING_PURPOSE } }),
   ]);
-  const countCancelled = allRows.filter((r) => r.type === "cancelled").length;
-  const countDeliveryFailed = allRows.filter((r) => r.type === "delivery_failed").length;
-  const countReturned = allRows.filter((r) => r.type === "returned_refunded").length;
-  const filteredRows = activeType ? allRows.filter((r) => r.type === activeType) : allRows;
+  // "Trạng thái nhận" is derived per order from its lines, so it (like the
+  // return/refund status) is filtered here rather than in the query. The tab
+  // counts follow those two filters, but not the type itself.
+  const receiptStatuses = await loadReceiptStatuses(allRows.map((row) => row.shopeeOrderId));
+  const facetRows = allRows.filter(
+    (row) =>
+      matchesReceiptFilter(receiptStatuses.get(row.shopeeOrderId) ?? null, receipt) &&
+      matchesRefundStatusFilter(row.returnRefundStatus, refundStatus)
+  );
+  const countCancelled = facetRows.filter((r) => r.type === "cancelled").length;
+  const countDeliveryFailed = facetRows.filter((r) => r.type === "delivery_failed").length;
+  const countReturned = facetRows.filter((r) => r.type === "returned_refunded").length;
+  const filteredRows = types.length > 0 ? facetRows.filter((r) => types.includes(r.type)) : facetRows;
 
-  const filterParams = new URLSearchParams();
-  if (filters.q) filterParams.set("q", filters.q);
-  const filterQuery = filterParams.toString();
+  const typeOptions = (includeCancelled ? ["cancelled", "delivery_failed", "returned_refunded"] : ["delivery_failed", "returned_refunded"]).map(
+    (value) => ({ value, label: typeLabel(value) })
+  );
+  const receiptOptions = [
+    ...(["received_full", "received_partial", "not_received", "not_needed"] as const).map((value) => ({ value, label: RECEIPT_LABELS[value] })),
+    { value: NO_VALUE, label: "(Trống)" },
+  ];
+  const refundStatusChoices = refundStatusOptions(
+    allRows.map((row) => row.returnRefundStatus),
+    refundStatus
+  );
+
+  // Every filter except the type, as a query string: the tab links add one
+  // type to it, the pagination links add the selected types.
+  const otherFilterParams = new URLSearchParams();
+  if (filters.q) otherFilterParams.set("q", filters.q);
+  for (const value of receipt) otherFilterParams.append("receipt", value);
+  for (const value of refundStatus) otherFilterParams.append("refundStatus", value);
+  const otherFilterQuery = otherFilterParams.toString();
   const tabHref = (type: string | undefined) => {
-    const params = new URLSearchParams(filterQuery);
+    const params = new URLSearchParams(otherFilterQuery);
     if (type) params.set("type", type);
     return `?${params.toString()}`;
   };
 
   const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const rows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
-  // Only this page's orders: "đã nhận" comes from the receipt typed in the Zalo group
-  // or on the Nhận đơn huỷ page (stored on the order's lines).
-  const receiptLabels = await loadReceiptLabels(rows.map((row) => row.shopeeOrderId));
-  const baseQueryParams = new URLSearchParams(filterQuery);
-  if (activeType) baseQueryParams.set("type", activeType);
+  // "đã nhận" comes from the receipt typed in the Zalo group or on the Nhận đơn huỷ
+  // page (stored on the order's lines).
+  const baseQueryParams = new URLSearchParams(otherFilterQuery);
+  for (const type of types) baseQueryParams.append("type", type);
   const baseQuery = baseQueryParams.toString();
 
   return (
@@ -124,8 +163,8 @@ export default async function HoanHuyPage({
       />
 
       <div className="toolbar">
-        <a className={`filter-pill${!activeType ? " active" : ""}`} href={tabHref(undefined)}>
-          Tất cả ({allRows.length})
+        <a className={`filter-pill${types.length === 0 ? " active" : ""}`} href={tabHref(undefined)}>
+          Tất cả ({facetRows.length})
         </a>
         {includeCancelled ? (
           <a className={`filter-pill${activeType === "cancelled" ? " active" : ""}`} href={tabHref("cancelled")}>
@@ -141,7 +180,6 @@ export default async function HoanHuyPage({
       </div>
 
       <form method="get" className="toolbar" style={{ alignItems: "flex-end" }}>
-        {activeType ? <input type="hidden" name="type" value={activeType} /> : null}
         <div className="field">
           <span className="field-label">Tìm kiếm</span>
           <input
@@ -151,6 +189,23 @@ export default async function HoanHuyPage({
             defaultValue={filters.q}
             placeholder="Mã đơn hàng / mã vận đơn chiều đi / mã vận đơn hoàn"
             style={{ minWidth: 280 }}
+          />
+        </div>
+        <div className="field" style={{ width: 140 }}>
+          <span className="field-label">Loại</span>
+          <FilterDropdown name="type" label="Loại" options={typeOptions} selected={types} />
+        </div>
+        <div className="field" style={{ width: 140 }}>
+          <span className="field-label">Trạng thái nhận</span>
+          <FilterDropdown name="receipt" label="Trạng thái nhận" options={receiptOptions} selected={receipt} />
+        </div>
+        <div className="field" style={{ width: 170 }}>
+          <span className="field-label">Trạng thái trả hàng/hoàn tiền</span>
+          <FilterDropdown
+            name="refundStatus"
+            label="Trạng thái trả hàng/hoàn tiền"
+            options={refundStatusChoices}
+            selected={refundStatus}
           />
         </div>
         <div className="field" style={{ flexDirection: "row" }}>
@@ -194,7 +249,7 @@ export default async function HoanHuyPage({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <HoanHuyRow key={row.id} summary={toSummary(row, receiptLabels.get(row.shopeeOrderId) ?? "")} details={toDetails(row)} />
+              <HoanHuyRow key={row.id} summary={toSummary(row, receiptLabelOf(receiptStatuses.get(row.shopeeOrderId)))} details={toDetails(row)} />
             ))}
           </tbody>
         </table>

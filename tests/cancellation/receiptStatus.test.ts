@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { receiptLabelFor, loadReceiptLabels } from "@/lib/cancellation/receiptStatus";
+import { receiptLabelFor, receiptStatusFor, loadReceiptLabels, loadReceiptStatuses } from "@/lib/cancellation/receiptStatus";
 
 describe("receiptLabelFor", () => {
   it("is blank when nobody has entered a receipt", () => {
@@ -58,5 +58,41 @@ describe("loadReceiptLabels", () => {
 
   it("does nothing for an empty list", async () => {
     expect((await loadReceiptLabels([])).size).toBe(0);
+  });
+});
+
+describe("receiptStatusFor", () => {
+  it("is null while nothing is entered, or while any line is still empty", () => {
+    expect(receiptStatusFor([])).toBeNull();
+    expect(receiptStatusFor([null])).toBeNull();
+    expect(receiptStatusFor(["received_full", null])).toBeNull();
+  });
+
+  it("is the least complete status present", () => {
+    expect(receiptStatusFor(["received_full"])).toBe("received_full");
+    expect(receiptStatusFor(["received_full", "received_partial"])).toBe("received_partial");
+    expect(receiptStatusFor(["received_full", "not_received"])).toBe("not_received");
+    expect(receiptStatusFor(["not_needed"])).toBe("not_needed");
+  });
+});
+
+describe("loadReceiptStatuses", () => {
+  beforeEach(async () => {
+    await prisma.order.deleteMany();
+  });
+
+  it("maps each asked order to its status and leaves unresolved ones out", async () => {
+    const seed = (id: string, categoryName: string, extra: Record<string, unknown> = {}) =>
+      prisma.order.create({ data: { shopeeOrderId: id, categoryName, status: "Hoàn thành", rawRowHash: "seed", sheetRowIndex: 1, ...extra } });
+    await seed("T1", "A", { cancelReceiptStatus: "received_full" });
+    await seed("T2", "A", { cancelReceiptStatus: "not_needed" });
+    await seed("T3", "A", { cancelReceiptStatus: "received_full" });
+    await seed("T3", "B");
+    await seed("T4", "A");
+
+    const statuses = await loadReceiptStatuses(["T1", "T2", "T3", "T4", "NOPE"]);
+
+    expect(Object.fromEntries(statuses)).toEqual({ T1: "received_full", T2: "not_needed" });
+    expect((await loadReceiptStatuses([])).size).toBe(0);
   });
 });
