@@ -379,6 +379,60 @@ html[data-hide-col~="note"] .col-note {
   cursor: default;
 }
 
+/* Đơn hoàn huỷ: the return-code and return/refund-status columns hold long
+   free text. They wrap instead of widening the table, and font, cell padding
+   and badges are trimmed, so every column still fits a ~1000px window. */
+.hoan-huy-table {
+  font-size: 12px;
+}
+
+.hoan-huy-table td {
+  padding: var(--space-1) 6px;
+}
+
+.hoan-huy-table td:first-child {
+  min-width: 80px;
+}
+
+/* Return tracking codes: one per line (the page joins them with "\n"), never
+   broken mid-code. Status text wraps at spaces. */
+.hoan-huy-table .cell-codes,
+.hoan-huy-table .cell-wrap {
+  white-space: pre-line;
+}
+
+.hoan-huy-table .cell-codes {
+  max-width: 150px;
+}
+
+.hoan-huy-table .cell-wrap {
+  max-width: 136px;
+}
+
+.hoan-huy-table .cell-truncate {
+  max-width: 92px;
+}
+
+.hoan-huy-table .badge {
+  white-space: normal;
+  text-align: center;
+  border-radius: 12px;
+}
+
+/* Roomier windows show more of the product / complaint text. */
+@media (min-width: 1200px) {
+  .hoan-huy-table .cell-truncate {
+    max-width: 170px;
+  }
+}
+
+/* Narrower than the table's minimum width: scroll instead of clipping. */
+@media (max-width: 960px) {
+  .hoan-huy-wrap {
+    overflow-x: auto;
+  }
+}
+
 /* ---------- Badges ---------- */
 
 .badge {

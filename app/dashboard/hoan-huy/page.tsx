@@ -47,7 +47,7 @@ function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
     trackingCode: row.trackingCode ?? "-",
     productName: row.productName ?? "-",
     quantityMeta: `SL ${row.lineQuantity ?? "-"} · Hoàn ${row.returnedQuantity ?? "-"}`,
-    returnTrackingCode: allReturnTrackingCodes(row).join(", ") || "-",
+    returnTrackingCode: allReturnTrackingCodes(row).join("\n") || "-",
     returnMeta: `${row.returnStatus ?? "-"} · ${formatDate(row.returnCompletedAt)}`,
     returnRefundStatus: row.returnRefundStatus ?? "-",
     refundAmountLabel: formatAmount(row.refundAmount),
@@ -176,8 +176,8 @@ export default async function HoanHuyPage({
         />
       </div>
 
-      <div className="table-wrap">
-        <table className="data-table">
+      <div className="table-wrap hoan-huy-wrap">
+        <table className="data-table hoan-huy-table">
           <thead>
             <tr>
               <th>Loại</th>

@@ -64,13 +64,13 @@ export function HoanHuyRow({ summary, details }: { summary: HoanHuySummary; deta
             <span className="cell-sub">{summary.quantityMeta}</span>
           </div>
         </td>
-        <td>
+        <td className="cell-codes">
           <div className="cell-stack">
             <span>{summary.returnTrackingCode}</span>
             <span className="cell-sub">{summary.returnMeta}</span>
           </div>
         </td>
-        <td>{summary.returnRefundStatus}</td>
+        <td className="cell-wrap">{summary.returnRefundStatus}</td>
         <td className="num">{summary.refundAmountLabel}</td>
         <td className="cell-truncate" title={summary.complaintReason}>
           <div className="cell-stack">
