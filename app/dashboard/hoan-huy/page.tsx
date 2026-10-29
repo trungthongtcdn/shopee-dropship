@@ -3,7 +3,8 @@ import { Pagination } from "../Pagination";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
 import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
-import { loadCancellationRows, parseCancellationFilters } from "@/lib/cancellation/loadCancellationRows";
+import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
+import { currentShopSlug } from "@/lib/shops/context";
 import { DELIVERY_RESULT_LABELS, type DeliveryResult } from "@/lib/report/deliveryResult";
 import { formatDateVN, formatDateTimeVN } from "@/lib/format/datetime";
 import { OVERDUE_WARNING_PURPOSE } from "@/lib/zalo/overdueWarningPoller";
@@ -79,10 +80,12 @@ export default async function HoanHuyPage({
   // count regardless of which tab is active, and the active tab's rows are
   // just a slice of this same set (in-memory, same convention as the other
   // computed-filter fields on the Report page).
+  const includeCancelled = showsCancelledOrders(currentShopSlug());
   const [allRows, overdueWarningConfig] = await Promise.all([
-    loadCancellationRows({ q: filters.q, types: [] }),
+    loadCancellationRows({ q: filters.q, types: [], includeCancelled }),
     prisma.zaloWatchConfig.findUnique({ where: { purpose: OVERDUE_WARNING_PURPOSE } }),
   ]);
+  const countCancelled = allRows.filter((r) => r.type === "cancelled").length;
   const countDeliveryFailed = allRows.filter((r) => r.type === "delivery_failed").length;
   const countReturned = allRows.filter((r) => r.type === "returned_refunded").length;
   const filteredRows = activeType ? allRows.filter((r) => r.type === activeType) : allRows;
@@ -117,6 +120,11 @@ export default async function HoanHuyPage({
         <a className={`filter-pill${!activeType ? " active" : ""}`} href={tabHref(undefined)}>
           Tất cả ({allRows.length})
         </a>
+        {includeCancelled ? (
+          <a className={`filter-pill${activeType === "cancelled" ? " active" : ""}`} href={tabHref("cancelled")}>
+            Đã huỷ ({countCancelled})
+          </a>
+        ) : null}
         <a className={`filter-pill${activeType === "delivery_failed" ? " active" : ""}`} href={tabHref("delivery_failed")}>
           Giao thất bại ({countDeliveryFailed})
         </a>
