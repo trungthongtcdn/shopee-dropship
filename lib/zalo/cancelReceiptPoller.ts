@@ -1,4 +1,4 @@
-import { CancelReceiptStatus } from "@prisma/client";
+import { CancelReceiptStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { fetchMessages, type ZaloMessage } from "@/lib/zalo/bridge";
 import { extractOrderCodes } from "@/lib/zalo/cancelReceiptDetect";
@@ -7,6 +7,10 @@ import { isBotMessage } from "@/lib/zalo/botMessage";
 // ZaloWatchConfig.purpose for this flow — see lib/zalo/poller.ts for the
 // other one ("waybill_confirm").
 export const CANCEL_RECEIPT_CONFIRM_PURPOSE = "cancel_receipt_confirm";
+
+// threadId the manual barcode-scan entry point logs under, so its receipts can be
+// told apart from Zalo group ones in zalo_cancel_receipt_logs.
+export const MANUAL_SCAN_THREAD_ID = "manual-scan";
 
 // Zalo's `ts` is epoch milliseconds per zca-js convention, but the bridge
 // doesn't document this explicitly, and in production sends it as a
@@ -117,26 +121,30 @@ export interface ApplyCancelReceiptCodesResult {
 // orders (confirmed in production: SPXVN060152102809 never matched order
 // 260918CPKS97XC). Resolve it to a shopeeOrderId first, same cross-table
 // pattern as loadReportRows.ts's return-tracking-code search.
-export async function applyCancelReceiptCodes(
-  params: ApplyCancelReceiptCodesParams
-): Promise<ApplyCancelReceiptCodesResult> {
-  const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full", defectRate } = params;
-
+export async function orderMatchWhere(codes: string[]): Promise<Prisma.OrderWhereInput> {
   const returnTrackingMatches = await prisma.cancellation.findMany({
     where: { isActive: true, returnTrackingCode: { in: codes } },
     select: { shopeeOrderId: true },
   });
   const returnMatchedOrderIds = [...new Set(returnTrackingMatches.map((c) => c.shopeeOrderId))];
 
+  return {
+    isActive: true,
+    OR: [
+      { shopeeOrderId: { in: codes } },
+      { trackingCode: { in: codes } },
+      ...(returnMatchedOrderIds.length > 0 ? [{ shopeeOrderId: { in: returnMatchedOrderIds } }] : []),
+    ],
+  };
+}
+
+export async function applyCancelReceiptCodes(
+  params: ApplyCancelReceiptCodesParams
+): Promise<ApplyCancelReceiptCodesResult> {
+  const { codes, messageContent, confirmedByName, confirmedAt, threadId, cancelReceiptStatus = "received_full", defectRate } = params;
+
   const result = await prisma.order.updateMany({
-    where: {
-      isActive: true,
-      OR: [
-        { shopeeOrderId: { in: codes } },
-        { trackingCode: { in: codes } },
-        ...(returnMatchedOrderIds.length > 0 ? [{ shopeeOrderId: { in: returnMatchedOrderIds } }] : []),
-      ],
-    },
+    where: await orderMatchWhere(codes),
     data: {
       cancelReceiptStatus,
       cancelReceivedAt: confirmedAt,

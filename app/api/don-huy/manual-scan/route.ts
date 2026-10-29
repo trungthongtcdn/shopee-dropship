@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { withShop } from "@/lib/shops/guard";
 import { z } from "zod";
 import { CancelReceiptStatus } from "@prisma/client";
-import { applyCancelReceiptCodes } from "@/lib/zalo/cancelReceiptPoller";
+import { applyCancelReceiptCodes, MANUAL_SCAN_THREAD_ID } from "@/lib/zalo/cancelReceiptPoller";
 
 // Fallback/primary entry point for staff physically scanning returned
 // packages with a phone camera (see BarcodeScanForm.tsx) — same effect as
 // a Zalo group message naming the code, just logged under a distinct
-// thread id so it's distinguishable in zalo_cancel_receipt_logs.
-const MANUAL_SCAN_THREAD_ID = "manual-scan";
+// thread id (MANUAL_SCAN_THREAD_ID) so it's distinguishable in
+// zalo_cancel_receipt_logs.
 
 const scanSchema = z.object({
   codes: z.array(z.string().min(1)).min(1),

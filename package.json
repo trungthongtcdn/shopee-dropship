@@ -8,7 +8,8 @@
     "test": "vitest run",
     "zalo-poller": "tsx scripts/zaloPoller.ts",
     "shop:add": "tsx scripts/addShop.ts",
-    "shops:migrate": "tsx scripts/migrateShops.ts"
+    "shops:migrate": "tsx scripts/migrateShops.ts",
+    "receipts:replay": "tsx scripts/replayCancelReceipts.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

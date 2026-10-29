@@ -122,3 +122,14 @@ Then, for the new shop's two Google workbooks, install the Apps Scripts as in `g
 The server tells the shops apart by that secret. The first shop keeps using `SYNC_WEBHOOK_SECRET`, so its Apps Scripts need no change.
 
 Finally pick the new shop in the header and choose its Zalo groups on `/dashboard/dong-don`, `/dashboard/don-huy` and `/dashboard/hoan-huy` — each shop has its own, on the one shared Zalo bridge.
+
+### Re-applying receipt confirmations that matched no order
+
+A "đã nhận đơn huỷ" message (Zalo group or manual scan) is applied to the orders that exist when it arrives. If the order sheet had not synced yet it matched nothing: the log row on `/dashboard/don-huy` shows `0` matched orders and the date it named never reached an order. After the orders have synced, replay those logs for that shop. `--until` is the last day to include (Vietnam time); without `--apply` it only reports what it would do:
+
+```bash
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/replayCancelReceipts.ts --shop shop_2 --until 2026-10-27
+docker compose -f docker-compose.prod.yml exec app npx tsx scripts/replayCancelReceipts.ts --shop shop_2 --until 2026-10-27 --apply
+```
+
+Only orders with no receipt date and no receipt status are touched, so nothing set by hand or by the ĐƠN HUỶ sheet is overwritten, and running it twice changes nothing the second time. Orders that came from a manual scan are listed separately: the scan form lets staff pick a status and a % hỏng but the log keeps neither, so they are mapped as "đã nhận đủ" with no defect rate and are worth a look.
