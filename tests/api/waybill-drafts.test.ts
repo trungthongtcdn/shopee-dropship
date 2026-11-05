@@ -19,7 +19,7 @@ function page(pageIndex: number, orderId: string, khos: string[]): WaybillPage {
   return {
     pageIndex,
     shopeeOrderId: orderId,
-    trackingCode: `TRK_${orderId}`,
+    trackingCode: `SPXVN_${orderId}`,
     declaredTotalQuantity: 1,
     items: [{ name: orderId, variant: "V", quantity: 1, sku: orderId, kiotLines: khos.map((khoGiao) => ({ sku: orderId, quantity: 1, kiotCode: `K_${orderId}`, khoGiao })) }],
   };
@@ -149,7 +149,7 @@ describe("GET /api/waybill-drafts/[id]/file", () => {
     await workbook.xlsx.load(Buffer.from(await excel.arrayBuffer()) as unknown as ExcelJS.Buffer);
     const tracking: string[] = [];
     workbook.worksheets[0].eachRow((row, i) => i > 1 && tracking.push(String(row.getCell(5).value)));
-    expect(tracking).toEqual(["TRK_O1", "TRK_O3", "TRK_O2"]);
+    expect(tracking).toEqual(["SPXVN_O1", "SPXVN_O3", "SPXVN_O2"]);
 
     const pdf = await get(draft.id, "file=pdf");
     expect(pdf.headers.get("content-type")).toBe("application/pdf");

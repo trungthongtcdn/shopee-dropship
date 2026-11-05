@@ -3,11 +3,13 @@
 // shop (see kiotMap.ts); this turns those cells into one kho per order.
 //
 // Rules the warehouse set:
-//  - an order whose Kiot products are in different kho has its kho gửi left EMPTY, to be filled in
+//  - only Shopee Express (SPX…) parcels go to a kho other than khoLuan; Viettel Post and GHN parcels
+//    are always khoLuan, whatever the sheet says;
+//  - an SPX order whose Kiot products are in different kho has its kho gửi left EMPTY, to be filled in
 //    by hand (the Excel cell stays blank until someone picks one);
-//  - so is an order the sheet can't speak for (a SKU or shop it doesn't know, or a label with no SKU).
+//  - so is an SPX order the sheet can't speak for (a SKU or shop it doesn't know, or a label with no SKU).
 //
-// (The Convert site sends such orders to khoLuan instead; here nobody guesses.)
+// (The Convert site sends the last two to khoLuan instead; here nobody guesses.)
 //
 // Pure: no network or disk.
 
@@ -40,8 +42,14 @@ export function canonicalKho(kho: string): string {
   return khoKey(text) === khoKey(DEFAULT_KHO) ? DEFAULT_KHO : text;
 }
 
+export function isSpxTracking(trackingCode: string | null | undefined): boolean {
+  return /^SPX/i.test((trackingCode ?? "").trim());
+}
+
 // The kho the price sheet gives an order on its own, with why. `kho` is "" when it gives none.
 export function decideKho(page: WaybillPage): KhoDecision {
+  if (!isSpxTracking(page.trackingCode)) return { kho: DEFAULT_KHO, reason: "not-spx" };
+
   const lines = page.items.flatMap((item) => (item.kiotLines && item.kiotLines.length > 0 ? item.kiotLines : [null]));
   const khos = lines.map((line) => line?.khoGiao?.trim() ?? "");
   if (khos.length === 0 || khos.some((kho) => kho === "")) return { kho: "", reason: "unknown" };

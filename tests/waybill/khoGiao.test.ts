@@ -29,8 +29,16 @@ describe("decideKho (kho gửi)", () => {
     expect(decideKho(page("C", []))).toEqual({ kho: "", reason: "unknown" });
   });
 
-  it("does not care how the parcel travels: a non-SPX order is not moved to khoLuan here", () => {
-    expect(decideKho(page("A", [["khouni"]], { trackingCode: "GYRVYTHX" }))).toEqual({ kho: "khouni", reason: "sheet" });
+  it("is khoLuan for a parcel that is not Shopee Express, whatever the sheet says — even when its codes are in two kho", () => {
+    for (const trackingCode of ["GYRVYTHX", "SHOPEEVTPVN265452575337O", "", null]) {
+      expect(decideKho(page("A", [["khouni"]], { trackingCode }))).toEqual({ kho: "khoLuan", reason: "not-spx" });
+      expect(decideKho(page("B", [["khouni", "khoLuan"]], { trackingCode }))).toEqual({ kho: "khoLuan", reason: "not-spx" });
+      expect(decideKho(page("C", [[undefined]], { trackingCode }))).toEqual({ kho: "khoLuan", reason: "not-spx" });
+    }
+  });
+
+  it("takes SPX in any case and with spaces round it as Shopee Express", () => {
+    expect(decideKho(page("A", [["khouni"]], { trackingCode: " spxvn0123 " }))).toEqual({ kho: "khouni", reason: "sheet" });
   });
 });
 

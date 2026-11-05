@@ -41,7 +41,7 @@ async function orderIdsInExcel(data: Uint8Array) {
   await workbook.xlsx.load(Buffer.from(data) as unknown as ExcelJS.Buffer);
   const ids: string[] = [];
   workbook.worksheets[0].eachRow((row, index) => {
-    if (index > 1) ids.push(String(row.getCell(5).value).replace(/^TRK_/, ""));
+    if (index > 1) ids.push(String(row.getCell(5).value).replace(/^(TRK|SPXVN)_/, ""));
   });
   return ids;
 }
@@ -336,7 +336,7 @@ function khoPage(pageIndex: number, orderId: string, khos: string[]): WaybillPag
   return {
     pageIndex,
     shopeeOrderId: orderId,
-    trackingCode: `TRK_${orderId}`,
+    trackingCode: `SPXVN_${orderId}`,
     declaredTotalQuantity: 1,
     items: [{ name: orderId, variant: "V", quantity: 1, sku: orderId, kiotLines: khos.map((khoGiao) => ({ sku: orderId, quantity: 1, kiotCode: `K_${orderId}`, khoGiao })) }],
   };

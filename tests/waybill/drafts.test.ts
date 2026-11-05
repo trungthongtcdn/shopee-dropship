@@ -6,7 +6,7 @@ import type { WaybillPage } from "@/lib/waybill/items";
 const page = (id: string, khos: (string | undefined)[]): WaybillPage => ({
   pageIndex: 0,
   shopeeOrderId: id,
-  trackingCode: `T_${id}`,
+  trackingCode: `SPXVN_${id}`,
   declaredTotalQuantity: 1,
   items: [{ name: "x", variant: "", quantity: 1, sku: "S", kiotLines: khos.map((khoGiao) => ({ sku: "S", quantity: 1, kiotCode: "K", ...(khoGiao ? { khoGiao } : {}) })) }],
 });
@@ -97,6 +97,10 @@ describe("needsHandFill", () => {
     expect(needsHandFill([mixed], new Map([["M", "khouni"]]))).toBe(false);
     expect(needsHandFill([page("U", [undefined])])).toBe(false);
     expect(needsHandFill([])).toBe(false);
+  });
+
+  it("does not count an order that is not a Shopee Express parcel: it is khoLuan, nothing to decide", () => {
+    expect(needsHandFill([{ ...mixed, trackingCode: "GYRVYTHX" }])).toBe(false);
   });
 
   it("is true again when an edit empties the kho", () => {

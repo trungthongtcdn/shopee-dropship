@@ -20,7 +20,7 @@ function page(pageIndex: number, orderId: string, khos: string[]): WaybillPage {
   return {
     pageIndex,
     shopeeOrderId: orderId,
-    trackingCode: `TRK_${orderId}`,
+    trackingCode: `SPXVN_${orderId}`,
     declaredTotalQuantity: 1,
     items: [{ name: orderId, variant: "V", quantity: 1, sku: orderId, kiotLines: khos.map((khoGiao) => ({ sku: orderId, quantity: 1, kiotCode: `K_${orderId}`, khoGiao })) }],
   };
@@ -98,7 +98,7 @@ describe("announceWaybill", () => {
   });
 
   it("does not hold anything back for orders the sheet merely knows nothing of", async () => {
-    const unknown: WaybillPage = { pageIndex: 0, shopeeOrderId: "U", trackingCode: "TRK_U", declaredTotalQuantity: 1, items: [{ name: "Lạ", variant: "", quantity: 1 }] };
+    const unknown: WaybillPage = { pageIndex: 0, shopeeOrderId: "U", trackingCode: "SPXVN_U", declaredTotalQuantity: 1, items: [{ name: "Lạ", variant: "", quantity: 1 }] };
     expect((await announce([unknown])).held).toBe(false);
     expect(names()).toEqual(["Furni_10h0710_1 đơn_Đã gom.xlsx", "Furni_10h0710_1 đơn_Đã gom.pdf"]);
   });

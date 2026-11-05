@@ -76,6 +76,17 @@ describe("buildWaybillFileSet", () => {
     expect((await Promise.all(set.perKho.map((f) => rowsOf(f.excel.data)))).map((rows) => rows.map((r) => r.tracking))).toEqual([["K0", "K2"], ["K1", "K4"], ["K3"]]);
   });
 
+  it("puts a parcel that is not Shopee Express in khoLuan, though the sheet says khouni", async () => {
+    const viettel = { ...order(5, "V5", "Ví", ["khouni"]), trackingCode: "GYRVYTHX" };
+    const set = await buildWaybillFileSet({ pages: [pages[1], viettel], at: AT, sourcePdf: await makePdf(6) });
+
+    expect(set.summary.orders.map((o) => [o.orderId, o.kho, o.reason])).toEqual([
+      ["V5", "khoLuan", "not-spx"],
+      ["K1", "khouni", "sheet"],
+    ]);
+    expect(set.perKho.map((f) => [f.kho, f.orderCount])).toEqual([["khoLuan", 1], ["khouni", 1]]);
+  });
+
   it("makes no per-kho file when every order is at one kho", async () => {
     const set = await buildWaybillFileSet({ pages: [pages[0], pages[2]], at: AT, sourcePdf: await makePdf(5) });
     expect(set.perKho).toEqual([]);
