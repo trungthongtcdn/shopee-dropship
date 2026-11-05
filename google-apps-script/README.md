@@ -232,6 +232,16 @@ Install:
 
 There is no "ĐƠN HUỶ" receipt log for shop 2, so `CancelReceiptSync.gs` is not used there.
 
+## Auto "Không cần nhận" in the order workbooks (both shops) — `NoReceiptNeeded.gs`
+
+One file, pasted into the Apps Script project of **each** order workbook (shop 1 `[MII_Furniture]_WH049_TTRANG`, shop 2 `VN_VŨ THỊ THẢO TRANG_MII`) as an extra file next to `Sync.gs` / `Sync.shop2.gs`; it does not touch them and needs no Script Properties. On every tab that has a `Trạng thái Trả hàng/Hoàn tiền` header (found by name, so no tab names are hard-coded) it writes `Không cần nhận` into `Trạng thái nhận/Check Dup` on rows whose status is `Yêu cầu của Người mua đã hủy` (tone marks / spacing ignored, `hủy` = `huỷ`). Only an empty cell is filled: typed values and formulas are never overwritten, an ARRAYFORMULA column is left alone, and a status changed later does not clear what was filled. A tab without the `Trạng thái nhận/Check Dup` column gets it at the end of its header row; `NR_EXTRA_COLUMNS` (empty by default) lists other columns to add the same way.
+
+Install, in each workbook: `manualTestNoReceipt` (writes nothing, logs how many cells per tab it would fill), `fillNoReceiptNeeded`, then `createNoReceiptTrigger` (every 10 minutes). Errors are logged and kept in the `no_receipt_last_error` script property.
+
+The server does not read this column: the app derives the same "Không cần nhận" from the synced status itself (`lib/cancellation/buyerCancelledReturn.ts`), so the two never need to agree.
+
 ### Tests
+
+`tests/sync/appsScriptNoReceipt.test.ts` runs `NoReceiptNeeded.gs` against a small writable fake spreadsheet.
 
 `tests/sync/appsScriptShop2.test.ts` runs these `.gs` files in a Node `vm` sandbox with fake `SpreadsheetApp` / `UrlFetchApp`, using the real header rows of shop 2's sheets (`tests/helpers/shop2Fixtures.ts`). `tests/sync/appsScriptShop2Apply.test.ts` feeds what they send through the server's apply functions.
