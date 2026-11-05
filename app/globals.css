@@ -387,11 +387,11 @@ html[data-hide-col~="note"] .col-note {
 }
 
 .hoan-huy-table td {
-  padding: var(--space-1) 6px;
+  padding: var(--space-1) 4px;
 }
 
 .hoan-huy-table td:first-child {
-  min-width: 80px;
+  min-width: 72px;
 }
 
 /* Return tracking codes: one per line (the page joins them with "\n"), never
@@ -417,6 +417,55 @@ html[data-hide-col~="note"] .col-note {
   white-space: normal;
   text-align: center;
   border-radius: 12px;
+}
+
+/* 14 columns: the headers wrap too, and the status / time cells stay narrow. */
+.hoan-huy-table th {
+  white-space: normal;
+  vertical-align: bottom;
+  padding: var(--space-1) 4px;
+  max-width: 110px;
+  font-size: 11px;
+}
+
+.hoan-huy-table .cell-wrap {
+  max-width: 110px;
+}
+
+/* The cells the team edits in place: the receipt status and the NCC note. */
+.hoan-huy-table .cell-edit {
+  min-width: 92px;
+}
+
+.hoan-huy-table .hoan-huy-select {
+  width: 100%;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.hoan-huy-table .receipt-ok {
+  background: #e6f6ec;
+  color: #14683a;
+}
+
+.hoan-huy-table .receipt-warn {
+  background: #fff4de;
+  color: #8a5a00;
+}
+
+.hoan-huy-table .hoan-huy-note {
+  width: 100%;
+  min-width: 96px;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+.hoan-huy-detail-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 480px;
 }
 
 /* Roomier windows show more of the product / complaint text. */
@@ -1234,4 +1283,61 @@ a.stat-card:hover {
   color: var(--color-destructive);
   font-size: 12px;
   margin: var(--space-2) 0 0;
+}
+
+/* ---------- Phiếu gom (kho gửi của từng đơn) ---------- */
+
+.draft-table {
+  font-size: 12px;
+}
+
+.draft-table td {
+  vertical-align: top;
+}
+
+.draft-product {
+  max-width: 220px;
+}
+
+.draft-codes {
+  min-width: 150px;
+}
+
+.draft-select {
+  min-width: 120px;
+}
+
+.draft-table tr.draft-blank td {
+  background: #fff1f1;
+}
+
+.draft-table tr.draft-edited td {
+  background: #fffbe8;
+}
+
+.draft-wrap {
+  max-height: 62vh;
+  overflow: auto;
+}
+
+/* The table scrolls inside its own box, so its header sticks to that box, not under the page header. */
+.draft-wrap .data-table thead th {
+  top: 0;
+}
+
+.draft-kho-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.draft-kho-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.draft-kho-row span {
+  min-width: 190px;
 }

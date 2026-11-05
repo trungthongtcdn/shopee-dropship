@@ -10,10 +10,11 @@ export function waybillSortedPdfFileName(at: Date, orderCount: number): string {
 // numbers, e.g. from orderedPageIndexes), then every page the list didn't name,
 // in its original order. Nothing is ever dropped — a cover sheet or a page the
 // parser couldn't read as an order still ends up in the file — and a page is
-// used at most once, however the list repeats or overshoots. The pages are
+// used at most once, however the list repeats or overshoots — unless `listedOnly`, which
+// keeps just the listed pages (one kho giao's file). The pages are
 // copied, not re-rendered, so the labels stay sharp and their text stays
 // selectable/searchable.
-export async function reorderPdfPages(source: Buffer, order: number[]): Promise<Buffer> {
+export async function reorderPdfPages(source: Buffer, order: number[], listedOnly = false): Promise<Buffer> {
   const sourceDoc = await PDFDocument.load(source);
   const pageCount = sourceDoc.getPageCount();
 
@@ -25,7 +26,7 @@ export async function reorderPdfPages(source: Buffer, order: number[]): Promise<
       sequence.push(index);
     }
   }
-  for (let index = 0; index < pageCount; index++) {
+  for (let index = 0; index < pageCount && !listedOnly; index++) {
     if (!used.has(index)) sequence.push(index);
   }
 
@@ -45,10 +46,11 @@ export async function reorderPdfPages(source: Buffer, order: number[]): Promise<
 //
 // Each source sheet is embedded ONCE and drawn once per label, clipped to that
 // label's cell — the fonts and barcodes are shared, so the file stays about the
-// size of the original — and the labels stay vector, sharp and searchable. A label
+// size of the original — and the labels stay vector, sharp and searchable. With `listedOnly`
+// only the listed labels are kept (one kho giao's file). A label
 // with an order-info table under it (layout.labelHeights) is clipped above that table,
 // so the SKU list is not printed.
-export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, order: number[]): Promise<Buffer> {
+export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, order: number[], listedOnly = false): Promise<Buffer> {
   const { cols, rows } = layout;
   const perSheet = cols * rows;
   const occupied = new Set(layout.occupied);
@@ -61,7 +63,7 @@ export async function reorderPdfLabels(source: Buffer, layout: SheetLayout, orde
       sequence.push(slot);
     }
   }
-  for (const slot of [...occupied].sort((a, b) => a - b)) {
+  for (const slot of listedOnly ? [] : [...occupied].sort((a, b) => a - b)) {
     if (!used.has(slot)) sequence.push(slot);
   }
 

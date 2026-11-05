@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withShop } from "@/lib/shops/guard";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill } from "@/lib/zalo/parseWaybill";
-import { storeWaybillFiles } from "@/lib/waybill/deliver";
+import { mapKiot, storeWaybillFiles } from "@/lib/waybill/deliver";
 import { labelMismatchMessage } from "@/lib/waybill/items";
 import { parsePerPage, type PerPage } from "@/lib/waybill/compose";
 import { applyWaybillConfirmation } from "@/lib/zalo/poller";
@@ -80,9 +80,10 @@ async function handlePOST(request: NextRequest) {
   // the "Xem file" column. The file names carry the time they were made, not the
   // (back-datable) sent-at the user typed. Never throws — the confirmation is
   // already saved.
+  // The Kiot code, Kiot store and kho gửi the price sheet gives each order go into the Excel too.
   const { stored: hasExcel, sortedPdfStored: hasSortedPdf } = await storeWaybillFiles({
     logId,
-    pages,
+    pages: (await mapKiot(pages)).pages,
     at: new Date(),
     sourcePdf,
     uploadedPdfName,

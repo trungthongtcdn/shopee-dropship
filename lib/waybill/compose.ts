@@ -109,8 +109,15 @@ function contentRect(raster: PageRaster | undefined, pageWidth: number, pageHeig
 // lists label slots (see layout.ts; for a one-label-per-page source, page numbers)
 // in the order they should appear; slots it doesn't name but that hold something
 // follow in their original order, and a slot is used at most once — nothing is
-// dropped, nothing repeats.
-export async function composeLabelsPdf(source: Buffer, layout: SheetLayout | null, order: number[], perPage: PerPage): Promise<Buffer> {
+// dropped, nothing repeats — unless `listedOnly`, which keeps just the listed labels (one kho
+// giao's file).
+export async function composeLabelsPdf(
+  source: Buffer,
+  layout: SheetLayout | null,
+  order: number[],
+  perPage: PerPage,
+  listedOnly = false
+): Promise<Buffer> {
   const sourceDoc = await PDFDocument.load(source);
   const pageCount = sourceDoc.getPageCount();
   const perSheet = layout ? layout.cols * layout.rows : 1;
@@ -131,7 +138,7 @@ export async function composeLabelsPdf(source: Buffer, layout: SheetLayout | nul
   }
   // Slots nobody named follow in their original order — except blank pages: leaving
   // one in would only waste a cell.
-  for (const slot of [...occupied].sort((a, b) => a - b)) {
+  for (const slot of listedOnly ? [] : [...occupied].sort((a, b) => a - b)) {
     if (!used.has(slot) && Math.floor(slot / perSheet) < pageCount && hasContents(Math.floor(slot / perSheet))) sequence.push(slot);
   }
 

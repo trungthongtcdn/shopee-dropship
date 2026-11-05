@@ -26,6 +26,9 @@ export interface MappedPages {
   pages: WaybillPage[];
   // Things the user should be told: SKUs that weren't found, a list that couldn't be fetched.
   notices: string[];
+  // The kho giao the price sheet knows, khoLuan first — what an order's kho can be changed to.
+  // Set only by the Kiot mapping (lib/kiot.ts).
+  khoOptions?: string[];
 }
 
 export type SkuMapper = (pages: WaybillPage[]) => Promise<MappedPages>;

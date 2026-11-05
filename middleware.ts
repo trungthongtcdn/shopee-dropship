@@ -13,6 +13,8 @@ export const config = {
     "/api/zalo/:path*",
     "/api/report/:path*",
     "/api/don-huy/:path*",
+    "/api/hoan-huy/:path*",
+    "/api/waybill-drafts/:path*",
     "/api/accounts/:path*",
     "/api/waybills/:path*",
     "/api/shops/:path*",

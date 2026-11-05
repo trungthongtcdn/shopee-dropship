@@ -13,6 +13,7 @@ import {
   storeWaybillFiles,
   sendWaybillExcel,
   sendSortedWaybillPdf,
+  sendKhoWaybillFiles,
   WAYBILL_EXCEL_MESSAGE,
   WAYBILL_SORTED_PDF_MESSAGE,
 } from "@/lib/waybill/deliver";
@@ -40,7 +41,7 @@ async function orderIdsInExcel(data: Uint8Array) {
   await workbook.xlsx.load(Buffer.from(data) as unknown as ExcelJS.Buffer);
   const ids: string[] = [];
   workbook.worksheets[0].eachRow((row, index) => {
-    if (index > 1) ids.push(String(row.getCell(4).value).replace(/^TRK_/, ""));
+    if (index > 1) ids.push(String(row.getCell(5).value).replace(/^TRK_/, ""));
   });
   return ids;
 }
@@ -326,5 +327,94 @@ describe("a chosen PDF layout (perPage)", () => {
   it("treats a null layout as 'keep the PDF as it is'", async () => {
     await sendSortedWaybillPdf({ pages: PAGES, at: AT, sourcePdf: await makePdf(3), perPage: null, thread: { id: "G123", type: "group" } });
     expect(await pageWidths(sentData(0))).toEqual(SORTED_WIDTHS);
+  });
+});
+
+// Orders O1..O4 whose Kiot lines say where each is sent from: O1 and O3 khoLuan, O2 khouni, O4 is
+// in two kho (so its kho gửi is empty until somebody picks one).
+function khoPage(pageIndex: number, orderId: string, khos: string[]): WaybillPage {
+  return {
+    pageIndex,
+    shopeeOrderId: orderId,
+    trackingCode: `TRK_${orderId}`,
+    declaredTotalQuantity: 1,
+    items: [{ name: orderId, variant: "V", quantity: 1, sku: orderId, kiotLines: khos.map((khoGiao) => ({ sku: orderId, quantity: 1, kiotCode: `K_${orderId}`, khoGiao })) }],
+  };
+}
+const KHO_PAGES = [khoPage(0, "O1", ["khoLuan"]), khoPage(1, "O2", ["khouni"]), khoPage(2, "O3", ["khoLuan"]), khoPage(3, "O4", ["khoLuan", "khouni"])];
+
+describe("the link to the kho gửi page", () => {
+  beforeEach(() => {
+    sendFile.mockReset();
+    sendFile.mockResolvedValue(undefined);
+  });
+
+  it("goes under the Excel's caption when there is one", async () => {
+    await sendWaybillExcel({ pages: PAGES, at: AT, thread: { id: "G1", type: "group" }, link: "https://example.test/dashboard/dong-don/phieu/5?shop=shop_1" });
+    const message = (sendFile.mock.calls[0] as unknown as [string, string, string, Buffer, string])[4];
+    expect(message).toBe(`${WAYBILL_EXCEL_MESSAGE}\n🔗 Xem / sửa kho gửi: https://example.test/dashboard/dong-don/phieu/5?shop=shop_1`);
+  });
+});
+
+describe("sendKhoWaybillFiles", () => {
+  const thread = { id: "G1", type: "group" as const };
+  beforeEach(() => {
+    sendFile.mockReset();
+    sendFile.mockResolvedValue(undefined);
+  });
+
+  it("posts an Excel and a PDF for each kho — khoLuan, khouni, then the orders with no kho — each caption naming its kho", async () => {
+    const result = await sendKhoWaybillFiles({ pages: KHO_PAGES, at: AT, thread, sourcePdf: await makePdf(4) });
+
+    expect(result).toEqual({ sent: 6, failed: 0 });
+    const calls = sendFile.mock.calls as unknown as [string, string, string, Buffer, string][];
+    expect(calls.map((c) => c[2])).toEqual([
+      "Furni_10h0710_2 đơn_Đã gom_khoLuan.xlsx",
+      "Furni_10h0710_2 đơn_Đã gom_khoLuan.pdf",
+      "Furni_10h0710_1 đơn_Đã gom_khouni.xlsx",
+      "Furni_10h0710_1 đơn_Đã gom_khouni.pdf",
+      "Furni_10h0710_1 đơn_Đã gom_chua-co-kho.xlsx",
+      "Furni_10h0710_1 đơn_Đã gom_chua-co-kho.pdf",
+    ]);
+    expect(calls[0][4]).toBe("Danh sách đơn kho khoLuan (2 đơn)");
+    expect(calls[4][4]).toBe("Danh sách đơn Chưa có kho gửi (1 đơn)");
+    expect(await pageWidths(calls[1][3])).toEqual([101, 103]);
+    expect(await orderIdsInExcel(calls[0][3])).toEqual(["O1", "O3"]);
+  });
+
+  it("uses the edited kho: O4 sent from khouni moves it into khouni's files", async () => {
+    await sendKhoWaybillFiles({ pages: KHO_PAGES, at: AT, thread, sourcePdf: await makePdf(4), overrides: new Map([["O4", "khouni"]]) });
+
+    const calls = sendFile.mock.calls as unknown as [string, string, string, Buffer, string][];
+    expect(calls.map((c) => c[2])).toEqual([
+      "Furni_10h0710_2 đơn_Đã gom_khoLuan.xlsx",
+      "Furni_10h0710_2 đơn_Đã gom_khoLuan.pdf",
+      "Furni_10h0710_2 đơn_Đã gom_khouni.xlsx",
+      "Furni_10h0710_2 đơn_Đã gom_khouni.pdf",
+    ]);
+    expect(await pageWidths(calls[3][3])).toEqual([102, 104]);
+  });
+
+  it("posts nothing when every order is at one kho: the overall files are that kho's", async () => {
+    const result = await sendKhoWaybillFiles({ pages: [KHO_PAGES[0], KHO_PAGES[2]], at: AT, thread, sourcePdf: await makePdf(4) });
+    expect(result).toEqual({ sent: 0, failed: 0 });
+    expect(sendFile).not.toHaveBeenCalled();
+  });
+
+  it("goes on with the next file when one is refused, and counts it", async () => {
+    sendFile.mockRejectedValueOnce(new Error("zalo says no"));
+    const result = await sendKhoWaybillFiles({ pages: KHO_PAGES, at: AT, thread, sourcePdf: await makePdf(4) });
+    expect(result).toEqual({ sent: 5, failed: 1 });
+    expect(sendFile).toHaveBeenCalledTimes(6);
+  });
+
+  it("sends only the Excel files when the source can't be read as a PDF", async () => {
+    const result = await sendKhoWaybillFiles({ pages: KHO_PAGES, at: AT, thread, sourcePdf: Buffer.from("not a pdf") });
+    expect(result).toEqual({ sent: 3, failed: 0 });
+    expect((sendFile.mock.calls as unknown as string[][]).map((c) => c[2]).every((name) => name.endsWith(".xlsx"))).toBe(true);
+  });
+
+  it("posts nothing, without throwing, when no order was read", async () => {
+    expect(await sendKhoWaybillFiles({ pages: [], at: AT, thread, sourcePdf: await makePdf(1) })).toEqual({ sent: 0, failed: 0 });
   });
 });

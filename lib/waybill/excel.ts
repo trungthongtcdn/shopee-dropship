@@ -1,32 +1,35 @@
 import ExcelJS from "exceljs";
-import type { WaybillGroup } from "./items";
+import type { WaybillGroup, WaybillItem } from "./items";
 
 // The sheet the warehouse gets in the Zalo group ("Danh sách đơn" — the "mẫu file excel
 // Furni gửi KHO ĐÃ GOM"): one row per product line, the orders in the order of the
 // groups so identical orders stand next to each other, and each group banded in its own
 // colour with a rule above it so the batches read at a glance from across a packing table.
 //
-//   Nhóm | Số đơn | STT | Mã vận đơn | Phân loại | SL | Sản phẩm | Ghi chú
+//   Nhóm | Số đơn | Kho gửi | STT | Mã vận đơn | Phân loại | SL | Sản phẩm | Mã Kiot | Kho Kiot | Ghi chú
 //
 // Nhóm is the group's number, Số đơn how many identical orders it holds (bold orange when
-// more than one — that is the batch), STT the order's number in the file, which is also
-// the position of its label in the re-ordered PDF. An order with several products repeats
-// its group / STT / tracking code on each line, so filtering and sorting by any of them
-// still work; the note is written once, on the order's first line.
-const HEADERS = ["Nhóm", "Số đơn", "STT", "Mã vận đơn", "Phân loại", "SL", "Sản phẩm", "Ghi chú"] as const;
+// more than one — that is the batch), Kho gửi the warehouse the order is sent from (left empty,
+// and shaded, while nobody has chosen it — see khoGiao.ts), STT the order's number in the file,
+// which is also the position of its label in the re-ordered PDF. Mã Kiot and Kho Kiot come from
+// the price sheet (kiotMap.ts). An order with several products repeats its group / kho / STT /
+// tracking code on each line, so filtering and sorting by any of them still work; the note is
+// written once, on the order's first line.
+const HEADERS = ["Nhóm", "Số đơn", "Kho gửi", "STT", "Mã vận đơn", "Phân loại", "SL", "Sản phẩm", "Mã Kiot", "Kho Kiot", "Ghi chú"] as const;
 
 // 1-based column numbers.
-const COL = { group: 1, groupSize: 2, number: 3, tracking: 4, variant: 5, quantity: 6, name: 7, note: 8 } as const;
+const COL = { group: 1, groupSize: 2, kho: 3, number: 4, tracking: 5, variant: 6, quantity: 7, name: 8, kiotCode: 9, kiotStore: 10, note: 11 } as const;
 // Text the eye reads left to right, wrapped in its cell; the rest is centred.
-const TEXT_COLUMNS = new Set<number>([COL.tracking, COL.variant, COL.name, COL.note]);
+const TEXT_COLUMNS = new Set<number>([COL.tracking, COL.variant, COL.name, COL.kiotCode, COL.note]);
 
 // The warehouse's widths. A text column grows to its longest text, up to a limit; what
 // is longer wraps and the row grows with it, so nothing is cut off.
-const BASE_WIDTHS = [7, 8, 7, 25.2, 25.3, 9.2, 65.2, 27.2];
+const BASE_WIDTHS = [7, 8, 11, 7, 25.2, 25.3, 9.2, 65.2, 22, 11, 27.2];
 const MAX_WIDTHS = new Map<number, number>([
   [COL.tracking, 30],
   [COL.variant, 40],
   [COL.name, 70],
+  [COL.kiotCode, 36],
   [COL.note, 45],
 ]);
 
@@ -92,6 +95,16 @@ const batchRule = { style: "medium", color: { argb: BLACK } } as const;
 // order of the re-ordered PDF's pages. `alert` — set when fewer orders were read than the
 // PDF has labels — is written in red across the first row, above the header, so nobody
 // packs from the sheet without seeing it; without one the sheet is exactly the template.
+// The Kiot code(s) of an order line, one per Kiot product it stands for — "×n" where the number
+// of Kiot units isn't the line's own SL (a combined SKU, or several products in one line) — and
+// the Kiot store(s) they are kept in. Blank when the price sheet knows nothing of the SKU.
+export function kiotCellsOf(item: WaybillItem | null): { codes: string; stores: string } {
+  const lines = (item?.kiotLines ?? []).filter((line) => line.kiotCode);
+  const codes = lines.map((line) => (lines.length > 1 || line.quantity !== item?.quantity ? `${line.kiotCode} ×${line.quantity}` : line.kiotCode));
+  const stores = [...new Set(lines.map((line) => line.kiotStore).filter((store): store is string => Boolean(store)))];
+  return { codes: codes.join("\n"), stores: stores.join(", ") };
+}
+
 export async function buildWaybillExcel(groups: WaybillGroup[], alert: string | null = null): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const headerRow = alert ? 2 : 1;
@@ -114,6 +127,7 @@ export async function buildWaybillExcel(groups: WaybillGroup[], alert: string | 
   widths[COL.tracking - 1] = longest(COL.tracking, pages.map((page) => page.trackingCode));
   widths[COL.variant - 1] = longest(COL.variant, items.map((item) => item.variant));
   widths[COL.name - 1] = longest(COL.name, items.map((item) => item.name));
+  widths[COL.kiotCode - 1] = longest(COL.kiotCode, items.flatMap((item) => kiotCellsOf(item).codes.split("\n")));
   widths[COL.note - 1] = longest(COL.note, pages.map((page) => page.note));
   sheet.columns = widths.map((width) => ({ width }));
 
@@ -147,19 +161,23 @@ export async function buildWaybillExcel(groups: WaybillGroup[], alert: string | 
       const lines = page.items.length > 0 ? page.items : [null];
 
       lines.forEach((item, lineIndex) => {
+        const kiot = kiotCellsOf(item);
         const cells: ExcelJS.CellValue[] = [
           groupIndex + 1,
           group.pages.length,
+          page.khoGiao ?? "",
           orderNumber,
           page.trackingCode ?? "",
           item?.variant ?? "",
           item?.quantity ?? null,
           item?.name ?? "",
+          kiot.codes,
+          kiot.stores,
           lineIndex === 0 ? (page.note ?? "") : "",
         ];
         const row = sheet.addRow(cells);
 
-        const wrapped = [COL.tracking, COL.variant, COL.name, COL.note].map((column) => {
+        const wrapped = [COL.tracking, COL.variant, COL.name, COL.kiotCode, COL.note].map((column) => {
           const text = cells[column - 1];
           return typeof text === "string" ? wrappedLines(text, widths[column - 1]) : 1;
         });
@@ -175,6 +193,8 @@ export async function buildWaybillExcel(groups: WaybillGroup[], alert: string | 
             : { vertical: "top", horizontal: "center" };
           cell.border = { top: firstRowOfGroup ? batchRule : thin, bottom: thin, left: thin, right: thin };
         }
+        // An order nobody has chosen a kho for: its cell is shaded so it isn't passed over.
+        if (!page.khoGiao) row.getCell(COL.kho).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALERT_FILL } };
         // Quantity is bold: it is the number the packer counts. So is the order count of a
         // group with more than one order — that's the batch.
         row.getCell(COL.quantity).font = { name: "Calibri", size: FONT_SIZE, bold: true };
@@ -213,4 +233,16 @@ export function waybillFileStem(at: Date, orderCount: number): string {
 
 export function waybillExcelFileName(at: Date, orderCount: number): string {
   return `${waybillFileStem(at, orderCount)}.xlsx`;
+}
+
+// A kho as it can appear in a file name: letters, digits, `_`, `.` and `-`; spaces become `_`.
+// "" (the orders that have no kho gửi yet) reads "chua-co-kho".
+export function safeKhoName(kho: string): string {
+  const text = kho.replace(/[^\p{L}\p{N}_.\- ]+/gu, "").trim().replace(/\s+/g, "_");
+  return text === "" ? "chua-co-kho" : text;
+}
+
+// One kho's file: the overall file's name with the kho after it, the order count being that kho's.
+export function waybillKhoFileName(at: Date, orderCount: number, kho: string, extension: "xlsx" | "pdf"): string {
+  return `${waybillFileStem(at, orderCount)}_${safeKhoName(kho)}.${extension}`;
 }

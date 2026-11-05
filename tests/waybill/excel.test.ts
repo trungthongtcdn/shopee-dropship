@@ -13,9 +13,10 @@ async function readBack(buffer: Buffer) {
 }
 
 // The sheet the warehouse gets in the Zalo group ("Danh sách đơn", the "mẫu file excel
-// Furni gửi KHO ĐÃ GOM"): Nhóm, Số đơn, STT, Mã vận đơn, Phân loại, SL, Sản phẩm, Ghi chú.
+// Furni gửi KHO ĐÃ GOM"): Nhóm, Số đơn, Kho gửi, STT, Mã vận đơn, Phân loại, SL, Sản phẩm, Mã Kiot,
+// Kho Kiot, Ghi chú.
 describe("buildWaybillExcel", () => {
-  const HEADERS = ["Nhóm", "Số đơn", "STT", "Mã vận đơn", "Phân loại", "SL", "Sản phẩm", "Ghi chú"];
+  const HEADERS = ["Nhóm", "Số đơn", "Kho gửi", "STT", "Mã vận đơn", "Phân loại", "SL", "Sản phẩm", "Mã Kiot", "Kho Kiot", "Ghi chú"];
 
   let index = 0;
   const order = (trackingCode: string, items: [string, string, number][], extra: Partial<WaybillPage> = {}): WaybillPage => ({
@@ -24,6 +25,7 @@ describe("buildWaybillExcel", () => {
     trackingCode,
     declaredTotalQuantity: items.reduce((sum, item) => sum + item[2], 0),
     shopName: "Kho Sỉ",
+    khoGiao: "khoLuan",
     items: items.map(([name, variant, quantity]) => ({ name, variant, quantity })),
     ...extra,
   });
@@ -43,57 +45,87 @@ describe("buildWaybillExcel", () => {
   const argb = (fill: ExcelJS.Fill | undefined) => (fill as ExcelJS.FillPattern | undefined)?.fgColor?.argb;
   const fontOf = (sheet: ExcelJS.Worksheet, address: string) => sheet.getCell(address).font;
 
-  it("is one sheet, Danh sách đơn, with the warehouse's eight columns in its order", async () => {
+  it("is one sheet, Danh sách đơn, with the warehouse's eleven columns in its order", async () => {
     const { rows, sheet } = await build();
     expect(sheet.name).toBe("Danh sách đơn");
     expect(rows[0]).toEqual(HEADERS);
-    expect(sheet.columnCount).toBe(8);
+    expect(sheet.columnCount).toBe(11);
   });
 
-  it("writes one row per product line: group, orders in group, STT, tracking code, variation, quantity, product", async () => {
+  it("writes one row per product line: group, orders in group, kho gửi, STT, tracking code, variation, quantity, product", async () => {
     const { rows } = await build();
     // Groups: the two "Ghế xoay" first (2 identical orders), then the singles by product name.
     expect(rows.slice(1)).toEqual([
-      [1, 2, 1, "TRK_A1", "Đen", 1, "Ghế xoay", ""],
-      [1, 2, 2, "TRK_A2", "Đen", 1, "Ghế xoay", ""],
-      [2, 1, 3, "TRK_M1", "phi 100", 4, "Ống", ""],
-      [2, 1, 3, "TRK_M1", "M6", 1, "Ốc vít", ""],
-      [3, 1, 4, "TRK_N1", "D100", 2, "Piston", ""],
+      [1, 2, "khoLuan", 1, "TRK_A1", "Đen", 1, "Ghế xoay", "", "", ""],
+      [1, 2, "khoLuan", 2, "TRK_A2", "Đen", 1, "Ghế xoay", "", "", ""],
+      [2, 1, "khoLuan", 3, "TRK_M1", "phi 100", 4, "Ống", "", "", ""],
+      [2, 1, "khoLuan", 3, "TRK_M1", "M6", 1, "Ốc vít", "", "", ""],
+      [3, 1, "khoLuan", 4, "TRK_N1", "D100", 2, "Piston", "", "", ""],
     ]);
   });
 
   it("repeats the order's cells on each of its lines instead of merging them", async () => {
     const { merges, rows } = await build();
     expect(merges).toEqual([]);
-    expect(rows[3].slice(0, 4)).toEqual(rows[4].slice(0, 4));
+    expect(rows[3].slice(0, 5)).toEqual(rows[4].slice(0, 5));
   });
 
-  it("has no SKU, Kiot or cost columns", async () => {
+  it("has no SKU or cost columns", async () => {
     const { rows } = await build();
-    expect(rows[0].some((header) => /sku|kiot|giá|gian/i.test(String(header)))).toBe(false);
+    expect(rows[0].some((header) => /sku|giá|gian/i.test(String(header)))).toBe(false);
+  });
+
+  it("writes the Kiot code and Kiot store of each product line, with ×n where the Kiot units differ from the SL", async () => {
+    const kiot = (...lines: [string, number, string?][]) => lines.map(([kiotCode, quantity, kiotStore]) => ({ sku: kiotCode, quantity, kiotCode, ...(kiotStore ? { kiotStore } : {}) }));
+    const single = order("TRK_K1", [["Piston", "D100", 2]]);
+    single.items[0].kiotLines = kiot(["Piston_D100", 2, "kho56"]);
+    const combo = order("TRK_K2", [["Bộ", "", 1]]);
+    combo.items[0].kiotLines = kiot(["Chan_Ghe", 2, "kho56"], ["Banh_Xe", 5, "khorem"]);
+    const scaled = order("TRK_K3", [["Bộ", "", 3]]);
+    scaled.items[0].kiotLines = kiot(["Chan_Ghe", 6, "kho56"]);
+    const unknown = order("TRK_K4", [["Lạ", "", 1]]);
+    unknown.items[0].kiotLines = [{ sku: "LA", quantity: 1 }];
+
+    const { rows } = await build([single, combo, scaled, unknown]);
+
+    const byTracking = new Map(rows.slice(1).map((row) => [row[4], [row[8], row[9]]]));
+    expect(byTracking.get("TRK_K1")).toEqual(["Piston_D100", "kho56"]);
+    expect(byTracking.get("TRK_K2")).toEqual(["Chan_Ghe ×2\nBanh_Xe ×5", "kho56, khorem"]);
+    expect(byTracking.get("TRK_K3")).toEqual(["Chan_Ghe ×6", "kho56"]);
+    expect(byTracking.get("TRK_K4")).toEqual(["", ""]);
+  });
+
+  it("leaves Kho gửi empty and shaded for an order nobody has chosen a kho for", async () => {
+    const empty = order("TRK_E1", [["Ghế", "Đen", 1]], { khoGiao: "" });
+    const { sheet, rows } = await build([empty, ...pages]);
+    const row = rows.find((r) => r[4] === "TRK_E1")!;
+    expect(row[2]).toBe("");
+    const address = `C${rows.indexOf(row) + 1}`;
+    expect(argb(sheet.getCell(address).fill)).toBe("FFFFE5E5");
+    expect(argb(sheet.getCell("C2").fill)).not.toBe("FFFFE5E5");
   });
 
   it("writes the note once, on the first line of its order", async () => {
     const hidden = order("TRK_H1", [["Ốc", "M6", 1], ["Đai", "to", 1]], { declaredTotalQuantity: 5 });
     const { rows } = await build([...pages, hidden]);
-    const lines = rows.filter((r) => r[3] === "TRK_H1");
+    const lines = rows.filter((r) => r[4] === "TRK_H1");
     expect(lines).toHaveLength(2);
-    expect(String(lines[0][7])).toMatch(/ẩn bớt/);
-    expect(lines[1][7]).toBe("");
+    expect(String(lines[0][10])).toMatch(/ẩn bớt/);
+    expect(lines[1][10]).toBe("");
   });
 
   it("keeps an order whose products couldn't be read, with its tracking code, an empty SL and a note", async () => {
     const unread: WaybillPage = { pageIndex: 99, shopeeOrderId: "OX", trackingCode: "TRK_X", declaredTotalQuantity: null, items: [] };
     const { rows } = await build([...pages, unread]);
     const last = rows[rows.length - 1];
-    expect(last.slice(2, 4)).toEqual([5, "TRK_X"]);
-    expect([last[4], last[5] ?? null, last[6]]).toEqual(["", null, ""]);
-    expect(String(last[7])).toMatch(/Không đọc được/);
+    expect(last.slice(3, 5)).toEqual([5, "TRK_X"]);
+    expect([last[5], last[6] ?? null, last[7]]).toEqual(["", null, ""]);
+    expect(String(last[10])).toMatch(/Không đọc được/);
   });
 
   it("shows an order without a tracking code with an empty cell, not 'null'", async () => {
     const { rows } = await build([{ ...order("X", [["Ghế", "Đen", 1]]), trackingCode: null }]);
-    expect(rows[1][3]).toBe("");
+    expect(rows[1][4]).toBe("");
   });
 
   it("styles the header: bold white on dark, centred, size 12, 25 high", async () => {
@@ -115,7 +147,7 @@ describe("buildWaybillExcel", () => {
 
   it("makes the quantity bold, and the order count bold orange only for a batch of several orders", async () => {
     const { sheet } = await build();
-    expect(fontOf(sheet, "F2")?.bold).toBe(true);
+    expect(fontOf(sheet, "G2")?.bold).toBe(true);
     // rows 2-3 are the group of two identical orders; row 4 a single
     expect(fontOf(sheet, "B2")).toMatchObject({ bold: true, color: { argb: "FFB45309" } });
     expect(fontOf(sheet, "B4")?.bold).toBeFalsy();
@@ -123,8 +155,8 @@ describe("buildWaybillExcel", () => {
 
   it("aligns like the sample: numbers centred, text left and wrapped, all at the top", async () => {
     const { sheet } = await build();
-    for (const address of ["A2", "B2", "C2", "F2"]) expect(sheet.getCell(address).alignment).toMatchObject({ horizontal: "center", vertical: "top" });
-    for (const address of ["D2", "E2", "G2", "H2"]) {
+    for (const address of ["A2", "B2", "C2", "D2", "G2", "J2"]) expect(sheet.getCell(address).alignment).toMatchObject({ horizontal: "center", vertical: "top" });
+    for (const address of ["E2", "F2", "H2", "I2", "K2"]) {
       expect(sheet.getCell(address).alignment).toMatchObject({ horizontal: "left", vertical: "top", wrapText: true });
     }
   });
@@ -143,41 +175,41 @@ describe("buildWaybillExcel", () => {
     expect(sheet.getCell("A3").border.top?.style).toBe("thin");
     expect(sheet.getCell("A4").border.top?.style).toBe("medium");
     expect(sheet.getCell("A6").border.top?.style).toBe("medium");
-    expect(sheet.getCell("D2").border.left?.style).toBe("thin");
+    expect(sheet.getCell("E2").border.left?.style).toBe("thin");
   });
 
   it("uses the sample's column widths", async () => {
     const { sheet } = await build();
-    expect([1, 2, 3, 4, 5, 6, 7, 8].map((column) => sheet.getColumn(column).width)).toEqual([7, 8, 7, 25.2, 25.3, 9.2, 65.2, 27.2]);
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((column) => sheet.getColumn(column).width)).toEqual([7, 8, 11, 7, 25.2, 25.3, 9.2, 65.2, 22, 11, 27.2]);
   });
 
   it("widens the product column for a long name, up to a limit, and lets a longer one wrap", async () => {
     const long = "Piston ghế xoay văn phòng D100 D120 D160 INOX không gỉ chất lượng cao";
     const { sheet } = await build([order("TRK_L1", [[long, "D100", 1]])]);
-    const width = sheet.getColumn(7).width!;
+    const width = sheet.getColumn(8).width!;
     expect(width).toBeGreaterThan(65.2);
     expect(width).toBeLessThanOrEqual(70);
     expect(sheet.getRow(2).height).toBe(25);
 
     const longer = `${long} ${long} ${long}`;
     const wrapped = await build([order("TRK_L2", [[longer, "D100", 1]])]);
-    expect(wrapped.sheet.getColumn(7).width).toBe(70);
+    expect(wrapped.sheet.getColumn(8).width).toBe(70);
     // the text wraps in its cell, and the row is as high as its lines need
     expect(wrapped.sheet.getRow(2).height).toBeGreaterThan(25);
-    expect(wrapped.sheet.getCell("G2").alignment?.wrapText).toBe(true);
+    expect(wrapped.sheet.getCell("H2").alignment?.wrapText).toBe(true);
   });
 
   it("keeps a name that fits the sample's width on one 25-high line", async () => {
     const sample = "Phụ Kiện GHẾ VĂN PHÒNG FREESHIP ghế xoay, bánh xe , chân ghế inox";
     const { sheet, rows } = await build([order("SPXVN06779130045A", [[sample, "5 bánh xe", 1]])]);
-    expect(rows[1]).toEqual([1, 1, 1, "SPXVN06779130045A", "5 bánh xe", 1, sample, ""]);
+    expect(rows[1]).toEqual([1, 1, "khoLuan", 1, "SPXVN06779130045A", "5 bánh xe", 1, sample, "", "", ""]);
     expect(sheet.getRow(2).height).toBe(25);
   });
 
   it("freezes the header, filters on it and prints it on every page", async () => {
     const { sheet } = await build();
     expect(sheet.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
-    expect(JSON.stringify(sheet.autoFilter)).toMatch(/A1.*H1/);
+    expect(JSON.stringify(sheet.autoFilter)).toMatch(/A1.*K1/);
     expect(sheet.pageSetup).toMatchObject({ orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 });
   });
 
@@ -191,11 +223,11 @@ describe("buildWaybillExcel", () => {
     expect(rows[0][0]).toBe(message);
     expect(rows[1]).toEqual(HEADERS);
     expect(rows).toHaveLength((await build()).rows.length + 1);
-    expect(merges).toContain("A1:H1");
+    expect(merges).toContain("A1:K1");
     expect(fontOf(sheet, "A1")).toMatchObject({ bold: true, color: { argb: "FFC00000" } });
     expect(argb(sheet.getCell("A1").fill)).toBe("FFFFE5E5");
     expect(sheet.views[0]).toMatchObject({ state: "frozen", ySplit: 2 });
-    expect(JSON.stringify(sheet.autoFilter)).toMatch(/A2.*H2/);
+    expect(JSON.stringify(sheet.autoFilter)).toMatch(/A2.*K2/);
     expect(sheet.pageSetup.printTitlesRow).toBe("2:2");
   });
 
@@ -207,7 +239,7 @@ describe("buildWaybillExcel", () => {
   it("lists orders whose label hides products after all the others, in a group of their own", async () => {
     const hidden = order("TRK_H1", [["Ốc", "M6", 1]], { declaredTotalQuantity: 6 });
     const { rows } = await build([hidden, ...pages]);
-    expect(rows.at(-1)).toEqual([4, 1, 5, "TRK_H1", "M6", 1, "Ốc", expect.stringMatching(/ẩn bớt/)]);
+    expect(rows.at(-1)).toEqual([4, 1, "khoLuan", 5, "TRK_H1", "M6", 1, "Ốc", "", "", expect.stringMatching(/ẩn bớt/)]);
   });
 
   it("still produces a valid workbook with only a header for an empty list", async () => {

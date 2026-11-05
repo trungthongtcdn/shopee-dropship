@@ -12,6 +12,10 @@
 
 One site serves several shops, each with its own data (see `docs/superpowers/specs/2026-10-20-multi-shop-design.md`): shop `shop_1` is the data in Postgres' `public` schema, every later shop has a schema of its own. Pick the shop in the header. `prisma` from `lib/db.ts` always means "the current shop's database" (the shop comes from the `shop` cookie, or from `runWithShop` in scripts and the webhook); accounts and the list of shops are shared and go through `sharedPrisma`. API routes that write go through `withShop` (`lib/shops/guard.ts`) so a stale browser tab can't write into another shop. Add a shop with `npm run shop:add -- --name "Tên shop"`; after adding a migration run `npm run shops:migrate` too. Details in [DEPLOY_VPS.md](DEPLOY_VPS.md).
 
+## Kho gửi (the grouped Excel and PDF)
+
+When the bot reads a waybill PDF in the Zalo group it looks every SKU up in the warehouse's price sheet ("GIÁ FULL", `lib/kiot.ts`, copied into the shop's `kiot_snapshots` row and refreshed daily) and writes Mã Kiot, Kho Kiot and Kho gửi into the grouped Excel. The orders are listed kho by kho; when they are at more than one kho the bot also posts one Excel and one PDF per kho. An order whose Kiot codes are in two different kho gets an empty kho gửi: the bot then posts only a link to `/dashboard/dong-don/phieu/<id>` (the PDF is kept as a `waybill_drafts` row for 14 days), where the team picks the kho and sends the files. Needs `PUBLIC_BASE_URL` (see `.env.example`); without it the files are always posted at once. Rules in `lib/waybill/khoGiao.ts`.
+
 ## Deploying
 
 ### Option A: Vercel

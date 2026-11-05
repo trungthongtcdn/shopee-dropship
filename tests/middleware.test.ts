@@ -62,6 +62,8 @@ describe("middleware", () => {
     const matchers = config.matcher as string[];
     expect(matchers).toContain("/api/accounts/:path*");
     expect(matchers).toContain("/api/waybills/:path*");
+    expect(matchers).toContain("/api/hoan-huy/:path*");
+    expect(matchers).toContain("/api/waybill-drafts/:path*");
     expect(matchers.some((m) => m.startsWith("/login") || m.startsWith("/api/auth"))).toBe(false);
   });
 });

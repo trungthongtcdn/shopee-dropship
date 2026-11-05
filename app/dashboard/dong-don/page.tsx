@@ -2,6 +2,7 @@ import { prisma, sharedPrisma } from "@/lib/db";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { Pagination } from "../Pagination";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
+import Link from "next/link";
 import { ManualConfirmForm } from "./ManualConfirmForm";
 import { WAYBILL_CONFIRM_PURPOSE } from "@/lib/zalo/poller";
 import { formatDateTimeVN } from "@/lib/format/datetime";
@@ -22,7 +23,7 @@ export default async function DongDonPage({
   const totalPages = totalPagesFor(totalCount, pageSize);
   // A stale link (or a shrunk history) can point past the last page: show the last one.
   const page = Math.min(parsePage(searchParams.page), totalPages);
-  const [config, logs, account] = await Promise.all([
+  const [config, logs, account, drafts] = await Promise.all([
     prisma.zaloWatchConfig.findUnique({ where: { purpose: WAYBILL_CONFIRM_PURPOSE } }),
     prisma.zaloConfirmationLog.findMany({
       orderBy: [{ confirmedAt: "desc" }, { id: "desc" }],
@@ -31,6 +32,11 @@ export default async function DongDonPage({
     }),
     // This account's saved choice of PDF layout (the page sits behind the sign-in check).
     user ? sharedPrisma.user.findUnique({ where: { id: user.id }, select: { waybillPerPage: true } }) : null,
+    // The PDFs the bot read from the group lately, to open again (the link in the group may be lost).
+    // Counted in SQL so the orders themselves aren't pulled into a list page.
+    prisma.$queryRaw<{ id: number; created_at: Date; sent_at: Date | null; orders: number }[]>`
+      SELECT id, created_at, sent_at, jsonb_array_length(pages)::int AS orders
+      FROM waybill_drafts ORDER BY created_at DESC, id DESC LIMIT 10`,
   ]);
 
   // Which of these rows have a stored Excel / re-ordered PDF / uploaded PDF. Names
@@ -67,6 +73,44 @@ export default async function DongDonPage({
           <ManualConfirmForm defaultPerPage={account?.waybillPerPage ?? null} />
         </div>
       </div>
+
+      <h3>Phiếu bot đã đọc từ nhóm Zalo</h3>
+      {drafts.length === 0 ? (
+        <p className="empty-state">Chưa có phiếu nào (phiếu được giữ 14 ngày).</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Số đơn</th>
+                <th>File Excel/PDF</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {drafts.map((draft) => (
+                <tr key={draft.id}>
+                  <td className="cell-muted">{formatDateTimeVN(draft.created_at)}</td>
+                  <td>{draft.orders}</td>
+                  <td>
+                    {draft.sent_at ? (
+                      <span className="badge badge-success">Đã gửi {formatDateTimeVN(draft.sent_at)}</span>
+                    ) : (
+                      <span className="badge badge-warning">Chưa gửi — chờ chọn kho gửi</span>
+                    )}
+                  </td>
+                  <td>
+                    <Link className="btn btn-secondary btn-sm" href={`/dashboard/dong-don/phieu/${draft.id}`}>
+                      Xem / sửa kho gửi
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <h3>Lịch sử xác nhận đóng hàng</h3>
       {totalCount === 0 ? (

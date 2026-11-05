@@ -3,10 +3,12 @@ import { FilterDropdown } from "../FilterDropdown";
 import { Pagination } from "../Pagination";
 import { ZaloGroupPicker } from "../ZaloGroupPicker";
 import { parsePage, parsePageSize, totalPagesFor } from "../pageSize";
-import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails } from "./HoanHuyRow";
+import { HoanHuyRow, type HoanHuySummary, type HoanHuyDetails, type ReceiptOption } from "./HoanHuyRow";
 import { loadOverdueWarnings } from "@/lib/cancellation/overdueWarnings";
 import { loadCancellationRows, parseCancellationFilters, showsCancelledOrders } from "@/lib/cancellation/loadCancellationRows";
 import { RECEIPT_LABELS, loadReceiptStatuses } from "@/lib/cancellation/receiptStatus";
+import { loadComplaintNotes } from "@/lib/cancellation/complaintNotes";
+import { supplierNoteOf, timeColumnOf } from "@/lib/cancellation/editCancellation";
 import {
   NO_VALUE,
   matchesReceiptFilter,
@@ -48,11 +50,13 @@ function respondByClassName(respondByAt: Date | null): string {
   return "cell-muted";
 }
 
-function receiptLabelOf(status: CancelReceiptStatus | undefined): string {
-  return status ? RECEIPT_LABELS[status] : "";
-}
+// What staff can pick in the "Trạng thái nhận/Check Dup" cell; "" clears it.
+const RECEIPT_CHOICES: ReceiptOption[] = [
+  { value: "", label: "" },
+  ...(["received_full", "received_partial", "not_received", "not_needed"] as const).map((value) => ({ value, label: RECEIPT_LABELS[value] })),
+];
 
-function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
+function toSummary(row: Cancellation, receiptStatus: CancelReceiptStatus | undefined): HoanHuySummary {
   return {
     id: row.id,
     typeLabel: typeLabel(row.type),
@@ -62,25 +66,26 @@ function toSummary(row: Cancellation, receiptLabel: string): HoanHuySummary {
     productName: row.productName ?? "-",
     quantityMeta: `SL ${row.lineQuantity ?? "-"} · Hoàn ${row.returnedQuantity ?? "-"}`,
     returnTrackingCode: allReturnTrackingCodes(row).join("\n") || "-",
-    returnMeta: `${row.returnStatus ?? "-"} · ${formatDate(row.returnCompletedAt)}`,
     returnRefundStatus: row.returnRefundStatus ?? "-",
-    refundAmountLabel: formatAmount(row.refundAmount),
-    complaintReason: row.complaintReason ?? "-",
+    returnStatus: row.returnStatus ?? "-",
+    timeLabel: formatDate(timeColumnOf(row)),
     complaintStatus: row.complaintStatus ?? "-",
     respondByLabel: formatDate(row.respondByAt),
     respondByClassName: respondByClassName(row.respondByAt),
-    receiptLabel,
+    receiptStatus: receiptStatus ?? "",
+    supplierNote: supplierNoteOf(row),
+    refundAmountLabel: formatAmount(row.refundAmount),
+    complaintReason: row.complaintReason ?? "-",
   };
 }
 
-function toDetails(row: Cancellation): HoanHuyDetails {
+function toDetails(row: Cancellation, complaintNote: string): HoanHuyDetails {
   return {
     returnReason: row.returnReason ?? "-",
     buyerNote: row.buyerNote ?? "-",
     shopeeNote: row.shopeeNote ?? "-",
-    supplierNote: row.supplierNote ?? "-",
     complaintAtLabel: formatDate(row.complaintAt),
-    cancelledAtLabel: formatDate(row.cancelledAt),
+    complaintNote,
   };
 }
 
@@ -161,8 +166,9 @@ export default async function HoanHuyPage({
 
   const totalPages = totalPagesFor(filteredRows.length, pageSize);
   const rows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
-  // "đã nhận" comes from the receipt typed in the Zalo group or on the Nhận đơn huỷ
-  // page (stored on the order's lines).
+  const complaintNotes = await loadComplaintNotes(rows.map((row) => row.shopeeOrderId));
+  // "đã nhận" comes from the receipt typed in the Zalo group, on the Nhận đơn huỷ page or in the
+  // "Trạng thái nhận/Check Dup" cell here (stored on the order's lines).
   const baseQueryParams = new URLSearchParams(otherFilterQuery);
   for (const type of types) baseQueryParams.append("type", type);
   const baseQuery = baseQueryParams.toString();
@@ -260,16 +266,25 @@ export default async function HoanHuyPage({
               <th>Sản phẩm</th>
               <th>Trả hàng</th>
               <th>Trạng thái Trả hàng/Hoàn tiền</th>
+              <th>Trạng thái trả hàng</th>
+              <th>Thời gian hoàn trả hàng / ngày huỷ thành công</th>
+              <th>Trạng thái xử lý khiếu nại</th>
+              <th>Phản hồi trước</th>
+              <th>Trạng thái nhận/Check Dup</th>
+              <th>NCC ghi chú</th>
               <th>Số tiền hoàn</th>
               <th>Khiếu nại</th>
-              <th>Phản hồi trước</th>
-              <th>Trạng thái nhận</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <HoanHuyRow key={row.id} summary={toSummary(row, receiptLabelOf(receiptStatuses.get(row.shopeeOrderId)))} details={toDetails(row)} />
+              <HoanHuyRow
+                key={row.id}
+                summary={toSummary(row, receiptStatuses.get(row.shopeeOrderId))}
+                details={toDetails(row, complaintNotes.get(row.shopeeOrderId) ?? "")}
+                receiptOptions={RECEIPT_CHOICES}
+              />
             ))}
           </tbody>
         </table>

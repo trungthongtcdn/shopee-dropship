@@ -3,7 +3,9 @@ import { fetchMessages, sendGroupMessage, type ZaloMessage } from "@/lib/zalo/br
 import { findPdfUrl, isConfirmationMessage } from "@/lib/zalo/detect";
 import { isBotMessage } from "@/lib/zalo/botMessage";
 import { downloadWaybillPdf, parseWaybillPdf, type ParsedWaybill, type WaybillOrder } from "@/lib/zalo/parseWaybill";
-import { sendSortedWaybillPdf, sendWaybillExcel, storeWaybillFiles } from "@/lib/waybill/deliver";
+import { mapKiot, storeWaybillFiles } from "@/lib/waybill/deliver";
+import { announceWaybill } from "@/lib/waybill/announce";
+import { findDraft } from "@/lib/waybill/drafts";
 import { tsToDate } from "@/lib/zalo/cancelReceiptPoller";
 import { createPollerGuard } from "@/lib/zalo/pollerGuard";
 import { assertWaybillSize, MAX_WAYBILL_BYTES, WaybillTooLargeError, megabytes } from "@/lib/zalo/waybillLimits";
@@ -264,14 +266,13 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     if (isStalePdfMessage(pdfMessage.ts)) continue;
     try {
       const { pages, pdf, layout, labelCount } = await loadWaybill(pdfMessage.pdfUrl);
-      // One timestamp so the two files share a name stem and pair up visibly.
+      // One timestamp so the files of a PDF share a name stem and pair up visibly.
       const at = new Date();
-      await sendWaybillExcel({ pages, at, thread, labelCount });
-      const sentPdf = await sendSortedWaybillPdf({ pages, at, sourcePdf: pdf, layout, thread, labelCount });
-      if (sentPdf.tooLarge) {
+      const announced = await announceWaybill({ thread, pdfUrl: pdfMessage.pdfUrl, pages, pdf, layout, labelCount, at, tell: tellGroup });
+      if (announced.tooLarge) {
         await tellGroup(
           `pdf-send:${pdfKey(config.threadId, pdfMessage.msgId)}`,
-          `⚠️ File PDF đã xếp nặng ${sentPdf.tooLarge}, vượt giới hạn gửi qua Zalo nên bot chỉ gửi được file Excel. Bạn mở trang Đóng đơn để lấy PDF đã xếp.`
+          `⚠️ File PDF đã xếp nặng ${announced.tooLarge}, vượt giới hạn gửi qua Zalo nên bot chỉ gửi được file Excel. Bạn mở trang Đóng đơn để lấy PDF đã xếp.`
         );
       }
     } catch (error) {
@@ -333,7 +334,10 @@ export async function runPollCycle(): Promise<PollCycleResult | null> {
     // Keep the Excel and the re-ordered PDF with the log row for the buttons on
     // the Đóng đơn page. Both were already posted to the group when the PDF
     // arrived, so no second post.
-    await storeWaybillFiles({ logId, pages, at: confirmedAt, sourcePdf: pdf, layout, labelCount });
+    // The kho gửi as the team left it on the draft page (or, with no draft, as the price sheet gives it).
+    const draft = await findDraft(config.threadId, confirmation.pdfUrl).catch(() => null);
+    const kiotPages = draft?.pages ?? (await mapKiot(pages)).pages;
+    await storeWaybillFiles({ logId, pages: kiotPages, at: confirmedAt, sourcePdf: pdf, layout, labelCount, overrides: draft?.overrides });
     guard.finishAttempt(key);
   }
 

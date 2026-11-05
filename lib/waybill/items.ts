@@ -28,8 +28,20 @@ export interface KiotLine {
   // From the price sheet; each is absent when the sheet has none for this SKU.
   kiotCode?: string;
   kiotStore?: string;
-  // Cost of one Kiot unit, in đồng.
-  cost?: number;
+  // The warehouse this SKU ships from for the shop that sends the parcel (the price sheet's
+  // per-shop "kho giao" columns), as the sheet spells it. Absent when the sheet has no value
+  // for this SKU and shop, or the shop matches none of its columns.
+  khoGiao?: string;
+}
+
+// Why an order's kho giao is what it is: "sheet" = every product says so; the others are the
+// reasons it fell back to khoLuan (not a Shopee Express parcel, products in different kho,
+// a product or shop the sheet has no kho giao for).
+export type KhoReason = "sheet" | "not-spx" | "mixed" | "unknown";
+
+export interface KhoDecision {
+  kho: string;
+  reason: KhoReason;
 }
 
 export interface WaybillPage {
@@ -46,6 +58,11 @@ export interface WaybillPage {
   items: WaybillItem[];
   // The sender printed under "Từ:" — the shop the parcel goes out under ("gian hàng").
   shopName?: string;
+  // The warehouse the parcel is packed at (khoGiao.ts): the sheet's decision unless someone
+  // edited it. `khoAuto` keeps what the sheet decided on its own. Set once the order's SKUs
+  // have been mapped; never part of the grouping.
+  khoGiao?: string;
+  khoAuto?: KhoDecision;
 }
 
 export interface GroupedPage extends WaybillPage {

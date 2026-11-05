@@ -147,6 +147,10 @@ model Cancellation {
   // "NCC note" (4.1/4.2) — the supplier/dropship partner's own note,
   // distinct from "Note" (shopeeNote below) which is Shopee/internal's.
   supplierNote         String?          @map("supplier_note")
+  // What the team typed over "NCC ghi chú" on the Đơn hoàn huỷ page. Kept apart from
+  // supplierNote because every sync of a changed sheet row rewrites that one; the page
+  // shows this when it is set and the sheet's note otherwise.
+  supplierNoteEdit     String?          @map("supplier_note_edit")
   // "Note" (4.1/4.2) — Shopee/internal's note, distinct from supplierNote
   // above. Named to avoid colliding with Order.note, which is Luân's own
   // manually-typed note and an unrelated concept.
@@ -496,4 +500,42 @@ model Shop {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("shops")
+}
+
+// The warehouse's price sheet ("GIÁ FULL": each Shopee SKU's Kiot code, Kiot store and the kho
+// each shop ships it from) as this shop last copied it — see lib/kiot.ts. One row (id 1) holding
+// the whole list, replaced on every refresh.
+model KiotSnapshot {
+  id       Int      @id @default(1)
+  records  Json
+  syncedAt DateTime @map("synced_at")
+
+  @@map("kiot_snapshots")
+}
+
+// A waybill PDF the bot saw in the Zalo group, kept so the team can fill in the kho gửi of the
+// orders the price sheet couldn't decide and only then send the files — see
+// lib/waybill/drafts.ts and /dashboard/dong-don/phieu/[id]. One row per (thread, PDF link).
+model WaybillDraft {
+  id         Int       @id @default(autoincrement())
+  threadId   String    @map("thread_id")
+  threadType String    @map("thread_type")
+  pdfUrl     String    @map("pdf_url")
+  pdfData    Bytes     @map("pdf_data")
+  // The orders as read from the PDF, with the Kiot lines the price sheet gave them.
+  pages      Json
+  // SheetLayout of a PDF with several labels per sheet; null for a plain one.
+  layout     Json?
+  labelCount Int?      @map("label_count")
+  // The kho the price sheet knows (offered besides the ones the orders are at).
+  khoOptions Json      @default("[]") @map("kho_options")
+  // The kho gửi typed on the page: order id → kho.
+  overrides  Json      @default("{}")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  // When the files were posted into the group; null while they are held back.
+  sentAt     DateTime? @map("sent_at")
+
+  @@unique([threadId, pdfUrl])
+  @@index([createdAt])
+  @@map("waybill_drafts")
 }
